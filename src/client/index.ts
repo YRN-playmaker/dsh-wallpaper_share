@@ -7,6 +7,8 @@
  */
 import { WallpaperSharePanel } from './WallpaperSharePanel.tsx'
 import { PANEL_CSS } from './panelStyle.ts'
+import { SceneCanvas } from './SceneCanvas.ts'
+import { SceneModelRenderer } from './SceneModelRenderer.ts'
 
 export const inject = ['slots', 'theme']
 
@@ -28,6 +30,19 @@ export interface WeSyncInfo {
   /** 当前生效显示器的源文件类型（'video' | 'web' | 'scene' | 'application' | 'image' | 'other' | ''）；
    *  scene 表示增强模式下已从 scene.pkg 提取出可用的内嵌纹理 */
   source: { kind: string; mime: string; scene: boolean }
+  /** scene 增强状态：renderer 是否可用/在跑、纹理是否存在、渲染模式、当前 fallback 层（来自 node half） */
+  scene: null | {
+    live: boolean
+    available: boolean
+    version: string
+    texture: boolean
+    fallback: string
+    /** 'browser' = 浏览器子集渲染器（SceneModelRenderer）；'external' = 外部 renderer（WS 帧流） */
+    mode?: 'browser' | 'external'
+    /** 浏览器子集渲染器能否拿到 SceneModel */
+    model?: boolean
+    status?: { state: string; fps?: number; frameIndex?: number; restarts?: number; lastError?: string }
+  }
   /** 壁纸源服务器端口（web 壁纸 iframe 用）；0 = 不可用（回退旧代理） */
   webPort: number
 }
@@ -154,6 +169,22 @@ export function apply(ctx: CordisCtx): void {
   // 增强模式媒体层：视频或 iframe（性能模式不创建）
   let mediaEl: HTMLVideoElement | HTMLIFrameElement | null = null
 
+  // scene 动态背景层：live canvas（外部 renderer 出帧，mode=external）
+  let sceneCanvas: SceneCanvas | null = null
+  function stopSceneCanvas(): void {
+    if (sceneCanvas !== null) { sceneCanvas.stop(); sceneCanvas = null }
+  }
+
+  // scene 浏览器子集渲染器（mode=browser：真实图层树 + transform 合成）
+  let sceneModelRenderer: SceneModelRenderer | null = null
+  function stopSceneModelRenderer(): void {
+    if (sceneModelRenderer !== null) { sceneModelRenderer.stop(); sceneModelRenderer = null }
+  }
+  function stopSceneLayers(): void {
+    stopSceneCanvas()
+    stopSceneModelRenderer()
+  }
+
   function setMedia(el: HTMLVideoElement | HTMLIFrameElement | null): void {
     if (mediaEl !== null && mediaEl !== el) {
       if (mediaEl instanceof HTMLVideoElement) mediaEl.pause()
@@ -273,8 +304,9 @@ export function apply(ctx: CordisCtx): void {
     const monitorKey = info !== null && info.monitor !== '' ? info.monitor : ''
     const monitorQuery = store.settings.monitor !== '' ? '&monitor=' + encodeURIComponent(store.settings.monitor) : ''
     const rawSourceKind = enabled && info !== null && store.settings.renderMode === 'source' ? info.source.kind : ''
-    // scene 只有在 node half 成功从 pkg 提取出纹理（info.source.scene）时才走增强，否则回退预览
-    const sourceKind = rawSourceKind === 'video' || rawSourceKind === 'web' || rawSourceKind === 'image' || (rawSourceKind === 'scene' && info !== null && info.source.scene) ? rawSourceKind : ''
+    // scene：renderer 可用 或 已提取纹理 → 走 scene 增强；两者皆无 → 回退预览
+    const sceneEnhance = rawSourceKind === 'scene' && info !== null && (info.scene?.available === true || info.source.scene === true)
+    const sourceKind = rawSourceKind === 'video' || rawSourceKind === 'web' || rawSourceKind === 'image' || sceneEnhance ? rawSourceKind : ''
 
     // 增强模式背景：image/scene 走专用路由；性能模式 / 提取失败回退静态预览
     let imgUrl = 'none'
@@ -282,7 +314,10 @@ export function apply(ctx: CordisCtx): void {
       if (sourceKind === 'image') {
         imgUrl = 'url("/we-sync/source?monitor=' + encodeURIComponent(monitorKey) + '&v=' + info.version + '")'
       } else if (sourceKind === 'scene') {
-        imgUrl = 'url("/we-sync/scene?monitor=' + encodeURIComponent(monitorKey) + '&v=' + info.version + '")'
+        // 纹理始终垫底（canvas 出帧前 / renderer 失败时可见）；无纹理则垫预览
+        imgUrl = info.source.scene
+          ? 'url("/we-sync/scene?monitor=' + encodeURIComponent(monitorKey) + '&v=' + info.version + '")'
+          : 'url("/we-sync/preview?v=' + info.version + monitorQuery + '")'
       } else if (sourceKind === '' && info.kind === 'image') {
         imgUrl = 'url("/we-sync/preview?v=' + info.version + monitorQuery + '")'
       }
@@ -298,7 +333,25 @@ export function apply(ctx: CordisCtx): void {
       'body::after { content: ""; position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: -1; ' +
       'background: linear-gradient(rgba(6,8,12,' + shadowAlpha.toFixed(3) + '), rgba(6,8,12,' + (shadowAlpha * 0.85).toFixed(3) + ')); }'
 
-    if (sourceKind === 'video' && info !== null) {
+    if (sourceKind === 'scene' && info !== null) {
+      const sceneMode = info.scene?.mode === 'external' ? 'external' : 'browser'
+      if (sceneMode === 'external' && info.scene?.available === true) {
+        // 外部 renderer：live canvas（WS 帧流），出帧覆盖在纹理垫底之上；连接失败自动回退
+        if (sceneCanvas === null) sceneCanvas = new SceneCanvas()
+        sceneCanvas.applyVisuals(blurPx, scale)
+        sceneCanvas.start(monitorKey, info.version)
+        stopSceneModelRenderer()
+      } else if (sceneMode === 'browser') {
+        // 浏览器子集渲染器：真实 scene.json 图层树 + transform 合成（Phase 1 最小切片）
+        if (sceneModelRenderer === null) sceneModelRenderer = new SceneModelRenderer()
+        sceneModelRenderer.applyVisuals(blurPx, scale)
+        sceneModelRenderer.start(monitorKey, info.version)
+        stopSceneCanvas()
+      } else {
+        stopSceneLayers()
+      }
+      setMedia(null)
+    } else if (sourceKind === 'video' && info !== null) {
       let video = mediaEl instanceof HTMLVideoElement ? mediaEl : null
       if (video === null) {
         video = document.createElement('video')
@@ -330,6 +383,7 @@ export function apply(ctx: CordisCtx): void {
       if (frame.src !== src) frame.src = src
       frame.style.filter = 'blur(' + blurPx + 'px)'
     } else {
+      stopSceneLayers()
       setMedia(null)
     }
     applyImmersive()
@@ -372,6 +426,7 @@ export function apply(ctx: CordisCtx): void {
     statusObserver.disconnect()
     document.removeEventListener('keydown', onImmersiveKey)
     document.removeEventListener('click', onDocClick, true)
+    stopSceneLayers()
     setMedia(null)
     if (themeDisposer !== null) { themeDisposer(); themeDisposer = null }
   })

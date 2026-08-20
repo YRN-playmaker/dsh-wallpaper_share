@@ -13,6 +13,11 @@ import { execFileSync } from 'node:child_process'
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import type { Writable } from 'node:stream'
+import { SceneAdapter, type SceneTarget } from './scene/SceneAdapter.ts'
+import { sceneFingerprint } from './scene/SceneCapabilities.ts'
+import { buildSceneModel, type SceneModel } from './scene/SceneModel.ts'
+import { parseScenePkg } from './scene/ScenePkg.ts'
+import { decodeTex, texMimeOf, texMipToPng } from './scene/SceneTex.ts'
 
 /** 最小化的 Cordis 上下文结构（独立构建不依赖 @deepseek-ai/cordis 的类型包） */
 interface CordisCtx {
@@ -31,6 +36,25 @@ const CONFIG = {
   pollIntervalMs: 2000,
   /** 预览图大小上限（字节） */
   previewMaxBytes: 6291456,
+  /** 外部 scene renderer 可执行文件；留空 = 使用内置参考 renderer（诊断动画，非真实渲染） */
+  sceneRendererPath: '',
+  /** Wallpaper Engine engine assets 目录；留空自动推导为 <weDir>/assets */
+  wallpaperEngineAssetsDir: '',
+  /** scene renderer 输出分辨率（真实 renderer 建议 1920x1080；参考 renderer 会自行 clamp） */
+  sceneRenderWidth: 1920,
+  sceneRenderHeight: 1080,
+  /** scene renderer 目标帧率 */
+  sceneRenderFps: 30,
+  /** JPEG/WebP 帧质量（0..100） */
+  sceneRenderQuality: 80,
+  /** scene 渲染模式：'auto'（默认：浏览器子集渲染器为主；显式配置 sceneRendererPath 则 external）| 'browser'（强制浏览器子集渲染器）| 'external'（强制外部 renderer 子进程） */
+  sceneRenderMode: 'auto',
+  /** 粒子发射率缩放（视觉校准项；WE rate 单位 = 每秒粒子数，默认 1） */
+  particleRateScale: 1,
+  /** 粒子尺寸缩放（视觉校准项，默认 1） */
+  particleSizeScale: 1,
+  /** puppet 网格蒙皮渲染（实验：部件按顶点网格渲染；默认关闭，验证后启用） */
+  puppetMeshRender: false,
 }
 
 interface Req { url?: string; method?: string; headers?: { range?: string } }
@@ -40,7 +64,8 @@ interface Res {
   end(body?: unknown): void
 }
 interface Route { kind: 'exact' | 'prefix'; path: string; handler(req: Req, res: Res): void | Promise<void> }
-interface WebServer { register(route: Route): () => void }
+interface UpgradeRoute { path: string; handler(req: Req, socket: unknown, head: unknown): void | Promise<void> }
+interface WebServer { register(route: Route): () => void; registerUpgrade(route: UpgradeRoute): () => void }
 
 interface WallpaperMeta { title: string; type: string; id: string }
 interface SceneImage { start: number; end: number; mime: string; width: number; height: number }
@@ -60,6 +85,12 @@ export function apply(ctx: CordisCtx): void {
     lastError: '',
     weDir: '',
   }
+
+  /** Scene renderer 编排器（在 detectWeDir 成功后实例化） */
+  let sceneAdapter: SceneAdapter | null = null
+
+  /** SceneModel 缓存（key=指纹；避免每次轮询重新解析 scene.pkg） */
+  let sceneModelCache: { fp: string; model: SceneModel | null } | null = null
 
   const disposers: Array<() => void> = []
   ctx.effect(() => () => { for (const d of disposers) d() })
@@ -505,6 +536,7 @@ export function apply(ctx: CordisCtx): void {
     }
     state.previews = previews
     state.version += 1
+    syncSceneTarget()
   }
 
   function poll(weDir: string): void {
@@ -538,6 +570,67 @@ export function apply(ctx: CordisCtx): void {
     return keys[0] ?? ''
   }
 
+  /** 由显示器 key 构造 SceneAdapter 目标（仅 scene 壁纸；非 scene 返回 null） */
+  function sceneTargetFor(key: string): SceneTarget | null {
+    const monitor = state.monitors.find((m) => m.key === key)
+    if (monitor === undefined || monitor.kind !== 'scene') return null
+    return { key: monitor.key, file: monitor.file, kind: monitor.kind }
+  }
+
+  /** 让 renderer 跟随当前生效的 scene 显示器（在 monitors 重建后调用） */
+  function syncSceneTarget(): void {
+    if (sceneAdapter === null) return
+    sceneAdapter.setTarget(sceneTargetFor(effectiveKey('')))
+  }
+
+  /** 汇总某台显示器的 scene renderer 状态（供 /we-sync/state 与 /we-sync/diag） */
+  function sceneInfoFor(key: string): Record<string, unknown> | null {
+    const monitor = state.monitors.find((m) => m.key === key)
+    if (monitor === undefined || monitor.kind !== 'scene') return null
+    const cap = sceneAdapter?.getCapabilities() ?? null
+    const status = sceneAdapter?.getStatus() ?? null
+    const hasPreview = state.previews[key]?.kind === 'image'
+    const fallback = sceneAdapter?.getFallback({ kind: 'scene', hasTexture: monitor.sceneImage !== null, hasPreview, renderMode: 'source' }) ?? null
+    return {
+      live: sceneAdapter?.isRunning() === true,
+      available: cap?.available === true,
+      version: cap?.version ?? '',
+      status,
+      texture: monitor.sceneImage !== null,
+      fallback: fallback?.level ?? 'generic',
+      capabilities: cap,
+      mode: resolveSceneMode(),
+      model: getSceneModel(key) !== null,
+    }
+  }
+
+  /** 解析当前 scene 渲染模式：
+   *  'external' → 外部 renderer；'browser' → 浏览器子集渲染器；
+   *  'auto' → 显式配置了 sceneRendererPath 则 external，否则 browser（浏览器子集渲染器为主路线） */
+  function resolveSceneMode(): 'browser' | 'external' {
+    if (CONFIG.sceneRenderMode === 'external') return 'external'
+    if (CONFIG.sceneRenderMode === 'browser') return 'browser'
+    return CONFIG.sceneRendererPath.trim() !== '' ? 'external' : 'browser'
+  }
+
+  /** 构建（并缓存）某显示器的 SceneModel；非 scene 或解析失败返回 null */
+  function getSceneModel(key: string): SceneModel | null {
+    const monitor = state.monitors.find((m) => m.key === key)
+    if (monitor === undefined || monitor.kind !== 'scene') return null
+    const fp = sceneFingerprint(monitor.file)
+    if (sceneModelCache !== null && sceneModelCache.fp === fp) return sceneModelCache.model
+    let model: SceneModel | null = null
+    try {
+      model = buildSceneModel(new Uint8Array(readFileSync(monitor.file)), {
+        particleRateScale: CONFIG.particleRateScale,
+        particleSizeScale: CONFIG.particleSizeScale,
+        puppetMeshRender: CONFIG.puppetMeshRender,
+      })
+    } catch { model = null }
+    sceneModelCache = { fp, model }
+    return model
+  }
+
   disposers.push(webServer.register({
     kind: 'exact',
     path: '/we-sync/state',
@@ -556,6 +649,7 @@ export function apply(ctx: CordisCtx): void {
         source: monitor !== undefined
           ? { kind: monitor.kind, mime: monitor.mime, scene: monitor.sceneImage !== null }
           : { kind: '', mime: '', scene: false },
+        scene: sceneInfoFor(key),
         webPort,
       })
     },
@@ -628,6 +722,10 @@ export function apply(ctx: CordisCtx): void {
     kind: 'exact',
     path: '/we-sync/diag',
     handler(_req, res) {
+      const effKey = effectiveKey('')
+      const effMonitor = state.monitors.find((m) => m.key === effKey)
+      const adapterTarget = sceneAdapter?.getTarget() ?? null
+      const sceneKey = adapterTarget !== null ? adapterTarget.key : effKey
       sendJson(res, {
         version: state.version,
         latestMonitor: state.latestMonitor,
@@ -640,6 +738,22 @@ export function apply(ctx: CordisCtx): void {
             ? { width: m.sceneImage.width, height: m.sceneImage.height, mime: m.sceneImage.mime }
             : null,
         })),
+        scene: sceneInfoFor(sceneKey),
+        sceneTarget: effMonitor !== undefined && effMonitor.kind === 'scene'
+          ? { key: effKey, file: effMonitor.file }
+          : null,
+        sceneAdapterTarget: adapterTarget !== null ? { key: adapterTarget.key, file: adapterTarget.file } : null,
+        sceneModel: (() => {
+          const m = getSceneModel(sceneKey)
+          return m === null ? null : {
+            width: m.width,
+            height: m.height,
+            layers: m.layerCount,
+            textures: m.textures.length,
+            decodableTextures: m.decodableTextureCount,
+          }
+        })(),
+        sceneMode: resolveSceneMode(),
         lastError: state.lastError,
         weDir: state.weDir,
       })
@@ -661,6 +775,161 @@ export function apply(ctx: CordisCtx): void {
       res.setHeader('Content-Type', preview.mime)
       res.setHeader('Cache-Control', 'no-store')
       res.end(Buffer.from(preview.bytes))
+    },
+  }))
+
+  /** SceneModel JSON：浏览器子集渲染器（SceneModelRenderer）的数据源。
+   *  返回归一化图层树（transform/visible/纹理引用链），并按指纹缓存。 */
+  disposers.push(webServer.register({
+    kind: 'exact',
+    path: '/we-sync/scene/model',
+    handler(req, res) {
+      const key = effectiveKey(monitorFromQuery(req))
+      const model = getSceneModel(key)
+      if (model === null) {
+        res.statusCode = 404
+        res.end('no scene model')
+        return
+      }
+      sendJson(res, model)
+    },
+  }))
+
+  /** SceneModel 纹理字节：仅提供 pkg 内可解码（jpg/png）条目，防止路径穿越 */
+  disposers.push(webServer.register({
+    kind: 'exact',
+    path: '/we-sync/scene/texture',
+    handler(req, res) {
+      const key = effectiveKey(monitorFromQuery(req))
+      const monitor = state.monitors.find((m) => m.key === key)
+      if (monitor === undefined || monitor.kind !== 'scene') {
+        res.statusCode = 404
+        res.end('no scene wallpaper')
+        return
+      }
+      const match = /[?&]name=([^&]+)/.exec(req.url ?? '')
+      if (match === null || match[1] === undefined) {
+        res.statusCode = 400
+        res.end('missing name')
+        return
+      }
+      let name: string
+      try { name = decodeURIComponent(match[1]) } catch { name = '' }
+      if (!/\.(tex|png|jpe?g)$/i.test(name)) {
+        res.statusCode = 415
+        res.end('unsupported texture entry: ' + name)
+        return
+      }
+      try {
+        const pkg = parseScenePkg(new Uint8Array(readFileSync(monitor.file)))
+        const entry = pkg.entries.find((e) => e.name === name)
+        if (entry === undefined) {
+          res.statusCode = 404
+          res.end('no such texture entry')
+          return
+        }
+        const absStart = pkg.dataStart + entry.offset
+        const absEnd = absStart + entry.size
+        if (/\.(png|jpe?g)$/i.test(name)) {
+          // 直接内嵌的 jpg/png 条目
+          const mime = /\.png$/i.test(name) ? 'image/png' : 'image/jpeg'
+          serveSlice(monitor.file, absStart, absEnd, mime, req, res)
+          return
+        }
+        // .tex 条目：完整解码（内嵌 PNG/JPEG 或 raw LZ4+DXT → PNG）
+        const texBytes = new Uint8Array(readFileSync(monitor.file).subarray(absStart, absEnd))
+        const tex = decodeTex(texBytes)
+        if (tex !== null && tex.mip0 !== null) {
+          // 纹理 Image 内容区域（画布内左上角）——浏览器渲染按此裁剪
+          if (tex.imageWidth > 0 && tex.imageHeight > 0) {
+            res.setHeader('X-WE-Image-W', String(tex.imageWidth))
+            res.setHeader('X-WE-Image-H', String(tex.imageHeight))
+          }
+          const mime = texMimeOf(tex) ?? 'image/png'
+          const isImage = tex.mip0.kind === 'image-png' || tex.mip0.kind === 'image-jpeg'
+          if (isImage) {
+            // 内嵌图片：按文件区间伺服（支持 Range）
+            serveSlice(monitor.file, absStart + tex.mip0.dataOffset, absStart + tex.mip0.dataOffset + tex.mip0.data.length, mime, req, res)
+          } else {
+            // raw（LZ4 压缩 + DXT1/3/5/RGBA）：解码为 PNG 直接返回
+            const png = texMipToPng(tex)
+            if (png === null) {
+              res.statusCode = 500
+              res.end('tex decode failed: ' + name)
+              return
+            }
+            res.statusCode = 200
+            res.setHeader('Content-Type', mime)
+            res.setHeader('Cache-Control', 'no-store')
+            res.end(Buffer.from(png))
+          }
+          return
+        }
+        res.statusCode = 415
+        res.end('tex decode failed: ' + name)
+      } catch {
+        res.statusCode = 500
+        res.end('pkg read failed')
+      }
+    },
+  }))
+
+  /** 引擎资产纹理（粒子等）：<weDir>/assets/materials/<name>.tex → 解码为 PNG。
+   *  name 如 particle/fog/fog1（材质 textures 的相对路径） */
+  disposers.push(webServer.register({
+    kind: 'exact',
+    path: '/we-sync/asset/texture',
+    handler(req, res) {
+      const match = /[?&]name=([^&]+)/.exec(req.url ?? '')
+      if (match === null || match[1] === undefined) {
+        res.statusCode = 400
+        res.end('missing name')
+        return
+      }
+      let name: string
+      try { name = decodeURIComponent(match[1]) } catch { name = '' }
+      if (!/^[a-zA-Z0-9_\/\-\.]+$/.test(name) || name.includes('..') || state.weDir === '') {
+        res.statusCode = 403
+        res.end('forbidden')
+        return
+      }
+      try {
+        const bytes = new Uint8Array(readFileSync(state.weDir + '/assets/materials/' + name + '.tex'))
+        const tex = decodeTex(bytes)
+        const png = tex !== null ? texMipToPng(tex) : null
+        if (png === null) {
+          res.statusCode = 415
+          res.end('asset tex decode failed: ' + name)
+          return
+        }
+        res.statusCode = 200
+        res.setHeader('Content-Type', 'image/png')
+        res.setHeader('Cache-Control', 'no-store')
+        res.end(Buffer.from(png))
+      } catch {
+        res.statusCode = 404
+        res.end('no such asset texture: ' + name)
+      }
+    },
+  }))
+
+  /** scene 帧流 WebSocket：SceneCanvas 连到此路由接收二进制帧。
+   *  连接时按 ?monitor= 锁定渲染目标（空 = 跟随生效显示器）。 */
+  disposers.push(webServer.registerUpgrade({
+    path: '/we-sync/scene/stream',
+    handler(req, socket, head) {
+      if (sceneAdapter === null) {
+        try { (socket as { destroy(): void }).destroy() } catch { /* 忽略 */ }
+        return
+      }
+      const key = monitorFromQuery(req)
+      const target = sceneTargetFor(key !== '' ? key : effectiveKey(''))
+      if (target !== null) sceneAdapter.setTarget(target)
+      sceneAdapter.hub.handleUpgrade(
+        req as unknown as import('node:http').IncomingMessage,
+        socket as unknown as import('node:stream').Duplex,
+        head as unknown as Buffer,
+      )
     },
   }))
 
@@ -705,6 +974,19 @@ export function apply(ctx: CordisCtx): void {
     return
   }
   state.weDir = detected
+  sceneAdapter = new SceneAdapter({
+    config: {
+      sceneRendererPath: CONFIG.sceneRendererPath,
+      wallpaperEngineAssetsDir: CONFIG.wallpaperEngineAssetsDir,
+      width: CONFIG.sceneRenderWidth,
+      height: CONFIG.sceneRenderHeight,
+      fps: CONFIG.sceneRenderFps,
+      quality: CONFIG.sceneRenderQuality,
+    },
+    weDir: detected,
+    log: (line) => console.log(line),
+  })
+  disposers.push(() => { sceneAdapter?.dispose(); sceneAdapter = null })
   ctx.effect(() => {
     const timer = setInterval(() => poll(detected), CONFIG.pollIntervalMs)
     poll(detected)

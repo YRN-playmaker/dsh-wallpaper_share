@@ -88,6 +88,9 @@ export function WallpaperSharePanel() {
       const kind = store.info !== null ? store.info.source.kind : ''
       if (kind === 'video') flash('增强模式：播放壁纸源视频')
       else if (kind === 'web') flash('增强模式：加载 Web 壁纸页面')
+      else if (kind === 'scene') flash(store.info?.scene?.live === true
+        ? '增强模式：Scene 实时渲染中'
+        : '增强模式：Scene（renderer 未出帧，回退纹理/预览）')
       else flash('当前壁纸（' + (kind === '' ? '无' : kind) + '）仅支持预览，增强模式自动回退')
     } else {
       flash('性能模式：使用静态预览图')
@@ -100,7 +103,7 @@ export function WallpaperSharePanel() {
     : wallpaper.title
   const subtitle = wallpaper === null
     ? '在 Wallpaper Engine 中应用壁纸后，此处会同步显示'
-    : wallpaper.type + (info !== null && info.kind === 'image' ? ' · 已同步静态预览' : ' · 无静态预览图') + (info !== null && info.monitor !== '' ? ' · 显示器 ' + info.monitor : '')
+    : wallpaper.type + (info !== null && info.kind === 'image' ? ' · 已同步静态预览' : ' · 无静态预览图') + (info !== null && info.monitor !== '' ? ' · 显示器 ' + info.monitor : '') + (info !== null && info.kind === 'scene' && info.scene !== null ? ' · Scene[' + (info.scene.mode ?? 'browser') + '] ' + (info.scene.live ? 'live ' + String(info.scene.status?.fps ?? '?') + 'fps' : (info.scene.model === true ? 'model 渲染' : 'fallback:' + info.scene.fallback)) : '')
 
   const monitors = info !== null && Array.isArray(info.monitors) && info.monitors.length > 1 ? info.monitors : null
   const focusVisuals = focus ? (store.settings.taskActive ? FOCUS_WORK : FOCUS_IDLE) : null
