@@ -237,6 +237,11 @@ export class ParticleRuntime {
     // 旋转 + 角速度
     const rot = ini.rotation !== undefined ? rand(ini.rotation[0], ini.rotation[1]) : 0
     const angVel = ini.angularVelocity !== undefined ? rand(ini.angularVelocity[0], ini.angularVelocity[1]) : 0
+    // overbright（genericparticle g_Overbright）：颜色亮度系数（材质 ui_editor_properties_overbright）
+    const ob = this.desc.overbright > 0 ? this.desc.overbright : 1
+    cr = Math.min(255, Math.round(cr * ob))
+    cg = Math.min(255, Math.round(cg * ob))
+    cb = Math.min(255, Math.round(cb * ob))
     // oscillateposition 每粒子独立频率/相位
     const osc = this.desc.operators.oscillatePosition
     const oscFreq = osc !== undefined ? rand(osc.frequencyMin, osc.frequencyMax) : 0

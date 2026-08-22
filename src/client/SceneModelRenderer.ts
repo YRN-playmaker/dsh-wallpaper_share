@@ -15,9 +15,10 @@
  * 诚实边界：Phase 1 不做 TEX 解码 / shader / 粒子 / keyframe 动画；
  * 静态合成，用于验证「真实 scene.json 图层树 + transform 能进 Harness」。
  */
-import type { SceneModel, SceneModelLayer } from '../scene/SceneModel.ts'
+import type { SceneModel, SceneModelLayer, LayerEffect } from '../scene/SceneModel.ts'
 import { sampleAnimation as samplePuppet, type PuppetAnimation } from '../scene/ScenePuppet.ts'
 import { ParticleRuntime } from './ParticleRuntime.ts'
+import { WaterwavesGL, type WaterwavesParams } from './WaterwavesGL.ts'
 
 export interface SceneModelRendererHandlers {
   onLiveChange?: (live: boolean) => void
@@ -31,19 +32,36 @@ const PLACEHOLDER_SIZE = 100 // 场景单位
  *   x_c = x_m, y_c = -y_m（绘制时经场景变换把图片中心对齐图层锚点）。
  * UV v 翻转（模型 v-up → 纹理 v-down）。
  * 每三角形：clip 路径 + 仿射变换（UV 三角 → 位置三角）+ drawImage 纹理。
+ * anim 可选：{rot, bx, by} = root 骨骼旋转（绕骨骼 0 bind 位置旋转的蒙皮）——
+ * 顶点 skinPos = w0 × Rz(rot; bx,by) × pos + (1-w0) × pos（骨骼 1-3 权重静态 = raw）。
  */
-function buildMeshCanvas(mesh: { vertices: { pos: [number, number, number]; uv: [number, number] }[]; indices: number[] }, tex: HTMLCanvasElement | ImageBitmap): { canvas: HTMLCanvasElement; originX: number; originY: number } {
+function buildMeshCanvas(mesh: { vertices: { pos: [number, number, number]; uv: [number, number]; weights?: number[] }[]; indices: number[]; flipV?: boolean }, tex: HTMLCanvasElement | ImageBitmap, anim?: { rot: number; bx: number; by: number } | null): { canvas: HTMLCanvasElement; originX: number; originY: number } {
+  // 蒙皮预计算：顶点位置数组（raw 或蒙皮后）
+  const posArr: Array<[number, number]> = []
+  if (anim !== undefined && anim !== null) {
+    const c = Math.cos(anim.rot)
+    const sn = Math.sin(anim.rot)
+    const bx = anim.bx
+    const by = anim.by
+    for (const v of mesh.vertices) {
+      const w0 = v.weights !== undefined ? v.weights[0] ?? 0 : 0
+      const rx = bx + c * (v.pos[0] - bx) - sn * (v.pos[1] - by)
+      const ry = by + sn * (v.pos[0] - bx) + c * (v.pos[1] - by)
+      posArr.push([w0 * rx + (1 - w0) * v.pos[0], w0 * ry + (1 - w0) * v.pos[1]])
+    }
+  } else {
+    for (const v of mesh.vertices) posArr.push([v.pos[0], v.pos[1]])
+  }
   let mnx = Infinity
   let mny = Infinity
   let mxx = -Infinity
   let mxy = -Infinity
-  for (const v of mesh.vertices) {
-    const x = v.pos[0]
-    const y = -v.pos[1] // y-up → y-down
+  for (const [x, y] of posArr) {
+    const yy = -y // y-up → y-down
     if (x < mnx) mnx = x
-    if (y < mny) mny = y
+    if (yy < mny) mny = yy
     if (x > mxx) mxx = x
-    if (y > mxy) mxy = y
+    if (yy > mxy) mxy = yy
   }
   const c0 = document.createElement('canvas')
   c0.width = 1
@@ -67,18 +85,20 @@ function buildMeshCanvas(mesh: { vertices: { pos: [number, number, number]; uv: 
     const b = verts[idx[i + 1]]
     const cc = verts[idx[i + 2]]
     if (a === undefined || b === undefined || cc === undefined) continue
+    // UV v 方向按壁纸自适应（mesh.flipV：pos y 与 v 正相关才翻转）
+    const fv = (val: number): number => (mesh.flipV ? 1 - val : val) * th
     const u0 = a.uv[0] * tw
-    const v0 = (1 - a.uv[1]) * th
+    const v0 = fv(a.uv[1])
     const u1 = b.uv[0] * tw
-    const v1 = (1 - b.uv[1]) * th
+    const v1 = fv(b.uv[1])
     const u2 = cc.uv[0] * tw
-    const v2 = (1 - cc.uv[1]) * th
-    const x0 = a.pos[0]
-    const y0 = -a.pos[1]
-    const x1 = b.pos[0]
-    const y1 = -b.pos[1]
-    const x2 = cc.pos[0]
-    const y2 = -cc.pos[1]
+    const v2 = fv(cc.uv[1])
+    const x0 = posArr[idx[i]][0]
+    const y0 = -posArr[idx[i]][1]
+    const x1 = posArr[idx[i + 1]][0]
+    const y1 = -posArr[idx[i + 1]][1]
+    const x2 = posArr[idx[i + 2]][0]
+    const y2 = -posArr[idx[i + 2]][1]
     const det = (u1 - u0) * (v2 - v0) - (u2 - u0) * (v1 - v0)
     if (Math.abs(det) < 1e-9) continue
     g.save()
@@ -124,12 +144,108 @@ function makeSoftTexture(src: ImageBitmap | HTMLCanvasElement): HTMLCanvasElemen
   return c
 }
 
+/**
+ * waterwaves 效果（Canvas2D 条带近似），对照官方 shader：
+ *   vert:  v_Direction = rotateVec2((0,1), θ) = (-sinθ, cosθ)   ← 传播方向
+ *   frag:  distance = t*speed + dot(uv, v_Direction)*scale
+ *          offset = (v_Direction.y, -v_Direction.x) = (cosθ, sinθ)  ← 扰动方向
+ *          texCoord += sign(sin)^exp * |sin|^exp * strength² * offset * mask
+ * 条带 = 等 phase 线（垂直 v_Direction，即沿 offset），带内沿 offset 整体平移；
+ * 多个 waterwaves（ww1-ww4）扰动叠加；mask 限制扰动区域。
+ */
+function applyWaterwaves(src: HTMLCanvasElement | ImageBitmap, w: number, h: number, waves: WaterwavesParams[], time: number, mask?: HTMLCanvasElement | ImageBitmap | null): HTMLCanvasElement {
+  const c = document.createElement('canvas')
+  c.width = w
+  c.height = h
+  const g = c.getContext('2d')
+  if (g === null) return c
+  // 主波（第一个）决定条带方向：扰动方向 offset = (cosθ, sinθ)
+  const p0 = waves[0]
+  const theta = p0.direction
+  const offx = Math.cos(theta)
+  const offy = Math.sin(theta)
+  const bands = w * h > 900000 ? 32 : 48
+  const horizontal = Math.abs(offx) >= Math.abs(offy)
+  // mask 平均亮度（64×64 采样，每带一个值）
+  let maskAvg: number[] | null = null
+  if (mask !== null && mask !== undefined) {
+    const mc = document.createElement('canvas')
+    mc.width = 64
+    mc.height = 64
+    const mg = mc.getContext('2d')
+    if (mg !== null) {
+      mg.drawImage(mask, 0, 0, 64, 64)
+      const img = mg.getImageData(0, 0, 64, 64)
+      maskAvg = []
+      for (let i = 0; i < bands; i++) {
+        let sumR = 0
+        let sumA = 0
+        let cnt = 0
+        if (horizontal) {
+          const x0 = Math.floor((i / bands) * 64)
+          const x1 = Math.max(x0 + 1, Math.floor(((i + 1) / bands) * 64))
+          for (let x = x0; x < x1; x++) for (let y = 0; y < 64; y++) { sumR += img.data[(y * 64 + x) * 4]; sumA += img.data[(y * 64 + x) * 4 + 3]; cnt++ }
+        } else {
+          const y0 = Math.floor((i / bands) * 64)
+          const y1 = Math.max(y0 + 1, Math.floor(((i + 1) / bands) * 64))
+          for (let y = y0; y < y1; y++) for (let x = 0; x < 64; x++) { sumR += img.data[(y * 64 + x) * 4]; sumA += img.data[(y * 64 + x) * 4 + 3]; cnt++ }
+        }
+        // R8/RG88 解码为 alpha 语义（rgb=255, a=灰度）：R 恒 255 → 用 A 通道；
+        // RGBA8888 黑白 mask：用 R 通道
+        const useA = sumR >= cnt * 254
+        maskAvg.push(cnt > 0 ? (useA ? sumA : sumR) / cnt / 255 : 0)
+      }
+    }
+  }
+  if (horizontal) {
+    // 扰动主要沿 x → 垂直条带（沿传播方向分段），带内 dx 平移
+    const bw = w / bands
+    for (let i = 0; i < bands; i++) {
+      const x0 = i * bw
+      const cx = (x0 + bw / 2) / w
+      let disp = 0
+      for (const p of waves) {
+        const s = p.strength * p.strength
+        const e = Math.max(0.5, Math.min(4, p.exponent))
+        // 传播投影：dot(uv, v_Direction)，v_Direction = (-sinθ, cosθ)
+        const phase = time * p.speed + (cx * -Math.sin(p.direction) + 0.5 * Math.cos(p.direction)) * p.scale
+        const val = Math.sin(phase)
+        disp += Math.sign(val) * Math.pow(Math.abs(val), e) * s * Math.cos(p.direction) * w
+      }
+      disp *= maskAvg !== null ? maskAvg[i] : 1
+      g.drawImage(src, x0, 0, bw + 0.5, h, x0 + disp, 0, bw + 0.5, h)
+    }
+  } else {
+    // 扰动主要沿 y → 水平条带，带内 dy 平移
+    const bh = h / bands
+    for (let i = 0; i < bands; i++) {
+      const y0 = i * bh
+      const cy = (y0 + bh / 2) / h
+      let disp = 0
+      for (const p of waves) {
+        const s = p.strength * p.strength
+        const e = Math.max(0.5, Math.min(4, p.exponent))
+        const phase = time * p.speed + (0.5 * -Math.sin(p.direction) + cy * Math.cos(p.direction)) * p.scale
+        const val = Math.sin(phase)
+        disp += Math.sign(val) * Math.pow(Math.abs(val), e) * s * Math.sin(p.direction) * h
+      }
+      disp *= maskAvg !== null ? maskAvg[i] : 1
+      g.drawImage(src, 0, y0, w, bh + 0.5, 0, y0 + disp, w, bh + 0.5)
+    }
+  }
+  return c
+}
+
 export class SceneModelRenderer {
   private el: HTMLCanvasElement | null = null
   private ctx: CanvasRenderingContext2D | null = null
   private model: SceneModel | null = null
   private base: HTMLImageElement | null = null
   private layerTextures = new Map<number, ImageBitmap>()
+  /** 效果 mask 纹理（waterwaves/shake opacitymask）+ 通道模式（true=R8 alpha 语义用 A） */
+  private effectMasks = new Map<number, { bmp: ImageBitmap; useA: boolean; flowDir: [number, number] }>()
+  /** WebGL waterwaves 渲染器（惰性创建） */
+  private wwGL: WaterwavesGL | null = null
   /** 图层纹理的 Image 内容区域尺寸（tex 画布内左上角）；无则用位图原生尺寸 */
   private layerTexImage = new Map<number, [number, number]>()
   /** 图层世界变换（递归 parent 合并；局部 y-up 翻转） */
@@ -143,12 +259,14 @@ export class SceneModelRenderer {
   /** 每帧计算的动画变换：puppet 图层 id → 平移/旋转 */
   private animXform = new Map<number, { dx: number; dy: number; rot: number }>()
   /** puppet 网格离屏渲染缓存：图层 id → { canvas, 模型原点 } */
-  private meshCanvases = new Map<number, { canvas: HTMLCanvasElement; originX: number; originY: number }>()
+  private meshCanvases = new Map<number, { canvas: HTMLCanvasElement; originX: number; originY: number; animKey: string }>()
   private dpr = 1
   private live = false
   private closed = false
   private rafId = 0
   private lastT = 0
+  /** 全局动画时间（秒，effects/粒子用） */
+  private animTime = 0
   private blurPx = 0
   private scale = 1
   private monitor = ''
@@ -205,6 +323,9 @@ export class SceneModelRenderer {
     this.puppetAnims.clear()
     this.animXform.clear()
     this.meshCanvases.clear()
+    for (const v of this.effectMasks.values()) { try { if ('close' in v.bmp) v.bmp.close() } catch { /* 忽略 */ } }
+    this.effectMasks.clear()
+    if (this.wwGL !== null) { this.wwGL.dispose(); this.wwGL = null }
     for (const bmp of this.particleTextures.values()) { try { if ('close' in bmp) bmp.close() } catch { /* 忽略 */ } }
     this.particleTextures.clear()
     this.runtimes.clear()
@@ -331,11 +452,15 @@ export class SceneModelRenderer {
       const blob = await res.blob()
       const bmp = await createImageBitmap(blob)
       if (this.closed) { bmp.close(); return }
-      // 径向软边合成：雾/雪等粒子纹理边缘柔和，避免巨型硬边方块叠加成白线
-      const soft = makeSoftTexture(bmp)
-      bmp.close()
+      // 径向软边仅用于小尺寸点状纹理（雪花/光点，<128px），避免硬边方块叠加成白线；
+      // 大片纹理（雾/风，如 fog3）自带羽化形状，软边遮罩会破坏形状
+      let tex: HTMLCanvasElement | ImageBitmap = bmp
+      if (bmp.width < 128 && bmp.height < 128) {
+        tex = makeSoftTexture(bmp)
+        bmp.close()
+      }
       if (this.closed) return
-      this.particleTextures.set(layerId, soft)
+      this.particleTextures.set(layerId, tex)
     } catch { /* 粒子纹理不可用：该粒子层不绘制 */ }
   }
 
@@ -353,6 +478,51 @@ export class SceneModelRenderer {
       if (got.imgW > 0 && got.imgH > 0) this.layerTexImage.set(layer.id, [got.imgW, got.imgH])
       this.startAnimation()
       return
+    }
+    // 效果 mask 纹理（waterwaves/shake 的 opacitymask，独立于图层纹理）
+    for (const e of layer.effects) {
+      const m = e.type === 'waterwaves' || e.type === 'shake' ? e.mask : null
+      if (m === null || this.effectMasks.has(layer.id)) continue
+      try {
+        const res = await fetch('/we-sync/scene/texture?monitor=' + encodeURIComponent(this.monitor) + '&name=' + encodeURIComponent(m), { cache: 'no-store' })
+        if (!res.ok) continue
+        const blob = await res.blob()
+        const bmp = await createImageBitmap(blob)
+        if (this.closed) { bmp.close(); return }
+        // 通道判断：R8/RG88 解码为 alpha 语义（rgb=255, a=灰度）→ 用 A 通道；
+        // shake 的 direction map（RG 方向场）→ 平均方向（flowDir）
+        let useA = false
+        let flowDir: [number, number] = [0, -1]
+        try {
+          const tc = document.createElement('canvas')
+          tc.width = 16
+          tc.height = 16
+          const tg = tc.getContext('2d')
+          if (tg !== null) {
+            tg.drawImage(bmp, 0, 0, 16, 16)
+            const px = tg.getImageData(0, 0, 16, 16)
+            let all255 = true
+            let sr = 0
+            let sg = 0
+            let n = 0
+            for (let i = 0; i < px.data.length; i += 4) {
+              if (px.data[i] < 254) all255 = false
+              sr += px.data[i]
+              sg += px.data[i + 1]
+              n++
+            }
+            useA = all255
+            if (!all255 && n > 0) {
+              // direction map：flowMask = (rg - 0.498) * 2（官方语义）
+              flowDir = [(sr / n / 255 - 0.498) * 2, (sg / n / 255 - 0.498) * 2]
+              const len = Math.hypot(flowDir[0], flowDir[1])
+              if (len > 0.01) { flowDir[0] /= len; flowDir[1] /= len }
+            }
+          }
+        } catch { /* 通道判断失败：默认 R */ }
+        this.effectMasks.set(layer.id, { bmp, useA, flowDir })
+        this.startAnimation()
+      } catch { /* mask 加载失败：无 mask 全图扰动 */ }
     }
   }
 
@@ -407,6 +577,7 @@ export class SceneModelRenderer {
     const now = performance.now()
     const dt = Math.min(0.1, (now - this.lastT) / 1000)
     this.lastT = now
+    this.animTime += dt
     // 更新粒子（动画）
     for (const rt of this.runtimes.values()) rt.update(dt)
     this.updatePuppetAnims(dt)
@@ -426,13 +597,14 @@ export class SceneModelRenderer {
       st.time += dt
       const kf = st.anim.keyframes
       if (kf.length === 0) continue
-      // 循环周期 = t 峰值跨度；异常数据（多骨骼动画/解析失败，周期异常大）
-      // 跳过不播放；播放速度按 3 秒周期近似（时长字段）
+      // 循环周期 = 目录项 duration（秒，官方时长）；fallback t 峰值跨度
+      // 异常数据（多骨骼动画/解析失败，周期异常大）跳过不播放
       let peak = 0
       for (let i = 1; i < kf.length; i++) if (kf[i].t > kf[peak].t) peak = i
       const period = kf[peak].t - kf[0].t
       if (period > 5_000_000) continue
-      const t = period > 0 ? (st.time * period) / 3.0 : st.time * (kf.length - 1) / 3.0
+      const dur = st.anim.duration > 0 ? st.anim.duration : 3
+      const t = period > 0 ? (st.time * period) / dur : st.time * (kf.length - 1) / dur
       const s = samplePuppet(st.anim, t)
       if (s === null) continue
       const v = s.values
@@ -462,11 +634,10 @@ export class SceneModelRenderer {
       } else {
         rot = v[4]
       }
-      // 位置位移：变化分量相对首帧（场景单位，y-up）
+      // 位置位移：v0 = y（模型 y-up，bind 验证）；v6/v7（petal 类）→ dx/dy
       let dx = 0
       let dy = 0
-      if (spans[0] > 0.5) dx += v[0] - base[0]
-      if (spans[1] > 0.5) dy += v[1] - base[1]
+      if (spans[0] > 0.5) dy += v[0] - base[0]
       if (spans[6] > 0.5) dx += v[6] - base[6]
       if (spans[7] > 0.5) dy += v[7] - base[7]
       this.animXform.set(layerId, { dx, dy, rot })
@@ -543,15 +714,37 @@ export class SceneModelRenderer {
       }
       ctx.save()
       ctx.translate(px, py)
-      ctx.rotate(((layer.angles[2] ?? 0) * Math.PI / 180) + arot)
+      // 动画部件：旋转锚点 = 骨骼 0 bind 位置（模型空间 → 局部，y 翻转），
+      // 官方骨骼旋转绕骨骼原点而非图层中心
+      const animB0 = selfXf !== undefined && layer.puppet !== null ? layer.puppet.bones[0]?.bind ?? null : null
+      const rotAngle = ((layer.angles[2] ?? 0) * Math.PI / 180) + arot
+      if (animB0 !== null && animB0.length >= 15 && rotAngle !== 0) {
+        const sxv = (t !== undefined ? t.sx : layer.scale[0] ?? 1) * s
+        const syv = (t !== undefined ? t.sy : layer.scale[1] ?? 1) * s
+        const bx = animB0[12] * sxv
+        const by = -animB0[13] * syv
+        ctx.translate(bx, by)
+        ctx.rotate(rotAngle)
+        ctx.translate(-bx, -by)
+      } else {
+        ctx.rotate(rotAngle)
+      }
       ctx.scale((t !== undefined ? t.sx : layer.scale[0] ?? 1) * s, (t !== undefined ? t.sy : layer.scale[1] ?? 1) * s)
       if (layer.alpha < 1) ctx.globalAlpha = Math.max(0, Math.min(1, layer.alpha))
       const bmp = this.layerTextures.get(layer.id) ?? null
       // puppet 网格蒙皮渲染（实验开关；模型空间顶点 → 离屏 canvas → 场景变换）
       if (model.puppetMeshRender && layer.puppet !== null && layer.puppet.mesh !== null && bmp !== null) {
+        // 动画部件：每帧按当前 root 骨骼旋转重建（蒙皮：绕骨骼 0 bind 位置旋转）
+        const selfXf2 = this.animXform.get(layer.id)
+        const b0 = layer.puppet.bones[0]?.bind ?? null
+        const animSkin = selfXf2 !== undefined && b0 !== null && b0.length >= 15
+          ? { rot: selfXf2.rot, bx: b0[12], by: b0[13] } as const
+          : null
+        const key = layer.id + ':' + (animSkin !== null ? animSkin.rot.toFixed(4) : 'static')
         let mc = this.meshCanvases.get(layer.id)
-        if (mc === undefined) {
-          mc = buildMeshCanvas(layer.puppet.mesh, bmp)
+        if (mc === undefined || mc.animKey !== key) {
+          const built = buildMeshCanvas(layer.puppet.mesh, bmp, animSkin)
+          mc = { canvas: built.canvas, originX: built.originX, originY: built.originY, animKey: key }
           this.meshCanvases.set(layer.id, mc)
         }
         ctx.drawImage(mc.canvas, -mc.originX, -mc.originY)
@@ -562,7 +755,37 @@ export class SceneModelRenderer {
         const sh = ti !== undefined ? ti[1] : bmp.height
         const dw = layer.size !== null ? layer.size[0] : sw
         const dh = layer.size !== null ? layer.size[1] : sh
-        ctx.drawImage(bmp, 0, 0, sw, sh, -dw / 2, -dh / 2, dw, dh)
+        // 图层效果：waterwaves（逐像素 UV 场扰动，多个 ww 叠加）/ shake（整体平移）
+        const effScale = model.effectStrengthScale ?? 1
+        const wws = layer.effects
+          .filter((e): e is Extract<LayerEffect, { type: 'waterwaves' }> => e.type === 'waterwaves')
+          .map((e) => ({ ...e, strength: e.strength * effScale }))
+        const shk = layer.effects.find((e) => e.type === 'shake')
+        if (wws.length > 0) {
+          const maskInfo = this.effectMasks.get(layer.id)
+          let eff: HTMLCanvasElement | null = null
+          // WebGL 逐像素 UV 场扰动（独立实现的数学等价 shader）；不可用时回退条带近似
+          if (this.wwGL !== null || WaterwavesGL.available) {
+            if (this.wwGL === null) this.wwGL = new WaterwavesGL()
+            eff = this.wwGL.render(bmp, sw, sh, maskInfo !== undefined ? maskInfo.bmp : null, maskInfo !== undefined ? maskInfo.useA : false, wws, this.animTime, String(layer.id))
+          }
+          if (eff === null) {
+            eff = applyWaterwaves(bmp, sw, sh, wws, this.animTime, maskInfo !== undefined ? maskInfo.bmp : null)
+          }
+          ctx.drawImage(eff, 0, 0, sw, sh, -dw / 2, -dh / 2, dw, dh)
+        } else if (shk !== undefined && shk.type === 'shake') {
+          // 官方 shake：offset = sin(speed×t)（标量波形），位移 = offset × strength² × flow 方向
+          // （direction map 平均；无 flow 默认垂直）——单向位移，非圆周
+          const maskInfo2 = this.effectMasks.get(layer.id)
+          const fd = maskInfo2 !== undefined ? maskInfo2.flowDir : [0, -1]
+          const offset = Math.sin(this.animTime * shk.speed)
+          const amp = shk.strength * shk.strength * effScale
+          const dx = offset * amp * fd[0] * dw
+          const dy = offset * amp * fd[1] * dh
+          ctx.drawImage(bmp, 0, 0, sw, sh, -dw / 2 + dx, -dh / 2 + dy, dw, dh)
+        } else {
+          ctx.drawImage(bmp, 0, 0, sw, sh, -dw / 2, -dh / 2, dw, dh)
+        }
       } else {
         // 占位标记（effect/composelayer/无纹理图层）：极小圆点，避免像"错误控件"
         ctx.fillStyle = 'rgba(120, 170, 255, 0.5)'

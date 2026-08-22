@@ -53,8 +53,10 @@ const CONFIG = {
   particleRateScale: 1,
   /** 粒子尺寸缩放（视觉校准项，默认 1） */
   particleSizeScale: 1,
-  /** puppet 网格蒙皮渲染（实验：部件按顶点网格渲染；默认关闭，验证后启用） */
-  puppetMeshRender: false,
+  /** 图层效果强度缩放（waterwaves/shake 幅度全局系数；原版参数普遍偏强，默认 0.6） */
+  effectStrengthScale: 0.6,
+  /** puppet 网格蒙皮渲染（部件按顶点网格渲染；buildMeshCanvas 已与参考 v2 渲染逐像素一致） */
+  puppetMeshRender: true,
 }
 
 interface Req { url?: string; method?: string; headers?: { range?: string } }
@@ -624,6 +626,7 @@ export function apply(ctx: CordisCtx): void {
       model = buildSceneModel(new Uint8Array(readFileSync(monitor.file)), {
         particleRateScale: CONFIG.particleRateScale,
         particleSizeScale: CONFIG.particleSizeScale,
+        effectStrengthScale: CONFIG.effectStrengthScale,
         puppetMeshRender: CONFIG.puppetMeshRender,
       })
     } catch { model = null }

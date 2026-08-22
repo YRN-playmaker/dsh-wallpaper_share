@@ -29,6 +29,8 @@ export interface ParticleSystemDesc {
   materialRef: string
   /** 材质 blending（"translucent"|"additive"|"opaque"），决定混合模式 */
   blending: string
+  /** 材质 overbright（genericparticle 的 g_Overbright，颜色亮度系数） */
+  overbright: number
   /** 材质 textures（如 ["particle/fog/fog1"]，相对 assets/materials/ 的 .tex） */
   textureNames: string[]
   maxCount: number
@@ -108,7 +110,16 @@ export interface SceneModelLayer {
   attachment: string | null
   /** 粒子系统描述（对象带 particle 字段时） */
   particle: ParticleSystemDesc | null
+  /** 图层效果（o.effects：waterwaves/shake/opacity/bloom 等，shader 类在浏览器用 2D 近似） */
+  effects: LayerEffect[]
 }
+
+export type LayerEffect =
+  | { type: 'waterwaves'; direction: number; speed: number; scale: number; strength: number; exponent: number; mask: string | null }
+  | { type: 'shake'; bounds: [number, number]; friction: [number, number]; speed: number; strength: number; mask: string | null }
+  | { type: 'opacity'; alpha: number }
+  | { type: 'bloom'; gamma: number; opacity: number; radius: number; strength: number; threshold: number }
+  | { type: 'unknown' }
 
 export interface SceneTextureInfo {
   name: string
@@ -137,14 +148,17 @@ export interface SceneModel {
   particleRateScale: number
   /** 粒子尺寸缩放（视觉校准项，CONFIG.particleSizeScale） */
   particleSizeScale: number
+  /** 图层效果强度缩放（CONFIG.effectStrengthScale；waterwaves/shake 幅度全局系数） */
+  effectStrengthScale: number
   /** puppet 网格蒙皮渲染开关（CONFIG.puppetMeshRender） */
   puppetMeshRender: boolean
 }
 
 /** 从 scene.pkg 构建归一化图层模型；失败返回 null（调用方走 fallback） */
-export function buildSceneModel(pkgBuf: Uint8Array, opts?: { particleRateScale?: number; particleSizeScale?: number; puppetMeshRender?: boolean }): SceneModel | null {
+export function buildSceneModel(pkgBuf: Uint8Array, opts?: { particleRateScale?: number; particleSizeScale?: number; effectStrengthScale?: number; puppetMeshRender?: boolean }): SceneModel | null {
   const particleRateScale = opts?.particleRateScale ?? 1
   const particleSizeScale = opts?.particleSizeScale ?? 1
+  const effectStrengthScale = opts?.effectStrengthScale ?? 1
   const puppetMeshRender = opts?.puppetMeshRender ?? false
   let pkg: ParsedPkg
   try {
@@ -200,6 +214,7 @@ export function buildSceneModel(pkgBuf: Uint8Array, opts?: { particleRateScale?:
       animationIds: parseAnimationIds(o.animationlayers),
       attachment: typeof o.attachment === 'string' ? o.attachment : null,
       particle,
+      effects: parseLayerEffects(o),
     })
   }
 
@@ -221,6 +236,7 @@ export function buildSceneModel(pkgBuf: Uint8Array, opts?: { particleRateScale?:
     decodableTextureCount: textures.filter((t) => t.decodable).length,
     particleRateScale,
     particleSizeScale,
+    effectStrengthScale,
     puppetMeshRender,
   }
 }
@@ -305,12 +321,89 @@ function resolvePuppet(pkg: ParsedPkg, imagePath: string): PuppetModel | null {
   }
 }
 
-function parseColor3(text: string): [number, number, number] {  const parts = text.trim().split(/\s+/).map(Number)
+function parseColor3(text: string): [number, number, number] {
+  const parts = text.trim().split(/\s+/).map(Number)
   if (parts.length < 3 || parts.some((n) => !Number.isFinite(n))) return [0, 0, 0]
   const max = Math.max(...parts)
   // WE clearcolor/ambientcolor 为 0-1 浮点；若 >1 视为 0-255
   const scale = max > 1.01 ? 1 / 255 : 1
   return [parts[0] * scale, parts[1] * scale, parts[2] * scale]
+}
+
+/** 解析图层效果（o.effects：waterwaves/shake/opacity/bloom，取 passes[0].constantshadervalues）。
+ *  visible 语义：布尔 false / value:false → 不应用；SceneScript 脚本控制（无明确 value）→
+ *  无法评估，默认不应用（如 3151551777 的 shownight 条件效果）；缺失或 true → 应用。 */
+function parseLayerEffects(o: Record<string, unknown>): LayerEffect[] {
+  const raw = o.effects
+  if (!Array.isArray(raw)) return []
+  const out: LayerEffect[] = []
+  for (const e of raw) {
+    if (e === null || typeof e !== 'object') continue
+    const obj = e as Record<string, unknown>
+    // visible 过滤
+    const vis = obj.visible
+    if (typeof vis === 'boolean') {
+      if (!vis) continue
+    } else if (vis !== null && typeof vis === 'object') {
+      const vobj = vis as Record<string, unknown>
+      // SceneScript 控制（如 3151551777 的 shownight 条件效果）：无法评估 → 保守跳过
+      if (vobj.script !== undefined) continue
+      const vval = vobj.value
+      if (typeof vval === 'boolean' && !vval) continue
+    }
+    const file = typeof obj.file === 'string' ? obj.file : ''
+    const passes = Array.isArray(obj.passes) ? obj.passes as Record<string, unknown>[] : []
+    const pass0 = passes[0] ?? {}
+    const csv = (pass0.constantshadervalues ?? {}) as Record<string, unknown>
+    // mask 纹理：passes[0].textures[1]（g_Texture1 opacitymask，非 null 时）
+    const textures = Array.isArray(pass0.textures) ? pass0.textures as unknown[] : []
+    const mask = textures.length > 1 && typeof textures[1] === 'string' && textures[1] !== '' ? textures[1] : null
+    const n = (v: unknown, d: number): number => {
+      const x = Number(v)
+      return Number.isFinite(x) ? x : d
+    }
+    const v2 = (v: unknown, d: [number, number]): [number, number] => {
+      if (typeof v === 'string') {
+        const p = v.trim().split(/\s+/).map(Number)
+        if (p.length >= 2 && p.every((x) => Number.isFinite(x))) return [p[0], p[1]]
+      }
+      return d
+    }
+    if (file.includes('waterwaves')) {
+      out.push({
+        type: 'waterwaves',
+        direction: n(csv.direction, 0),
+        speed: n(csv.speed, 5),
+        scale: n(csv.scale, 200),
+        strength: n(csv.strength, 0.1),
+        exponent: n(csv.exponent, 1),
+        mask,
+      })
+    } else if (file.includes('shake')) {
+      out.push({
+        type: 'shake',
+        bounds: v2(csv.bounds, [0, 1]),
+        friction: v2(csv.friction, [1, 1]),
+        speed: n(csv.speed, 1),
+        strength: n(csv.strength, 0.1),
+        mask,
+      })
+    } else if (file.includes('opacity')) {
+      out.push({ type: 'opacity', alpha: n(csv.alpha, 1) })
+    } else if (file.includes('bloom')) {
+      out.push({
+        type: 'bloom',
+        gamma: n(csv.gamma, 1),
+        opacity: n(csv.opacity, 1),
+        radius: n(csv.radius, 5),
+        strength: n(csv.strength, 0.3),
+        threshold: n(csv.threshold, 0),
+      })
+    } else {
+      out.push({ type: 'unknown' })
+    }
+  }
+  return out
 }
 
 /** 解析粒子预设（particles/*.json）→ 归一化粒子系统描述（best-effort 容错） */
@@ -323,12 +416,18 @@ function resolveParticleSystem(pkg: ParsedPkg, ref: string, obj: Record<string, 
     const matRef = typeof preset.material === 'string' ? preset.material : ''
     const textureNames: string[] = []
     let blending = 'translucent'
+    let overbright = 1
     if (matRef !== '') {
       try {
-        const mat = parseJsonLike(pkg.read(matRef) as Uint8Array) as { passes?: Array<{ textures?: unknown; blending?: string }> }
+        const mat = parseJsonLike(pkg.read(matRef) as Uint8Array) as { passes?: Array<{ textures?: unknown; blending?: string; constantshadervalues?: Record<string, unknown> }> }
         if (Array.isArray(mat.passes)) {
           for (const pass of mat.passes) {
             if (typeof pass.blending === 'string' && pass.blending !== '') blending = pass.blending
+            const csv = pass.constantshadervalues
+            if (csv !== undefined && typeof csv === 'object') {
+              const ob = Number(csv.ui_editor_properties_overbright)
+              if (Number.isFinite(ob) && ob > 0) overbright = ob
+            }
             if (Array.isArray(pass.textures)) {
               for (const t of pass.textures) {
                 if (typeof t === 'string' && !textureNames.includes(t)) textureNames.push(t)
@@ -369,7 +468,12 @@ function resolveParticleSystem(pkg: ParsedPkg, ref: string, obj: Record<string, 
       else if (name === 'sizerandom') { initializers.size = [mn, mx]; initializers.sizeExponent = numOr(init.exponent, 1) }
       else if (name === 'alpharandom') { initializers.alphaMin = mn; initializers.alphaMax = mx }
       else if (name === 'velocityrandom') { initializers.velocityMin = parseVec3(init.min, [0, 0, 0]); initializers.velocityMax = parseVec3(init.max, [0, 0, 0]) }
-      else if (name === 'colorrandom') { initializers.colorMin = parseVec3(init.min, [1, 1, 1]); initializers.colorMax = parseVec3(init.max, [1, 1, 1]) }
+      else if (name === 'colorrandom') {
+        // max 缺失（官方只给 min）= 固定颜色（如 fog2 "255 255 255" 白色雾）
+        const cmn = parseVec3(init.min, [1, 1, 1])
+        initializers.colorMin = cmn
+        initializers.colorMax = init.max !== undefined ? parseVec3(init.max, cmn) : cmn
+      }
       else if (name === 'turbulentvelocityrandom') initializers.turbulentVelocity = { offset: numOr(init.offset, -0.5), scale: numOr(init.scale, 0.1) }
       else if (name === 'rotationrandom') initializers.rotation = [mn, mx !== 0 ? mx : Math.PI * 2]
       else if (name === 'angularvelocityrandom') {
@@ -436,6 +540,7 @@ function resolveParticleSystem(pkg: ParsedPkg, ref: string, obj: Record<string, 
       particleRef: ref,
       materialRef: matRef,
       blending,
+      overbright,
       textureNames,
       maxCount: maxcount,
       startTime: numOr(preset.starttime, 0),

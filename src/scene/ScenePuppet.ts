@@ -33,6 +33,8 @@ export interface PuppetMesh {
   vertices: PuppetVertex[]
   /** uint16 三角形索引（每 3 个一组） */
   indices: number[]
+  /** UV v 方向自适应：pos y 与 uv.v 正相关（顶部采样立绘下部）→ 渲染需翻转 v */
+  flipV: boolean
 }
 
 export interface PuppetBone {
@@ -58,6 +60,8 @@ export interface PuppetAnimation {
   loop: boolean
   /** 驱动骨骼数（bones 字段） */
   boneCount: number
+  /** 动画时长（秒，目录项 f32 字段；>0 时播放周期用此值） */
+  duration: number
   keyframes: PuppetKeyframe[]
 }
 
@@ -123,7 +127,10 @@ export function parsePuppetMdl(bytes: Uint8Array): PuppetModel | null {
       p = q + 1
     }
 
-    const mdls = find('MDLS0004', 0)
+    const mdls4 = find('MDLS0004', 0)
+    const mdls3 = find('MDLS0003', 0)
+    const mdls = mdls4 >= 0 ? mdls4 : mdls3
+    const mdlsIs3 = mdls >= 0 && mdls4 < 0
     const mdat = find('MDAT0001', 0)
     const mdla = find('MDLA0006', 0)
     const mdle = find('MDLE0002', 0)
@@ -172,25 +179,57 @@ export function parsePuppetMdl(bytes: Uint8Array): PuppetModel | null {
         }
         const indices: number[] = []
         for (let i = 0; i < idxCount; i++) indices.push(u16At(bytes, indicesOffset + i * 2))
-        mesh = { vertices, indices }
+        // v 方向自适应：pos y 与 uv.v 的相关性（顶部顶点采样立绘上部 = 负相关 → 不翻）
+        let sy = 0
+        let sv = 0
+        let syv = 0
+        let sy2 = 0
+        let sv2 = 0
+        const vn = vertices.length
+        for (const v of vertices) {
+          const y = v.pos[1]
+          const vv = v.uv[1]
+          sy += y; sv += vv; syv += y * vv; sy2 += y * y; sv2 += vv * vv
+        }
+        const denom = Math.sqrt(Math.max(1e-9, (vn * sy2 - sy * sy) * (vn * sv2 - sv * sv)))
+        const r = (vn * syv - sy * sv) / denom
+        mesh = { vertices, indices, flipV: r > 0 }
         break
       }
     }
 
-    // --- MDLS 骨骼定义（count@+13，定义表 @+18，76B/骨骼，矩阵 @+12）---
+    // --- MDLS 骨骼定义 ---
+    // 0004：count@+13，定义表 @+18，76B/骨骼（u0+parent+f0+矩阵@+12）
+    // 0003（Miku 等）：定义表 @+17，头 13B（u0 4B+pad 1B+parent 4B+f0 4B），矩阵 @+13，
+    //   矩阵后跟 json 属性块（\0 结尾，变长）——逐骨骼跳过 json
     let boneCount = 0
     const mdlsBones: Array<{ parent: number; bind: number[] }> = []
     if (mdls >= 0 && mdls + 18 + 76 <= len) {
       boneCount = u32At(bytes, mdls + 13)
       if (boneCount > 512) boneCount = 0
-      let q = mdls + 18
-      for (let i = 0; i < boneCount && q + 76 <= len; i++) {
-        const parent = i32At(bytes, q + 4)
-        const mp = q + 12
-        const bind: number[] = []
-        for (let k = 0; k < 16; k++) bind.push(f32At(bytes, mp + k * 4))
-        mdlsBones.push({ parent, bind })
-        q += 76
+      if (mdlsIs3) {
+        let q = mdls + 17
+        for (let i = 0; i < boneCount && q + 77 <= len; i++) {
+          const parent = i32At(bytes, q + 5)
+          const mp = q + 13
+          const bind: number[] = []
+          for (let k = 0; k < 16; k++) bind.push(f32At(bytes, mp + k * 4))
+          mdlsBones.push({ parent, bind })
+          // 跳过 json 属性块（矩阵后到 \0）
+          let j = mp + 64
+          while (j < len && bytes[j] !== 0 && j < q + 4096) j++
+          q = j + 1
+        }
+      } else {
+        let q = mdls + 18
+        for (let i = 0; i < boneCount && q + 76 <= len; i++) {
+          const parent = i32At(bytes, q + 4)
+          const mp = q + 12
+          const bind: number[] = []
+          for (let k = 0; k < 16; k++) bind.push(f32At(bytes, mp + k * 4))
+          mdlsBones.push({ parent, bind })
+          q += 76
+        }
       }
     }
 
@@ -283,7 +322,7 @@ export function parsePuppetMdl(bytes: Uint8Array): PuppetModel | null {
         while (q < len && bytes[q] !== 0 && lp.length < 128) { lp += String.fromCharCode(bytes[q]); q++ }
         q++
         if (nm === '' || q + 20 > len) break
-        q += 4 // f32
+        const duration = f32At(bytes, q); q += 4 // f32（动画时长秒）
         const bc = u32At(bytes, q); q += 4
         q += 4 // u32
         q += 4 // u32
@@ -293,7 +332,7 @@ export function parsePuppetMdl(bytes: Uint8Array): PuppetModel | null {
         q++ // extra (1B)
         const kf = parseKeyframes(bytes, q, dataLen)
         q += kf.offset + dataLen
-        animations.push({ id, name: nm, loop: lp === 'loop', boneCount: bc, keyframes: kf.keyframes })
+        animations.push({ id, name: nm, loop: lp === 'loop', boneCount: bc, duration, keyframes: kf.keyframes })
       }
     }
 

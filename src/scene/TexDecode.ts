@@ -64,10 +64,12 @@ export function decodeMip(
       return out
     }
     case 'rg88': {
-      // 双通道 8 位（R,G）：R 通道作 alpha（雾/粒子纹理）
+      // 双通道 8 位（R,G）→ 官方 ConvertTexture0Format：_sample.rrrg
+      // （rgb = R 通道灰度色，alpha = G 通道）——雾/粒子纹理
       for (let i = 0; i < width * height; i++) {
-        const v = data[dataOffset + i * 2]
-        out[i * 4] = 255; out[i * 4 + 1] = 255; out[i * 4 + 2] = 255; out[i * 4 + 3] = v
+        const r = data[dataOffset + i * 2]
+        const g = data[dataOffset + i * 2 + 1]
+        out[i * 4] = r; out[i * 4 + 1] = r; out[i * 4 + 2] = r; out[i * 4 + 3] = g
       }
       return out
     }
