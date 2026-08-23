@@ -25,7 +25,7 @@ https://github.com/user-attachments/assets/4461d385-de62-42be-8420-7edce5606f44
 | `video` | 播放源视频（支持 HTTP Range，可正常 seek） | 显示静态预览图或gif |
 | `web` | iframe 加载源页面 | 显示静态预览图或gif |
 | `image` | 显示源图 | 显示源图 |
-| `scene` | **浏览器渲染器**逆向渲染 | 显示pkg静态纹理 |
+| `scene` | 读取pkg并由**浏览器渲染器** | 显示pkg静态纹理 |
 | `application` | 可从wallpaper_share预览 | 可从wallpaper_share预览
 
 > scene 增强的完整 fallback 链与各层实现（渲染模式 / 纹理解码 / 粒子 / puppet）见 **[docs/scene-fallback.md](docs/scene-fallback.md)**。
