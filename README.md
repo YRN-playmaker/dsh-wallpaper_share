@@ -18,7 +18,7 @@ https://github.com/user-attachments/assets/4461d385-de62-42be-8420-7edce5606f44
 <a name="中文"></a>
 # 中文
 
-## 增强模式兼容矩阵
+## 兼容矩阵
 
 | 壁纸类型 | 增强模式 | 性能模式
 | --- | --- | --- |
@@ -26,7 +26,7 @@ https://github.com/user-attachments/assets/4461d385-de62-42be-8420-7edce5606f44
 | `web` | iframe 加载源页面 | 显示静态预览图或gif |
 | `image` | 显示源图 | 显示源图 |
 | `scene` | **浏览器渲染器**逆向渲染 | 显示pkg静态纹理 |
-| `application` | 可从wallpaper_share预览 |
+| `application` | 可从wallpaper_share预览 | 可从wallpaper_share预览
 
 > scene 增强的完整 fallback 链与各层实现（渲染模式 / 纹理解码 / 粒子 / puppet）见 **[docs/scene-fallback.md](docs/scene-fallback.md)**。
 
