@@ -6,8 +6,178 @@
 import { useEffect, useState } from 'react'
 import { store, type WeSyncInfo, FOCUS_WORK, FOCUS_IDLE } from './index'
 
-export function WallpaperSharePanel() {
+/* =========================================================================
+ * 1. 国际化字典 (i18n Dictionary)
+ * ========================================================================= */
+const DICT = {
+  zh: {
+    // 头部与壁纸状态
+    noWallpaper: 'Wallpaper Engine 尚未应用壁纸',
+    webNoPreview: '当前为网页壁纸（无本地预览）',
+    applyHint: '在 Wallpaper Engine 中应用壁纸后，此处会同步显示',
+    staticSynced: ' · 已同步静态预览',
+    noStaticPreview: ' · 无静态预览图',
+    monitorPrefix: ' · 显示器 ',
+    modelRender: 'model 渲染',
+    fallbackPrefix: 'fallback:',
+
+    // 显示器
+    bgMonitor: '背景显示器',
+    autoFollowLatest: '自动 · 跟随最新变化',
+    auto: 'auto',
+
+    // 同步按钮
+    syncOn: '⏻ 同步开启',
+    syncOff: '⏻ 同步关闭',
+    flashSyncOn: '已开启壁纸同步',
+    flashSyncOff: '已关闭壁纸同步',
+
+    // 视觉效果与专注模式
+    visualTitle: '视觉效果 · 即时生效',
+    focusOnTask: '专注模式 · 任务进行中',
+    focusOnDone: '专注模式 · 已完成',
+    enableFocus: '开启专注模式',
+    flashFocusOn: '专注模式已开启：任务中 30%/15px/90%，空闲 9%/6px/40%',
+    flashFocusOff: '专注模式已关闭，恢复手动滑块',
+
+    // 渲染模式
+    renderSource: '渲染：增强（源文件）',
+    renderPreview: '渲染：性能（预览）',
+    flashVideo: '增强模式：播放壁纸源视频',
+    flashWeb: '增强模式：加载 Web 壁纸页面',
+    flashSceneLive: '增强模式：Scene 实时渲染中',
+    flashSceneFallback: '增强模式：Scene（renderer 未出帧，回退纹理/预览）',
+    flashPreviewOnly: (kind: string) => `当前壁纸（${kind === '' ? '无' : kind}）仅支持预览，增强模式自动回退`,
+    flashPerf: '性能模式：使用静态预览图',
+
+    // 滑块
+    panelAlpha: '面板透明度',
+    blur: '背景模糊',
+    shadow: '阴影深度',
+
+    // 应用启动器
+    appsTitle: '应用启动器 · 新版 WE 不再支持的应用类壁纸',
+    collapse: '收起',
+    listApps: '列出应用壁纸',
+    appsEmpty: '未找到 application 类型壁纸（扫描 workshop + projects 目录）。点击卡片在资源管理器中打开所在文件夹。',
+    openFolder: '打开文件夹：',
+    noPreview: '无预览',
+    loadFailed: '列表加载失败',
+    openFolderFailed: '打开文件夹失败',
+  },
+  en: {
+    // Header & Wallpaper status
+    noWallpaper: 'Wallpaper Engine has no active wallpaper',
+    webNoPreview: 'Current wallpaper is Web type (no local preview)',
+    applyHint: 'Apply a wallpaper in Wallpaper Engine to sync here',
+    staticSynced: ' · Static preview synced',
+    noStaticPreview: ' · No static preview',
+    monitorPrefix: ' · Monitor ',
+    modelRender: 'model render',
+    fallbackPrefix: 'fallback:',
+
+    // Monitor
+    bgMonitor: 'Background Monitor',
+    autoFollowLatest: 'Auto · Follow Latest',
+    auto: 'auto',
+
+    // Sync button
+    syncOn: '⏻ Sync Enabled',
+    syncOff: '⏻ Sync Disabled',
+    flashSyncOn: 'Wallpaper sync enabled',
+    flashSyncOff: 'Wallpaper sync disabled',
+
+    // Visuals & Focus mode
+    visualTitle: 'Visual Adjustments · Instant',
+    focusOnTask: 'Focus Mode · Task in Progress',
+    focusOnDone: 'Focus Mode · Completed',
+    enableFocus: 'Enable Focus Mode',
+    flashFocusOn: 'Focus mode on: Task 30%/15px/90%, Idle 9%/6px/40%',
+    flashFocusOff: 'Focus mode off, manual sliders restored',
+
+    // Render mode
+    renderSource: 'Render: Enhanced (Source)',
+    renderPreview: 'Render: Performance (Preview)',
+    flashVideo: 'Enhanced mode: Playing source video',
+    flashWeb: 'Enhanced mode: Loading Web wallpaper',
+    flashSceneLive: 'Enhanced mode: Scene live rendering',
+    flashSceneFallback: 'Enhanced mode: Scene (renderer no frame, fallback texture/preview)',
+    flashPreviewOnly: (kind: string) => `Current wallpaper (${kind === '' ? 'none' : kind}) only supports preview, falling back`,
+    flashPerf: 'Performance mode: Using static preview',
+
+    // Sliders
+    panelAlpha: 'Panel Transparency',
+    blur: 'Background Blur',
+    shadow: 'Shadow Depth',
+
+    // App Launcher
+    appsTitle: 'App Launcher · Application wallpapers no longer supported in newer WE',
+    collapse: 'Collapse',
+    listApps: 'List App Wallpapers',
+    appsEmpty: 'No application-type wallpapers found (scanned workshop + projects). Click card to open folder in File Explorer.',
+    openFolder: 'Open folder: ',
+    noPreview: 'No Preview',
+    loadFailed: 'Failed to load list',
+    openFolderFailed: 'Failed to open folder',
+  },
+}
+
+type Lang = 'zh' | 'en'
+
+/* =========================================================================
+ * 2. 语言监听 Hook
+ * ========================================================================= */
+function useDshLocale(ctx?: any) {
+  const detectLang = (): Lang => {
+    // 优先读取 Harness 提供的 locale 服务偏好
+    const harnessLang = ctx?.locale?.current || ctx?.locale?.preference || (store as any)?.ctx?.locale?.current
+    if (typeof harnessLang === 'string') {
+      return harnessLang.toLowerCase().startsWith('en') ? 'en' : 'zh'
+    }
+    // 次级读取 document 的 lang 属性或系统语言
+    if (typeof document !== 'undefined' && document.documentElement.lang?.toLowerCase().startsWith('en')) {
+      return 'en'
+    }
+    if (typeof navigator !== 'undefined' && navigator.language?.toLowerCase().startsWith('en')) {
+      return 'en'
+    }
+    return 'zh'
+  }
+
+  const [lang, setLang] = useState<Lang>(detectLang)
+
+  useEffect(() => {
+    // 1. 订阅 DSH 官方 locale/change 事件
+    const targetCtx = ctx || (store as any)?.ctx
+    if (targetCtx?.on) {
+      const dispose = targetCtx.on('locale/change', (newLang: string) => {
+        setLang(newLang?.toLowerCase().startsWith('en') ? 'en' : 'zh')
+      })
+      return () => dispose?.()
+    }
+
+    // 2. 降级：监听 <html lang="..."> 属性变化
+    if (typeof MutationObserver !== 'undefined' && document?.documentElement) {
+      const observer = new MutationObserver(() => {
+        const docLang = document.documentElement.lang
+        setLang(docLang?.toLowerCase().startsWith('en') ? 'en' : 'zh')
+      })
+      observer.observe(document.documentElement, { attributes: true, attributeFilter: ['lang'] })
+      return () => observer.disconnect()
+    }
+  }, [ctx])
+
+  const t = DICT[lang]
+  return { lang, t }
+}
+
+/* =========================================================================
+ * 3. 主面板组件
+ * ========================================================================= */
+export function WallpaperSharePanel(props?: { ctx?: any }) {
   const [, force] = useState(0)
+  const { t } = useDshLocale(props?.ctx)
+
   const [info, setInfo] = useState<WeSyncInfo | null>(store.info)
   const [enabled, setEnabled] = useState(store.settings.enabled)
   const [alpha, setAlpha] = useState(store.settings.panelAlpha)
@@ -54,7 +224,7 @@ export function WallpaperSharePanel() {
     store.settings.enabled = next
     setEnabled(next)
     store.actions.applyBackground()
-    flash(next ? '已开启壁纸同步' : '已关闭壁纸同步')
+    flash(next ? t.flashSyncOn : t.flashSyncOff)
   }
 
   const onMonitor = (v: string): void => {
@@ -69,7 +239,7 @@ export function WallpaperSharePanel() {
     setFocus(next)
     store.actions.applyTheme()
     store.actions.applyBackground()
-    flash(next ? '专注模式已开启：任务中 30%/15px/90%，空闲 9%/6px/40%' : '专注模式已关闭，恢复手动滑块')
+    flash(next ? t.flashFocusOn : t.flashFocusOff)
   }
 
   const onRenderMode = (): void => {
@@ -79,14 +249,12 @@ export function WallpaperSharePanel() {
     store.actions.applyBackground()
     if (next === 'source') {
       const kind = store.info !== null ? store.info.source.kind : ''
-      if (kind === 'video') flash('增强模式：播放壁纸源视频')
-      else if (kind === 'web') flash('增强模式：加载 Web 壁纸页面')
-      else if (kind === 'scene') flash(store.info?.scene?.live === true
-        ? '增强模式：Scene 实时渲染中'
-        : '增强模式：Scene（renderer 未出帧，回退纹理/预览）')
-      else flash('当前壁纸（' + (kind === '' ? '无' : kind) + '）仅支持预览，增强模式自动回退')
+      if (kind === 'video') flash(t.flashVideo)
+      else if (kind === 'web') flash(t.flashWeb)
+      else if (kind === 'scene') flash(store.info?.scene?.live === true ? t.flashSceneLive : t.flashSceneFallback)
+      else flash(t.flashPreviewOnly(kind))
     } else {
-      flash('性能模式：使用静态预览图')
+      flash(t.flashPerf)
     }
   }
 
@@ -101,24 +269,29 @@ export function WallpaperSharePanel() {
         if (body.error !== undefined) setAppsError(body.error)
         else setApps(body.apps ?? [])
       } catch {
-        setAppsError('列表加载失败')
+        setAppsError(t.loadFailed)
       }
     }
   }
 
   const onAppOpen = (id: string): void => {
     void fetch('/we-sync/apps/open?id=' + encodeURIComponent(id), { cache: 'no-store' }).then((res) => {
-      if (!res.ok) flash('打开文件夹失败')
-    }).catch(() => flash('打开文件夹失败'))
+      if (!res.ok) flash(t.openFolderFailed)
+    }).catch(() => flash(t.openFolderFailed))
   }
 
   const wallpaper = info !== null && info.wallpaper !== null ? info.wallpaper : null
   const title = wallpaper === null
-    ? (info !== null && info.kind === 'web' ? '当前为网页壁纸（无本地预览）' : 'Wallpaper Engine 尚未应用壁纸')
+    ? (info !== null && info.kind === 'web' ? t.webNoPreview : t.noWallpaper)
     : wallpaper.title
   const subtitle = wallpaper === null
-    ? '在 Wallpaper Engine 中应用壁纸后，此处会同步显示'
-    : wallpaper.type + (info !== null && info.kind === 'image' ? ' · 已同步静态预览' : ' · 无静态预览图') + (info !== null && info.monitor !== '' ? ' · 显示器 ' + info.monitor : '') + (info !== null && info.kind === 'scene' && info.scene !== null ? ' · Scene[' + (info.scene.mode ?? 'browser') + '] ' + (info.scene.live ? 'live ' + String(info.scene.status?.fps ?? '?') + 'fps' : (info.scene.model === true ? 'model 渲染' : 'fallback:' + info.scene.fallback)) : '')
+    ? t.applyHint
+    : wallpaper.type +
+      (info !== null && info.kind === 'image' ? t.staticSynced : t.noStaticPreview) +
+      (info !== null && info.monitor !== '' ? t.monitorPrefix + info.monitor : '') +
+      (info !== null && info.kind === 'scene' && info.scene !== null
+        ? ' · Scene[' + (info.scene.mode ?? 'browser') + '] ' + (info.scene.live ? 'live ' + String(info.scene.status?.fps ?? '?') + 'fps' : (info.scene.model === true ? t.modelRender : t.fallbackPrefix + info.scene.fallback))
+        : '')
 
   const monitors = info !== null && Array.isArray(info.monitors) && info.monitors.length > 1 ? info.monitors : null
   const focusVisuals = focus ? (store.settings.taskActive ? FOCUS_WORK : FOCUS_IDLE) : null
@@ -131,50 +304,50 @@ export function WallpaperSharePanel() {
         {monitors !== null
           ? (
               <div className="wesync-row">
-                <label>背景显示器</label>
+                <label>{t.bgMonitor}</label>
                 <select
                   className="wesync-select"
                   value={monitor}
                   onChange={(e) => onMonitor(e.target.value)}
                 >
-                  <option value="">自动 · 跟随最新变化</option>
+                  <option value="">{t.autoFollowLatest}</option>
                   {monitors.map((m) => (
                     <option key={m.key} value={m.key}>{m.key + ' · ' + m.title}</option>
                   ))}
                 </select>
-                <output>{monitor === '' ? 'auto' : monitor}</output>
+                <output>{monitor === '' ? t.auto : monitor}</output>
               </div>
             )
           : null}
         <div className="wesync-actions">
           <button className="wesync-btn" onClick={onPower}>
-            {enabled ? '⏻ 同步开启' : '⏻ 同步关闭'}
+            {enabled ? t.syncOn : t.syncOff}
           </button>
         </div>
         {status !== '' ? <div className="wesync-status">{status}</div> : null}
       </div>
       <div className="wesync-card">
-        <div className="wesync-sub">视觉效果 · 即时生效</div>
+        <div className="wesync-sub">{t.visualTitle}</div>
         <div className="wesync-actions">
           <button className={['wesync-btn', focus ? 'wesync-focusOn' : 'wesync-focusOff'].join(' ')} onClick={onFocus}>
             {focus
-              ? (store.settings.taskActive ? '专注模式 · 任务进行中' : '专注模式 · 已完成')
-              : '开启专注模式'}
+              ? (store.settings.taskActive ? t.focusOnTask : t.focusOnDone)
+              : t.enableFocus}
           </button>
           <button className={['wesync-btn', renderMode === 'source' ? 'wesync-sourceOn' : 'wesync-sourceOff'].join(' ')} onClick={onRenderMode}>
-            {renderMode === 'source' ? '渲染：增强（源文件）' : '渲染：性能（预览）'}
+            {renderMode === 'source' ? t.renderSource : t.renderPreview}
           </button>
         </div>
-        <Slider label="面板透明度" min={0} max={100} value={focusVisuals !== null ? focusVisuals.panelAlpha : alpha} unit="%" disabled={focusVisuals !== null} onChange={onAlpha} />
-        <Slider label="背景模糊" min={0} max={30} value={focusVisuals !== null ? focusVisuals.blur : blur} unit="px" disabled={focusVisuals !== null} onChange={onBlur} />
-        <Slider label="阴影深度" min={0} max={100} value={focusVisuals !== null ? focusVisuals.shadow : shadow} unit="%" disabled={focusVisuals !== null} onChange={onShadow} />
+        <Slider label={t.panelAlpha} min={0} max={100} value={focusVisuals !== null ? focusVisuals.panelAlpha : alpha} unit="%" disabled={focusVisuals !== null} onChange={onAlpha} />
+        <Slider label={t.blur} min={0} max={30} value={focusVisuals !== null ? focusVisuals.blur : blur} unit="px" disabled={focusVisuals !== null} onChange={onBlur} />
+        <Slider label={t.shadow} min={0} max={100} value={focusVisuals !== null ? focusVisuals.shadow : shadow} unit="%" disabled={focusVisuals !== null} onChange={onShadow} />
       </div>
       <div className="wesync-card">
         <div className="wesync-apps">
           <div className="wesync-apps-head">
-            <div className="wesync-sub">应用启动器 · 新版 WE 不再支持的应用类壁纸</div>
+            <div className="wesync-sub">{t.appsTitle}</div>
             <button className="wesync-btn" onClick={() => { void onAppsToggle() }}>
-              {appsOpen ? '收起' : '列出应用壁纸'}
+              {appsOpen ? t.collapse : t.listApps}
             </button>
           </div>
           {appsOpen
@@ -182,14 +355,14 @@ export function WallpaperSharePanel() {
                 appsError !== ''
                   ? <div className="wesync-app-empty">{appsError}</div>
                   : apps.length === 0
-                    ? <div className="wesync-app-empty">未找到 application 类型壁纸（扫描 workshop + projects 目录）。点击卡片在资源管理器中打开所在文件夹。</div>
+                    ? <div className="wesync-app-empty">{t.appsEmpty}</div>
                     : (
                         <div className="wesync-apps-grid">
                           {apps.map((app) => (
-                            <div key={app.id} className="wesync-app-card" title={'打开文件夹：' + app.title} onClick={() => onAppOpen(app.id)}>
+                            <div key={app.id} className="wesync-app-card" title={t.openFolder + app.title} onClick={() => onAppOpen(app.id)}>
                               {app.hasPreview
                                 ? <img className="wesync-app-thumb" src={'/we-sync/apps/preview?id=' + encodeURIComponent(app.id)} alt={app.title} loading="lazy" />
-                                : <div className="wesync-app-thumb" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>无预览</div>}
+                                : <div className="wesync-app-thumb" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{t.noPreview}</div>}
                               <div className="wesync-app-title">{app.title}</div>
                             </div>
                           ))}
