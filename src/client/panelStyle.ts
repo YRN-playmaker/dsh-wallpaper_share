@@ -143,4 +143,73 @@ export const PANEL_CSS = `
   color: var(--dsw-alias-label-secondary);
   font-variant-numeric: tabular-nums;
 }
+
+/* 应用启动器：右侧 3×2 可滚动缩略图栏 */
+.wesync-apps {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.wesync-apps-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.wesync-apps-count {
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.wesync-apps-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  max-height: 300px;
+  overflow-y: auto;
+  padding: 2px;
+}
+
+.wesync-app-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 10px;
+  background: var(--dsw-alias-bg-layer-2);
+  border: 1px solid var(--dsw-alias-border-l1);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.wesync-app-card:hover {
+  background: var(--dsw-alias-bg-overlay);
+}
+
+.wesync-app-thumb {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.wesync-app-title {
+  font-size: 12px;
+  color: var(--dsw-alias-label-primary);
+  line-height: 1.3;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  word-break: break-all;
+}
+
+.wesync-app-empty {
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+  padding: 10px 2px;
+}
 `

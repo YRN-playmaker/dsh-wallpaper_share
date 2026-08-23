@@ -1,5 +1,36 @@
 # Changelog
 
+## v26.0822T (0.2.0) — 2026-08-22
+
+Wallpaper Engine 场景真实渲染适配（test 分支发布版）。本版聚焦 puppet 部件网格渲染的正确性，并修复粒子纹理、图层效果与骨骼动画的系列共性问题。
+
+### 🐛 修复
+
+- **puppet 部件"炸开"**：开启 `puppetMeshRender` 网格蒙皮渲染。此前带 puppet 的图层回退为整张立绘 image 显示，部件位置/形状错乱；现改为按部件顶点网格渲染（与参考渲染逐像素一致），部件各就各位。
+- **网格 UV v 方向自适应**：按顶点 y 与 UV.v 的 Pearson 相关性自动判断是否翻转（Miku / asuna / 草等实测均为负相关 → 不翻转），替换原先硬编码的 `v' = 1 - v` 翻转，消除纹理上下错位。
+- **buildMeshCanvas 三角形绘制**：修复 v 方向计算在"不翻转"分支产生负值的问题（仿射 UV→pos 变换现与参考重心法渲染 0 像素差异）。
+- **粒子纹理解码语义**：RG88 按官方 `_sample.rrrg` 语义解码（rgb = R 灰度、alpha = G），R8 按 `vec4(1,1,1,r)`，粒子形状/透明度不再错乱（雾/风效果确认优化）。
+- **粒子染色**：补齐官方 `color.rgb *= g_Overbright`（fog/wind 材质强度 1.8）；colorrandom 无 max 时固定为 min 色，不再随机乱色。
+- **shake 效果**：按官方语义改为标量 `sin(speed×t)` 波形 × flow 方向场（direction map 平均方向）的单向位移，替换错误的圆周/利萨如平移。
+- **图层效果 visible 过滤**：布尔 `false` / `{value:false}` 跳过；SceneScript 脚本条件（如 shownight）无法评估时保守跳过，避免误应用到无关图层。
+- **骨骼动画**：动画周期改用 MDLA 真实时长（此前硬编码 3 秒导致幅度/节奏异常）；纹理版部件旋转锚点改为骨骼 0 bind 位置（绕骨骼原点而非图层中心）。
+
+### ✨ 新增
+
+- **waterwaves WebGL 逐像素扰动**：独立实现官方 shader 的数学语义（传播方向 `(-sinθ, cosθ)`、扰动方向 `(cosθ, sinθ)`、`sign(sin)^exp × |sin|^exp × strength²` 偏移、mask 限制），支持多个 waterwaves 叠加；WebGL 不可用时回退 Canvas2D 条带近似。
+- **图层效果强度全局缩放**：新增 `effectStrengthScale` 配置（默认 0.6），统一校准 waterwaves / shake 等效果幅度。
+- **Puppet 解析完整化**：支持 MDLV stride-80 顶点、MDLS0003（变长骨骼定义 + 属性块）/ MDLS0004、MDLA 动画时长、MDAT 具名骨骼锚点、MDLE 姿势矩阵。
+
+### 🔧 其他
+
+- 场景纹理接口返回 image 内容区域尺寸（X-WE-Image-W/H），浏览器端按内容区域正确裁剪。
+- 粒子软边遮罩仅作用于 <128px 点状纹理（雪花/光点），不再破坏大片雾/风纹理的自带羽化形状。
+
+### 📦 发布说明
+
+- 包：`dsh-wallpaper_share-v26.0822T.tgz`（`pnpm pack` 生成，含 `lib/index.js`、`lib/client.js`、`lib/client.js.map`、`cordis.patch.yml`、`README.md`、`LICENSE`、`tools/scene-renderer/`）
+- 安装方式：将 tgz 上传 Release 后通过 DSH 插件安装器 / `pnpm add` 安装；或直接替换已安装目录下的 `lib/` 产物。
+
 ## [0.2.0] - 2026-08-16
 
 ### Renamed

@@ -1,0 +1,12 @@
+
+      Wallpaper Engine
+      Designer Documentation
+  Wallpaper Engine Scene Editor Guide
+  Web Wallpaper Reference Guide
+Scene Wallpapers
+Wallpapers based on images created with the Wallpaper Engine Editor. Recommended for beginners and advanced wallpaper creators alike.
+Web Wallpapers
+Wallpapers custom-programmed and based on web technologies such as HTML, CSS and JavaScript.
+Video Wallpapers
+Wallpapers based on pre-rendered .mp4 video files can be uploaded to the Workshop through the editor.
+Imprint

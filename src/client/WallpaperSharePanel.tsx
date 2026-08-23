@@ -17,7 +17,9 @@ export function WallpaperSharePanel() {
   const [monitor, setMonitor] = useState(store.settings.monitor)
   const [focus, setFocus] = useState(store.settings.focus)
   const [renderMode, setRenderMode] = useState(store.settings.renderMode)
-  const [immersive, setImmersive] = useState(store.settings.immersive)
+  const [appsOpen, setAppsOpen] = useState(false)
+  const [apps, setApps] = useState<Array<{ id: string; title: string; file: string; hasPreview: boolean }>>([])
+  const [appsError, setAppsError] = useState('')
 
   useEffect(() => store.subscribe(() => {
     setInfo(store.info)
@@ -70,15 +72,6 @@ export function WallpaperSharePanel() {
     flash(next ? '专注模式已开启：任务中 30%/15px/90%，空闲 9%/6px/40%' : '专注模式已关闭，恢复手动滑块')
   }
 
-  const onImmersive = (): void => {
-    const next = !store.settings.immersive
-    store.settings.immersive = next
-    setImmersive(next)
-    store.actions.applyImmersive()
-    store.notify()
-    flash(next ? '沉浸模式已开启：对话上边栏/输入框已隐藏，壁纸可交互（Esc 或右上角按钮退出）' : '已退出沉浸模式')
-  }
-
   const onRenderMode = (): void => {
     const next: 'preview' | 'source' = store.settings.renderMode === 'source' ? 'preview' : 'source'
     store.settings.renderMode = next
@@ -95,6 +88,28 @@ export function WallpaperSharePanel() {
     } else {
       flash('性能模式：使用静态预览图')
     }
+  }
+
+  // 应用启动器：列出 type=application 壁纸；点击缩略图在资源管理器中打开所在文件夹
+  const onAppsToggle = async (): Promise<void> => {
+    const next = !appsOpen
+    setAppsOpen(next)
+    if (next && apps.length === 0) {
+      try {
+        const res = await fetch('/we-sync/apps', { cache: 'no-store' })
+        const body = (await res.json()) as { apps?: Array<{ id: string; title: string; file: string; hasPreview: boolean }>; error?: string }
+        if (body.error !== undefined) setAppsError(body.error)
+        else setApps(body.apps ?? [])
+      } catch {
+        setAppsError('列表加载失败')
+      }
+    }
+  }
+
+  const onAppOpen = (id: string): void => {
+    void fetch('/we-sync/apps/open?id=' + encodeURIComponent(id), { cache: 'no-store' }).then((res) => {
+      if (!res.ok) flash('打开文件夹失败')
+    }).catch(() => flash('打开文件夹失败'))
   }
 
   const wallpaper = info !== null && info.wallpaper !== null ? info.wallpaper : null
@@ -149,13 +164,40 @@ export function WallpaperSharePanel() {
           <button className={['wesync-btn', renderMode === 'source' ? 'wesync-sourceOn' : 'wesync-sourceOff'].join(' ')} onClick={onRenderMode}>
             {renderMode === 'source' ? '渲染：增强（源文件）' : '渲染：性能（预览）'}
           </button>
-          <button className={['wesync-btn', immersive ? 'wesync-focusOn' : 'wesync-focusOff'].join(' ')} onClick={onImmersive}>
-            {immersive ? '沉浸模式 · 已开启' : '开启沉浸模式'}
-          </button>
         </div>
         <Slider label="面板透明度" min={0} max={100} value={focusVisuals !== null ? focusVisuals.panelAlpha : alpha} unit="%" disabled={focusVisuals !== null} onChange={onAlpha} />
         <Slider label="背景模糊" min={0} max={30} value={focusVisuals !== null ? focusVisuals.blur : blur} unit="px" disabled={focusVisuals !== null} onChange={onBlur} />
         <Slider label="阴影深度" min={0} max={100} value={focusVisuals !== null ? focusVisuals.shadow : shadow} unit="%" disabled={focusVisuals !== null} onChange={onShadow} />
+      </div>
+      <div className="wesync-card">
+        <div className="wesync-apps">
+          <div className="wesync-apps-head">
+            <div className="wesync-sub">应用启动器 · 新版 WE 不再支持的应用类壁纸</div>
+            <button className="wesync-btn" onClick={() => { void onAppsToggle() }}>
+              {appsOpen ? '收起' : '列出应用壁纸'}
+            </button>
+          </div>
+          {appsOpen
+            ? (
+                appsError !== ''
+                  ? <div className="wesync-app-empty">{appsError}</div>
+                  : apps.length === 0
+                    ? <div className="wesync-app-empty">未找到 application 类型壁纸（扫描 workshop + projects 目录）。点击卡片在资源管理器中打开所在文件夹。</div>
+                    : (
+                        <div className="wesync-apps-grid">
+                          {apps.map((app) => (
+                            <div key={app.id} className="wesync-app-card" title={'打开文件夹：' + app.title} onClick={() => onAppOpen(app.id)}>
+                              {app.hasPreview
+                                ? <img className="wesync-app-thumb" src={'/we-sync/apps/preview?id=' + encodeURIComponent(app.id)} alt={app.title} loading="lazy" />
+                                : <div className="wesync-app-thumb" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>无预览</div>}
+                              <div className="wesync-app-title">{app.title}</div>
+                            </div>
+                          ))}
+                        </div>
+                      )
+            )
+            : null}
+        </div>
       </div>
     </div>
   )

@@ -18,6 +18,7 @@
 import type { SceneModel, SceneModelLayer, LayerEffect } from '../scene/SceneModel.ts'
 import { sampleAnimation as samplePuppet, type PuppetAnimation } from '../scene/ScenePuppet.ts'
 import { ParticleRuntime } from './ParticleRuntime.ts'
+import { ParticleGL } from './ParticleGL.ts'
 import { WaterwavesGL, type WaterwavesParams } from './WaterwavesGL.ts'
 
 export interface SceneModelRendererHandlers {
@@ -253,7 +254,20 @@ export class SceneModelRenderer {
   /** 图层 id → 图层（链式查找 puppet 祖先用） */
   private byId = new Map<number, SceneModelLayer>()
   private runtimes = new Map<number, ParticleRuntime>()
-  private particleTextures = new Map<number, ImageBitmap | HTMLCanvasElement>()
+  /** 折射背景快照缓存（每帧只复制一次，多折射层共享） */
+  private bgCache: HTMLCanvasElement | null = null
+  /** WebGL 粒子实例化渲染器（叠加层） */
+  private particleGL: ParticleGL | null = null
+  private glCanvas: HTMLCanvasElement | null = null
+  /** 每帧折射背景是否已上传 WebGL（只传一次） */
+  private bgUploaded = false
+  /** 静态图像层离屏缓存（无动画层只渲染一次，每帧合成） */
+  private staticBg: HTMLCanvasElement | null = null
+  private staticBgReady = false
+  /** 前缀静态层 id 集合（只缓存 z-order 底部的连续静态层段，避免动态层被压序） */
+  private staticPrefixIds = new Set<number>()
+  /** WebGL 粒子渲染开关（坐标空间已修正，开启） */
+  private static readonly USE_WEBGL_PARTICLES = true
   /** puppet 动画状态：puppet 图层 id → { 动画, 播放时间 } */
   private puppetAnims = new Map<number, { anim: PuppetAnimation; time: number }>()
   /** 每帧计算的动画变换：puppet 图层 id → 平移/旋转 */
@@ -272,6 +286,8 @@ export class SceneModelRenderer {
   private monitor = ''
   private version = 0
   private handlers: SceneModelRendererHandlers
+  /** 粒子层日志节流（layer.id → 上次时间） */
+  private lastParticleLog = new Map<number, number>()
 
   constructor(handlers: SceneModelRendererHandlers = {}) {
     this.handlers = handlers
@@ -282,6 +298,12 @@ export class SceneModelRenderer {
   }
 
   start(monitor: string, version: number): void {
+    // 同 monitor+version 已 live：只重新应用视觉效果，不重建画布/不重拉模型
+    // （applyBackground 会在每次设置/任务状态变化时调用 start()）
+    if (this.live && this.monitor === monitor && this.version === version && this.model !== null) {
+      this.applyVisuals()
+      return
+    }
     this.stop()
     this.closed = false
     this.monitor = monitor
@@ -298,6 +320,21 @@ export class SceneModelRenderer {
     this.el.style.border = '0'
     document.body.appendChild(this.el)
     this.ctx = this.el.getContext('2d')
+    // WebGL 粒子叠加层：**离屏渲染目标**，不参与 DOM 叠放——
+    // 粒子按 z-order 在主画布内逐段合成（drawImage(glCanvas)），
+    // 否则独立叠加层会盖住其后方的 image 层（如雨滴盖住窗框）。
+    // 复用同一 canvas + 上下文：每次 start() 新建 WebGL 上下文会被浏览器逐出
+    // （"Too many active WebGL contexts"），导致粒子静默消失。
+    if (SceneModelRenderer.USE_WEBGL_PARTICLES && this.particleGL === null) {
+      this.glCanvas = document.createElement('canvas')
+      // 不 append 到 DOM：仅作离屏渲染目标
+      this.particleGL = new ParticleGL(this.glCanvas)
+      if (!this.particleGL.available) {
+        this.particleGL.dispose()
+        this.particleGL = null
+        this.glCanvas = null
+      }
+    }
     this.resize()
     this.applyVisuals()
 
@@ -313,6 +350,8 @@ export class SceneModelRenderer {
     window.removeEventListener('resize', this.onResize)
     document.removeEventListener('visibilitychange', this.onVisibility)
     if (this.el !== null) { this.el.remove(); this.el = null; this.ctx = null }
+    // 保留 glCanvas/particleGL（上下文复用），只清纹理缓存
+    if (this.particleGL !== null) this.particleGL.reset()
     this.model = null
     this.base = null
     for (const bmp of this.layerTextures.values()) { try { bmp.close() } catch { /* 忽略 */ } }
@@ -325,11 +364,21 @@ export class SceneModelRenderer {
     this.meshCanvases.clear()
     for (const v of this.effectMasks.values()) { try { if ('close' in v.bmp) v.bmp.close() } catch { /* 忽略 */ } }
     this.effectMasks.clear()
-    if (this.wwGL !== null) { this.wwGL.dispose(); this.wwGL = null }
-    for (const bmp of this.particleTextures.values()) { try { if ('close' in bmp) bmp.close() } catch { /* 忽略 */ } }
-    this.particleTextures.clear()
+    if (this.wwGL !== null) { this.wwGL.reset() }
+    for (const rt of this.runtimes.values()) rt.dispose()
     this.runtimes.clear()
+    this.staticBg = null
+    this.staticBgReady = false
+    this.staticPrefixIds.clear()
     this.setLive(false)
+  }
+
+  /** 完全销毁（renderer 生命周期结束）：释放 WebGL 上下文 + 移除叠加画布 */
+  destroy(): void {
+    this.stop()
+    if (this.particleGL !== null) { this.particleGL.dispose(); this.particleGL = null }
+    if (this.glCanvas !== null) { this.glCanvas = null }
+    if (this.wwGL !== null) { this.wwGL.dispose(); this.wwGL = null }
   }
 
   applyVisuals(blurPx?: number, scale?: number): void {
@@ -368,11 +417,14 @@ export class SceneModelRenderer {
     for (const layer of model.layers) {
       jobs.push(this.loadLayerTexture(layer))
     }
-    // 粒子系统：创建运行时 + 加载粒子纹理（引擎资产 /we-sync/asset/texture）
+  /** 粒子系统：创建运行时 + 加载粒子纹理（引擎资产 /we-sync/asset/texture） */
     for (const layer of model.layers) {
-      if (layer.particle !== null && layer.particle.textureNames.length > 0) {
-        this.runtimes.set(layer.id, new ParticleRuntime(layer.particle, model.particleRateScale, model.particleSizeScale))
-        jobs.push(this.loadParticleTexture(layer.id, layer.particle.textureNames[0]))
+      if (layer.particle !== null) {
+        const rt = new ParticleRuntime(layer.particle, model.particleRateScale, model.particleSizeScale)
+        this.runtimes.set(layer.id, rt)
+        for (const sub of rt.collect()) {
+          jobs.push(this.loadParticleTexture(sub.rt, sub.texName))
+        }
       }
     }
     // puppet 动画：所有带"真实逐帧动画"的层播放（装配根 alpha=0 锚点整体动画 +
@@ -401,6 +453,11 @@ export class SceneModelRenderer {
       this.puppetAnims.set(layer.id, { anim, time: 0 })
     }
     if (jobs.length > 0) await Promise.all(jobs)
+    if (this.closed) return
+    // 静态层离屏缓存（纹理就绪后构建一次）
+    this.staticBg = null
+    this.staticBgReady = false
+    this.buildStaticBg()
     if (!this.closed) this.startAnimation()
   }
 
@@ -445,10 +502,17 @@ export class SceneModelRenderer {
     this.worldTransform = cache
   }
 
-  private async loadParticleTexture(layerId: number, name: string): Promise<void> {
+  private async loadParticleTexture(rt: ParticleRuntime, name: string): Promise<void> {
     try {
       const res = await fetch('/we-sync/asset/texture?name=' + encodeURIComponent(name), { cache: 'no-store' })
-      if (!res.ok) return
+      if (!res.ok) {
+        console.warn('[particle tex] 加载失败', name, res.status)
+        return
+      }
+      // spritesheet 序列帧元数据（后端从同名 .tex-json 解析；无则 frames=0 整张绘制）
+      const frames = Number(res.headers.get('X-Sprite-Frames') ?? '0')
+      const fw = Number(res.headers.get('X-Sprite-Width') ?? '0')
+      const fh = Number(res.headers.get('X-Sprite-Height') ?? '0')
       const blob = await res.blob()
       const bmp = await createImageBitmap(blob)
       if (this.closed) { bmp.close(); return }
@@ -460,8 +524,10 @@ export class SceneModelRenderer {
         bmp.close()
       }
       if (this.closed) return
-      this.particleTextures.set(layerId, tex)
-    } catch { /* 粒子纹理不可用：该粒子层不绘制 */ }
+      rt.setTexture(tex, frames > 1 && fw > 0 && fh > 0 ? frames : 0, fw, fh)
+    } catch (err) {
+      console.warn('[particle tex] 加载/解码失败', name, err)
+    }
   }
 
   private async loadLayerTexture(layer: SceneModelLayer): Promise<void> {
@@ -484,7 +550,9 @@ export class SceneModelRenderer {
       const m = e.type === 'waterwaves' || e.type === 'shake' ? e.mask : null
       if (m === null || this.effectMasks.has(layer.id)) continue
       try {
-        const res = await fetch('/we-sync/scene/texture?monitor=' + encodeURIComponent(this.monitor) + '&name=' + encodeURIComponent(m), { cache: 'no-store' })
+        // mask 引用（如 "masks/shake_mask_xxx"）规范化为 pkg 条目名 materials/<mask>.tex
+        const maskName = m.startsWith('materials/') ? m : 'materials/' + m + '.tex'
+        const res = await fetch('/we-sync/scene/texture?monitor=' + encodeURIComponent(this.monitor) + '&name=' + encodeURIComponent(maskName), { cache: 'no-store' })
         if (!res.ok) continue
         const blob = await res.blob()
         const bmp = await createImageBitmap(blob)
@@ -578,6 +646,9 @@ export class SceneModelRenderer {
     const dt = Math.min(0.1, (now - this.lastT) / 1000)
     this.lastT = now
     this.animTime += dt
+    // 背景快照每帧只复制一次（多个折射粒子层共享），避免每层整画布复制
+    this.bgCache = null
+    this.bgUploaded = false
     // 更新粒子（动画）
     for (const rt of this.runtimes.values()) rt.update(dt)
     this.updatePuppetAnims(dt)
@@ -644,6 +715,56 @@ export class SceneModelRenderer {
     }
   }
 
+  /** 静态图像层：无粒子、无效果、无动画（自身及祖先），可离屏缓存只渲染一次 */
+  private isStaticImageLayer(layer: SceneModelLayer): boolean {
+    if (layer.image === undefined || layer.particle !== null) return false
+    if (layer.effects.length > 0 || layer.copybackground === true) return false
+    let p: number | null = layer.id
+    while (p !== null && this.byId.has(p)) {
+      if (this.animXform.has(p)) return false
+      p = this.byId.get(p)?.parent ?? null
+    }
+    return true
+  }
+
+  /** 构建静态层离屏缓存（场景坐标 canvas，模型加载后调用一次） */
+  private buildStaticBg(): void {
+    const model = this.model
+    if (model === null) return
+    const c = document.createElement('canvas')
+    c.width = Math.max(1, Math.round(model.width))
+    c.height = Math.max(1, Math.round(model.height))
+    const g = c.getContext('2d')
+    if (g === null) return
+    // 只缓存 z-order 底部的连续静态层段（遇到第一个动态层即停止），
+    // 保证动态层（puppet 骨骼等）不会被压到缓存层之下导致层序错乱。
+    this.staticPrefixIds.clear()
+    let prefixEnded = false
+    for (const layer of model.layers) {
+      if (prefixEnded) break
+      if (!layer.visible || layer.alpha <= 0 || !this.isStaticImageLayer(layer)) { prefixEnded = true; continue }
+      const t = this.worldTransform.get(layer.id)
+      const bmp = this.layerTextures.get(layer.id) ?? null
+      if (bmp === null || t === undefined) { prefixEnded = true; continue }
+      this.staticPrefixIds.add(layer.id)
+      g.save()
+      g.translate(t.ox, t.oy)
+      const rot = ((layer.angles[2] ?? 0) * Math.PI) / 180
+      if (rot !== 0) g.rotate(rot)
+      g.scale(t.sx, t.sy)
+      if (layer.alpha < 1) g.globalAlpha = Math.max(0, Math.min(1, layer.alpha))
+      const ti = this.layerTexImage.get(layer.id)
+      const sw = ti !== undefined ? ti[0] : bmp.width
+      const sh = ti !== undefined ? ti[1] : bmp.height
+      const dw = layer.size !== null ? layer.size[0] : sw
+      const dh = layer.size !== null ? layer.size[1] : sh
+      g.drawImage(bmp, 0, 0, sw, sh, -dw / 2, -dh / 2, dw, dh)
+      g.restore()
+    }
+    this.staticBg = c
+    this.staticBgReady = true
+  }
+
   private renderScene(): void {
     const ctx = this.ctx
     if (ctx === null || this.el === null) return
@@ -668,9 +789,32 @@ export class SceneModelRenderer {
     const ox = (cw - model.width * s) / 2
     const oy = (ch - model.height * s) / 2
 
-    // 图层（scene.json 数组顺序 = z-order）
+    // 静态层离屏缓存合成（无动画大背景只渲染一次，每帧一次 drawImage）
+    if (this.staticBgReady && this.staticBg !== null) {
+      ctx.drawImage(this.staticBg, 0, 0, this.staticBg.width, this.staticBg.height, ox, oy, this.staticBg.width * s, this.staticBg.height * s)
+    }
+
+    // 图层（scene.json 数组顺序 = z-order）。
+    // GL 粒子段：相邻的 GL 粒子层累积渲染到离屏 glCanvas，遇到 image 层（或循环结束）
+    // 时整体合成到主画布——保证粒子与 image 层按 z-order 交错（如雨滴在窗框之下）。
+    // 混合模式（additive/normal）不同也拆段：additive 段用 blendFuncSeparate(ONE,ONE,ZERO,ONE)
+    // 画布 alpha 恒 0，合成必须用 'lighter'（src+dst 纯加法，source-over 会把 alpha=0 全丢弃）；
+    // normal 段标准预乘 source-over 合成。
+    let glSegment = false
+    let glAdditive = false
+    const flushGl = (): void => {
+      if (glSegment && this.particleGL !== null && this.glCanvas !== null) {
+        const prevOp = ctx.globalCompositeOperation
+        if (glAdditive) ctx.globalCompositeOperation = 'lighter'
+        ctx.drawImage(this.glCanvas, 0, 0, this.glCanvas.width, this.glCanvas.height, 0, 0, cw, ch)
+        ctx.globalCompositeOperation = prevOp
+        glSegment = false
+        this.bgUploaded = false
+      }
+    }
     for (const layer of model.layers) {
       if (!layer.visible || layer.alpha <= 0) continue
+      if (this.staticBgReady && this.staticPrefixIds.has(layer.id)) continue
       const t = this.worldTransform.get(layer.id)
       // puppet 动画：层自身动画绕自身锚点旋转/位移；否则绕最近的带动画祖先锚点旋转
       let ax = 0
@@ -704,14 +848,69 @@ export class SceneModelRenderer {
       }
       const px = ox + ((t !== undefined ? t.ox : layer.origin[0]) + ax) * s
       const py = oy + ((t !== undefined ? t.oy : layer.origin[1]) + ay) * s
-      // 粒子层：运行时绘制（additive sprite）
+      // 粒子层：WebGL 实例化优先（sprite/spritetrail），rope/ropetrail 或 GL 不可用走 Canvas
       const rt = this.runtimes.get(layer.id)
-      const ptex = this.particleTextures.get(layer.id)
-      if (rt !== undefined && ptex !== undefined) {
+      if (rt !== undefined) {
         const wt = t ?? { ox: layer.origin[0], oy: layer.origin[1], sx: layer.scale[0] ?? 1, sy: layer.scale[1] ?? 1 }
-        rt.draw(ctx, ox, oy, s, wt, ptex)
+        if (this.particleGL !== null && this.el !== null && SceneModelRenderer.USE_WEBGL_PARTICLES && !rt.hasLineRenderer()) {
+          // 上下文被浏览器逐出时 ParticleGL 内部 preventDefault + restoreContext 原地恢复
+          // （不在这里新建 canvas/上下文——每次新建都会再次触发逐出，形成死循环）
+          if (!this.particleGL.available) continue
+          const batches = rt.collectGl(wt.sx, wt.sy, ox + wt.ox * s, oy + wt.oy * s, s)
+          const now = performance.now()
+          if (batches.length === 0) {
+            // 无粒子/纹理仍在加载（低速率层如火花 0.75/s 多数帧本就无粒子）——
+            // 纹理加载失败由 loadParticleTexture 单独告警，这里不再刷 warn
+            continue
+          }
+          // 混合模式不同 → 先 flush 旧段再开新段（additive/normal 画布语义不同）
+          const additive = batches[0].additive
+          if (glSegment && glAdditive !== additive) flushGl()
+          if (!glSegment) {
+            glSegment = true
+            glAdditive = additive
+            this.bgUploaded = false
+            this.particleGL.clear()
+          }
+          if (now - (this.lastParticleLog.get(layer.id) ?? 0) > 1000) {
+            this.lastParticleLog.set(layer.id, now)
+            console.log('[scene:GL] layer=' + layer.name, batches.map((b) => 'n=' + b.particles.length + (b.refract ? '/R' : '') + (b.additive ? '/A' : '')).join(' '))
+          }
+          for (const b of batches) {
+            if (b.refract && !this.bgUploaded) {
+              this.particleGL.uploadBackground(this.el)
+              this.bgUploaded = true
+              console.log('[scene:GL] bg uploaded', this.el.width + 'x' + this.el.height)
+            }
+            this.particleGL.render(
+              b.particles,
+              { viewW: this.el.clientWidth, viewH: this.el.clientHeight, additive: b.additive, refract: b.refract, frames: b.frames, fw: b.fw, fh: b.fh },
+              b.tex,
+              this.el.width,
+              this.el.height,
+            )
+          }
+          continue
+        }
+        // 非 GL 粒子层（rope/ropetrail）：先 flush GL 段，保证 z-order 交错
+        flushGl()
+        // 折射粒子：背景快照同帧复用（每帧只复制一次）
+        let bg: HTMLCanvasElement | null = null
+        if (rt.hasRefract() && this.el !== null) {
+          if (this.bgCache === null) {
+            this.bgCache = document.createElement('canvas')
+            this.bgCache.width = this.el.width
+            this.bgCache.height = this.el.height
+            const bgctx = this.bgCache.getContext('2d')
+            if (bgctx !== null) bgctx.drawImage(this.el, 0, 0)
+          }
+          bg = this.bgCache
+        }
+        rt.draw(ctx, ox, oy, s, wt, bg)
         continue
       }
+      // image 层：先 flush GL 段，粒子才不会被盖在错误层级
+      flushGl()
       ctx.save()
       ctx.translate(px, py)
       // 动画部件：旋转锚点 = 骨骼 0 bind 位置（模型空间 → 局部，y 翻转），
@@ -805,6 +1004,9 @@ export class SceneModelRenderer {
       ctx.fillText(label, px + 6, py + 6)
     }
 
+    // 循环结束：flush 最后一段 GL 粒子（若 z-order 末尾是粒子层）
+    flushGl()
+
     // 场景边界框（诊断用）
     ctx.strokeStyle = 'rgba(255,255,255,0.28)'
     ctx.lineWidth = 1
@@ -828,11 +1030,19 @@ export class SceneModelRenderer {
     const h = Math.max(1, Math.round(this.el.clientHeight * this.dpr))
     if (this.el.width !== w) this.el.width = w
     if (this.el.height !== h) this.el.height = h
+    if (this.glCanvas !== null) {
+      if (this.glCanvas.width !== w) this.glCanvas.width = w
+      if (this.glCanvas.height !== h) this.glCanvas.height = h
+    }
   }
 
   private onResize = (): void => {
     this.resize()
-    // 动画循环每帧重绘，resize 后下一帧即生效
+    // 缩放后重建静态层缓存（避免画布尺寸变化后显示空白），并确保渲染循环运行
+    this.staticBg = null
+    this.staticBgReady = false
+    if (this.model !== null) this.buildStaticBg()
+    this.startAnimation()
   }
 
   private onVisibility = (): void => {

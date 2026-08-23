@@ -2,7 +2,8 @@
  * TEX 纹理块解码器（Phase 2a）—— 纯算法，node 半与浏览器半通用。
  *
  * 只负责把压缩块解码为 RGBA 像素，不关心 TEX 容器头部（见 SceneTex.ts）。
- * 算法为公开事实（Khronos/BC 规范），自研实现，无任何 GPL 代码。
+ * 算法为公开事实（Khronos/BC 规范），自研实现；DXT1/3/5 块布局与半精度转换
+ * 语义参考 RePKG（notscuffed，MIT 协议）的公开实现，本文件为独立 TS 代码。
  *
  * 支持：RGBA8888 / DXT1(BC1) / DXT5(BC3) / RGBA16F / R16F / L8(灰度)
  * BC7 尚未实现（需分区表常量，待表格来源确认后加入，见 TODO）。

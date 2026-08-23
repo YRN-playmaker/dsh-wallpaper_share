@@ -1,7 +1,7 @@
 {
   "name": "dsh-wallpaper_share",
   "description": "Wallpaper Engine ↔ DeepSeek Harness wallpaper sync (display-only): the page background follows the current Wallpaper Engine wallpaper, with a wallpaper_share conversation-view tab (monitor selector, power toggle, focus mode, render-mode toggle, transparency/blur/shadow sliders)",
-  "version": "0.2.0",
+  "version": "26.8.22-T",
   "type": "module",
   "main": "lib/index.js",
   "exports": {
@@ -26,7 +26,15 @@
     "bundle": "tsdown",
     "typecheck": "tsc --noEmit"
   },
-  "license": "MIT",
+  "license": "GPL-3.0",
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "wallpaper-engine",
+    "wallpaper",
+    "background",
+    "plugin"
+  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/YRN-playmaker/dsh-wallpaper_share.git"
@@ -43,6 +51,7 @@
     "lib/client.js.map",
     "cordis.patch.yml",
     "README.md",
+    "README.zh-CN.md",
     "LICENSE",
     "tools/scene-renderer/"
   ]

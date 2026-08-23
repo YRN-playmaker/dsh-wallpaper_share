@@ -29,6 +29,10 @@ export interface ParticleSystemDesc {
   materialRef: string
   /** 材质 blending（"translucent"|"additive"|"opaque"），决定混合模式 */
   blending: string
+  /** 材质 REFRACT 折射（雨滴/玻璃：采样背景折射变形，视觉透明） */
+  refract: boolean
+  /** 动画模式（animationmode）："randomframe" = 粒子出生随机帧后固定（静态水珠） */
+  animationMode: string | null
   /** 材质 overbright（genericparticle 的 g_Overbright，颜色亮度系数） */
   overbright: number
   /** 材质 textures（如 ["particle/fog/fog1"]，相对 assets/materials/ 的 .tex） */
@@ -75,9 +79,18 @@ export interface ParticleSystemDesc {
     oscillatePosition?: { frequencyMin: number; frequencyMax: number; scaleMin: number; scaleMax: number; mask: [number, number, number] }
     /** 尺寸变化算子（可多个，依次应用）；startTime/endTime 为寿命比例（0-1） */
     sizeChanges?: Array<{ startTime: number; endTime?: number; startValue: number; endValue: number }>
+    /** remapvalue(output=velocity)：速度重映射范围（噪声输出，rain_screen_fast 用） */
+    velocityRemap?: { min: [number, number, number]; max: [number, number, number] }
   }
-  renderer: { type: string; length?: number }
+  renderer: { type: string; length?: number; maxlength?: number; minlength?: number }
   children: ParticleSystemDesc[]
+  /** 控制点线段（mapsequencebetweencontrolpoints）：粒子沿 cp0(原点)→cp1 线段分布。
+   *  局部坐标；worldSpace 时 cp1 = 世界坐标 - origin。如 discharge 的"闪电包裹线段"。 */
+  controlPointLine: [number, number] | null
+  /** 线段上的序列点数（mapsequence count） */
+  sequenceCount: number
+  /** 序列往返（limitbehavior mirror） */
+  sequenceMirror: boolean
 }
 
 export interface SceneModelLayer {
@@ -417,12 +430,15 @@ function resolveParticleSystem(pkg: ParsedPkg, ref: string, obj: Record<string, 
     const textureNames: string[] = []
     let blending = 'translucent'
     let overbright = 1
+    let refract = false
     if (matRef !== '') {
       try {
-        const mat = parseJsonLike(pkg.read(matRef) as Uint8Array) as { passes?: Array<{ textures?: unknown; blending?: string; constantshadervalues?: Record<string, unknown> }> }
+        const mat = parseJsonLike(pkg.read(matRef) as Uint8Array) as { passes?: Array<{ textures?: unknown; blending?: string; constantshadervalues?: Record<string, unknown>; combos?: Record<string, unknown> }> }
         if (Array.isArray(mat.passes)) {
           for (const pass of mat.passes) {
             if (typeof pass.blending === 'string' && pass.blending !== '') blending = pass.blending
+            // REFRACT 折射（雨滴/玻璃水滴）：透过粒子采样背景折射变形 → 视觉透明
+            if (pass.combos !== undefined && typeof pass.combos === 'object' && (pass.combos.REFRACT as unknown as number) === 1) refract = true
             const csv = pass.constantshadervalues
             if (csv !== undefined && typeof csv === 'object') {
               const ob = Number(csv.ui_editor_properties_overbright)
@@ -440,12 +456,16 @@ function resolveParticleSystem(pkg: ParsedPkg, ref: string, obj: Record<string, 
 
     const emitters = Array.isArray(preset.emitter) ? preset.emitter as Record<string, unknown>[] : []
     const em = emitters[0] ?? {}
-    // rate：存原始值（视觉缩放由 runtime 按 CONFIG.particleRateScale 应用）。
-    // 缺省时按 maxcount 推导。
-    const maxcount = toInt(preset.maxcount, 40)
-    const rate = em.rate !== undefined
+    // rate：预设值（每秒粒子数），instanceoverride.rate 为**乘数**（火花 5×0.15=0.75/s
+    // 慢闪烁、Rain2 700×1.96 密集）。旧实现把 override.rate 当缺省回退，导致闪烁过快。
+    // maxCount 上限：GL 实例化一次 drawArraysInstanced 可承载数千粒子，
+    // Canvas 2D 路径有 DRAW_LIMIT（400/层）兜底。5000 兼顾密度与流畅度
+    // （Rain_1 maxcount=5000：clamp 过低导致雨滴稀疏、覆盖不全）。
+    const maxcount = Math.min(toInt(preset.maxcount, 40), 5000)
+    let rate = em.rate !== undefined
       ? numOr(em.rate, 1)
-      : (override.rate !== undefined ? numOr(override.rate, 1) : Math.max(1, Math.round(maxcount / 15)))
+      : Math.max(1, Math.round(maxcount / 15))
+    if (typeof override.rate === 'number' && override.rate > 0) rate *= override.rate
     const emitter = {
       type: typeof em.name === 'string' ? em.name : 'sphererandom',
       rate,
@@ -509,11 +529,17 @@ function resolveParticleSystem(pkg: ParsedPkg, ref: string, obj: Record<string, 
           endValue: numOr(op.endvalue, 1),
         })
       }
+      else if (name === 'remapvalue' && typeof op.output === 'string' && op.output === 'velocity') {
+        ops.velocityRemap = {
+          min: parseVec3(op.outputrangemin, [0, 0, 0]),
+          max: parseVec3(op.outputrangemax, [0, 0, 0]),
+        }
+      }
     }
 
     const renderers = Array.isArray(preset.renderer) ? preset.renderer as Record<string, unknown>[] : []
     const rd = renderers[0] ?? {}
-    const renderer = { type: typeof rd.name === 'string' ? rd.name : 'sprite', length: numOr(rd.length, undefined) }
+    const renderer = { type: typeof rd.name === 'string' ? rd.name : 'sprite', length: numOr(rd.length, undefined), maxlength: numOr(rd.maxlength, undefined), minlength: numOr(rd.minlength, undefined) }
 
     const children: ParticleSystemDesc[] = []
     if (Array.isArray(preset.children)) {
@@ -526,20 +552,82 @@ function resolveParticleSystem(pkg: ParsedPkg, ref: string, obj: Record<string, 
     }
 
     // instanceoverride 覆盖：colorn/alpha/brightness/lifetime/size/speed/count/rate
+    // colorn 为 0-1 浮点（parseColor3 归一化），需乘 255 与 colorrandom 的 0-255 单位统一，
+    // 否则 ParticleRuntime 按 0-255 取整会把颜色压成近黑（如 fog 0.55 → 1）。
     if (typeof override.colorn === 'string') {
       const c = parseColor3(override.colorn)
-      initializers.colorMin = c
-      initializers.colorMax = c
+      initializers.colorMin = [c[0] * 255, c[1] * 255, c[2] * 255]
+      initializers.colorMax = [c[0] * 255, c[1] * 255, c[2] * 255]
     }
-    if (typeof override.alpha === 'number') { initializers.alphaMin = override.alpha; initializers.alphaMax = override.alpha }
-    if (typeof override.lifetime === 'number') initializers.lifetime = [override.lifetime, override.lifetime]
-    if (typeof override.size === 'number') initializers.size = [override.size, override.size]
-    if (typeof override.count === 'number') { /* count 为密度系数，近似按比例放大 rate */ }
+    // instanceoverride.alpha 为 alpha 乘数（官方 CParticle：alpha = alpharandom × override，
+    // 不 clamp——fog 0.15-0.2 × 2 = 0.3-0.4）。旧实现 clamp 成 1 使雾偏淡。
+    if (typeof override.alpha === 'number') {
+      const f = Math.max(0, override.alpha)
+      if (initializers.alphaMin !== undefined) {
+        initializers.alphaMin *= f
+        initializers.alphaMax *= f
+      } else {
+        initializers.alphaMin = f
+        initializers.alphaMax = f
+      }
+    }
+    // instanceoverride.lifetime/size/speed/count 均为乘数（fog1: size 2/speed 3/count 2）：
+    // 旧实现把 size 覆盖成绝对值 [2,2] 导致粒子 2px、count 完全忽略。
+    if (typeof override.lifetime === 'number') {
+      const f = override.lifetime
+      if (initializers.lifetime !== undefined) initializers.lifetime = [initializers.lifetime[0] * f, initializers.lifetime[1] * f]
+      else initializers.lifetime = [f, f]
+    }
+    if (typeof override.size === 'number') {
+      const f = override.size
+      if (initializers.size !== undefined) initializers.size = [initializers.size[0] * f, initializers.size[1] * f]
+      else initializers.size = [32 * f, 32 * f]
+    }
+    if (typeof override.speed === 'number') {
+      const f = override.speed
+      if (initializers.velocityMin !== undefined && initializers.velocityMax !== undefined) {
+        initializers.velocityMin = [initializers.velocityMin[0] * f, initializers.velocityMin[1] * f, initializers.velocityMin[2] * f]
+        initializers.velocityMax = [initializers.velocityMax[0] * f, initializers.velocityMax[1] * f, initializers.velocityMax[2] * f]
+      }
+    }
+    if (typeof override.count === 'number' && override.count > 0) emitter.rate *= override.count
+
+    // 控制点线段 + 序列初始器（mapsequencebetweencontrolpoints）：
+    // discharge 的闪电是粒子沿 origin→controlpoint1 线段分布 + rope 连线包裹背景线段。
+    let controlPointLine: [number, number] | null = null
+    let sequenceCount = 0
+    let sequenceMirror = false
+    const cps = Array.isArray(preset.controlpoint) ? preset.controlpoint as Record<string, unknown>[] : []
+    const cp1 = cps.find((c) => (c as { id?: unknown }).id === 1)
+    if (cp1 !== undefined) {
+      const flags = numOr(cp1.flags, 0)
+      const rawOff = override.controlpoint1 !== undefined
+        ? override.controlpoint1
+        : cp1.offset
+      if (typeof rawOff === 'string') {
+        const off = parseVec3(rawOff, [0, 0, 0])
+        if ((flags & 2) !== 0) {
+          // worldSpace：cp1 局部 = 世界坐标 - 粒子系统 origin（官方 CParticle 语义，不除 scale）
+          const originW = parseVec3(obj.origin, [0, 0, 0])
+          controlPointLine = [off[0] - originW[0], off[1] - originW[1]]
+        } else {
+          controlPointLine = [off[0], off[1]]
+        }
+      }
+    }
+    for (const init of inits) {
+      if (typeof (init as { name?: unknown }).name === 'string' && (init as { name: string }).name === 'mapsequencebetweencontrolpoints') {
+        sequenceCount = numOr((init as { count?: unknown }).count, 0)
+        sequenceMirror = (init as { limitbehavior?: unknown }).limitbehavior === 'mirror'
+      }
+    }
 
     return {
       particleRef: ref,
       materialRef: matRef,
       blending,
+      refract,
+      animationMode: typeof preset.animationmode === 'string' ? preset.animationmode : null,
       overbright,
       textureNames,
       maxCount: maxcount,
@@ -549,6 +637,9 @@ function resolveParticleSystem(pkg: ParsedPkg, ref: string, obj: Record<string, 
       operators: ops,
       renderer,
       children,
+      controlPointLine,
+      sequenceCount,
+      sequenceMirror,
     }
   } catch {
     return null

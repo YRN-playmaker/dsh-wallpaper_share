@@ -69,25 +69,61 @@ export class WaterwavesGL {
   private texCache = new Map<string, WebGLTexture>()
   private curW = 0
   private curH = 0
+  /** 上下文被逐出后的原地恢复扩展 */
+  private loseExt: WEBGL_lose_context | null = null
+  private lost = false
+  private lostLogged = false
+  private lastRestoreAt = 0
 
-  /** WebGL 是否可用 */
+  /** WebGL 是否可用（惰性缓存，避免每次访问都新建探针上下文） */
+  private static cachedAvailable: boolean | null = null
   static get available(): boolean {
-    try {
-      const c = document.createElement('canvas')
-      return !!(c.getContext('webgl') || c.getContext('experimental-webgl'))
-    } catch {
-      return false
+    if (WaterwavesGL.cachedAvailable === null) {
+      try {
+        const c = document.createElement('canvas')
+        WaterwavesGL.cachedAvailable = !!(c.getContext('webgl') || c.getContext('experimental-webgl'))
+      } catch {
+        WaterwavesGL.cachedAvailable = false
+      }
     }
+    return WaterwavesGL.cachedAvailable
   }
 
   private ensure(): boolean {
-    if (this.gl !== null && this.prog !== null) return true
+    if (this.gl !== null && this.prog !== null && !this.lost) return true
+    // 丢失中：等 webglcontextrestored 事件（handler 清空 prog/vbo 并重建），
+    // 或主动尝试 restoreContext（节流 1s）；不在此处新建 canvas（会再次触发逐出死循环）
+    if (this.lost) {
+      const now = performance.now()
+      if (this.canvas !== null && this.loseExt !== null && now - this.lastRestoreAt > 1000) {
+        this.lastRestoreAt = now
+        try { this.loseExt.restoreContext() } catch { /* 恢复失败：下一轮重试 */ }
+      }
+      return false
+    }
     try {
-      const c = document.createElement('canvas')
+      const c = this.canvas ?? document.createElement('canvas')
       const gl = (c.getContext('webgl') || c.getContext('experimental-webgl')) as WebGLRenderingContext | null
       if (gl === null) return false
       this.canvas = c
       this.gl = gl
+      this.loseExt = gl.getExtension('WEBGL_lose_context')
+      c.addEventListener('webglcontextlost', (e) => {
+        e.preventDefault()
+        this.lost = true
+        if (!this.lostLogged) {
+          this.lostLogged = true
+          console.warn('[waterwaves:GL] 上下文丢失，原地恢复中…')
+        }
+      })
+      c.addEventListener('webglcontextrestored', () => {
+        this.lost = false
+        this.lostLogged = false
+        this.texCache.clear()
+        this.prog = null
+        this.vbo = null
+        console.warn('[waterwaves:GL] 上下文已恢复')
+      })
       const compile = (type: number, src: string): WebGLShader | null => {
         const sh = gl.createShader(type)
         if (sh === null) return null
@@ -198,11 +234,32 @@ export class WaterwavesGL {
     return this.canvas
   }
 
-  /** 释放（场景切换时） */
-  dispose(): void {
-    for (const t of this.texCache.values()) {
-      if (this.gl !== null) this.gl.deleteTexture(t)
-    }
+  /** 场景切换时清空纹理缓存（保留上下文，避免每次 start() 新建 WebGL 上下文） */
+  reset(): void {
+    if (this.gl === null) return
+    for (const t of this.texCache.values()) this.gl.deleteTexture(t)
     this.texCache.clear()
+    this.curW = 0
+    this.curH = 0
+  }
+
+  /** 完全释放（renderer 生命周期结束） */
+  dispose(): void {
+    const gl = this.gl
+    if (gl === null) return
+    try {
+      const ext = gl.getExtension('WEBGL_lose_context')
+      if (ext !== null) ext.loseContext()
+    } catch { /* 扩展不可用：交给 GC */ }
+    for (const t of this.texCache.values()) gl.deleteTexture(t)
+    this.texCache.clear()
+    if (this.prog !== null) gl.deleteProgram(this.prog)
+    if (this.vbo !== null) gl.deleteBuffer(this.vbo)
+    this.gl = null
+    this.prog = null
+    this.vbo = null
+    this.canvas = null
+    this.curW = 0
+    this.curH = 0
   }
 }

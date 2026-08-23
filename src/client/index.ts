@@ -178,7 +178,7 @@ export function apply(ctx: CordisCtx): void {
   // scene 浏览器子集渲染器（mode=browser：真实图层树 + transform 合成）
   let sceneModelRenderer: SceneModelRenderer | null = null
   function stopSceneModelRenderer(): void {
-    if (sceneModelRenderer !== null) { sceneModelRenderer.stop(); sceneModelRenderer = null }
+    if (sceneModelRenderer !== null) { sceneModelRenderer.destroy(); sceneModelRenderer = null }
   }
   function stopSceneLayers(): void {
     stopSceneCanvas()

@@ -8,8 +8,8 @@
  * 无敏感信息。安装目录运行时自动检测（注册表 → 常见 Steam 路径），
  * 检测不到时在下方 CONFIG.wallpaperEngineDir 手动指定。
  */
-import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs'
-import { execFileSync } from 'node:child_process'
+import { createReadStream, existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
+import { execFile, execFileSync } from 'node:child_process'
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import type { Writable } from 'node:stream'
@@ -49,7 +49,7 @@ const CONFIG = {
   sceneRenderQuality: 80,
   /** scene 渲染模式：'auto'（默认：浏览器子集渲染器为主；显式配置 sceneRendererPath 则 external）| 'browser'（强制浏览器子集渲染器）| 'external'（强制外部 renderer 子进程） */
   sceneRenderMode: 'auto',
-  /** 粒子发射率缩放（视觉校准项；WE rate 单位 = 每秒粒子数，默认 1） */
+  /** 粒子发射率缩放（视觉校准项；WE rate 为每秒粒子数，稳态 ≈ rate × lifetime，默认 1） */
   particleRateScale: 1,
   /** 粒子尺寸缩放（视觉校准项，默认 1） */
   particleSizeScale: 1,
@@ -763,6 +763,133 @@ export function apply(ctx: CordisCtx): void {
     },
   }))
 
+  // —— 应用启动器：列出 WE 里 type=application 的壁纸（新版 WE 不再支持"应用"壁纸，
+  //   文件仍留在 workshop/projects 目录；这里只读列出 + 打开所在文件夹，不执行任何程序）。
+  interface AppEntry { id: string; title: string; dir: string; file: string; preview: string | null }
+  let appsCache: AppEntry[] | null = null
+  let appsCacheMtime = 0
+
+  function scanApps(weDir: string, workshopDir: string): AppEntry[] {
+    const roots: string[] = []
+    try {
+      roots.push(workshopDir)
+    } catch { /* 目录不可用 */ }
+    try {
+      const proj = weDir + '/projects/myprojects'
+      if (exists(proj)) roots.push(proj)
+      const defaults = weDir + '/projects/defaultprojects'
+      if (exists(defaults)) roots.push(defaults)
+    } catch { /* 忽略 */ }
+    const out: AppEntry[] = []
+    const seen = new Set<string>()
+    const visitDir = (root: string): void => {
+      let entries: string[]
+      try { entries = readdirSync(root) } catch { return }
+      for (const name of entries) {
+        const dir = normalize(root + '/' + name)
+        const projectPath = dir + '/project.json'
+        if (!exists(projectPath)) continue
+        let title = name
+        let type = ''
+        let file = ''
+        let preview: string | null = null
+        try {
+          const project = JSON.parse(readText(projectPath)) as { title?: unknown; type?: unknown; file?: unknown; preview?: unknown }
+          if (project !== null && typeof project === 'object') {
+            if (project.title !== undefined) title = String(project.title)
+            if (project.type !== undefined) type = String(project.type)
+            if (project.file !== undefined) file = String(project.file)
+            if (typeof project.preview === 'string' && project.preview !== '') {
+              const p = normalize(dir + '/' + project.preview)
+              if (exists(p)) preview = p
+            }
+          }
+        } catch { /* project.json 不可用 */ }
+        if (type.toLowerCase() !== 'application') continue
+        if (seen.has(dir)) continue
+        seen.add(dir)
+        if (preview === null) {
+          const probed = probePreview(dir)
+          preview = probed !== null ? probed.path : null
+        }
+        out.push({ id: name, title, dir, file, preview })
+      }
+    }
+    for (const root of roots) visitDir(root)
+    return out
+  }
+
+  disposers.push(webServer.register({
+    kind: 'exact',
+    path: '/we-sync/apps',
+    handler(_req, res) {
+      if (state.weDir === '') {
+        sendJson(res, { error: 'we not detected', apps: [] })
+        return
+      }
+      const workshopDir = resolveWorkshopDir(state.weDir)
+      // 缓存 30s：扫描 100+ 目录的 project.json 有 IO 开销，不必每次点击都扫
+      const now = Date.now()
+      if (appsCache === null || now - appsCacheMtime > 30000) {
+        appsCache = scanApps(state.weDir, workshopDir)
+        appsCacheMtime = now
+      }
+      sendJson(res, {
+        apps: appsCache.map((a) => ({ id: a.id, title: a.title, file: a.file, hasPreview: a.preview !== null })),
+      })
+    },
+  }))
+
+  disposers.push(webServer.register({
+    kind: 'exact',
+    path: '/we-sync/apps/preview',
+    handler(req, res) {
+      if (state.weDir === '') { res.statusCode = 404; res.end(); return }
+      const url = req.url ?? ''
+      const q = url.indexOf('?')
+      const id = q >= 0 ? decodeURIComponent(url.slice(q + 1).replace(/^id=/, '')) : ''
+      const workshopDir = resolveWorkshopDir(state.weDir)
+      const apps = scanApps(state.weDir, workshopDir)
+      const app = apps.find((a) => a.id === id)
+      if (app === null || app === undefined || app.preview === null) {
+        res.statusCode = 404
+        res.end('no preview')
+        return
+      }
+      serveFile(app.preview, mimeOfPath(app.preview), req, res)
+    },
+  }))
+
+  disposers.push(webServer.register({
+    kind: 'exact',
+    path: '/we-sync/apps/open',
+    handler(req, res) {
+      const url = req.url ?? ''
+      const q = url.indexOf('?')
+      const id = q >= 0 ? decodeURIComponent(url.slice(q + 1).replace(/^id=/, '')) : ''
+      if (state.weDir === '' || id === '') {
+        res.statusCode = 400
+        res.end('bad request')
+        return
+      }
+      const workshopDir = resolveWorkshopDir(state.weDir)
+      const apps = scanApps(state.weDir, workshopDir)
+      const app = apps.find((a) => a.id === id)
+      if (app === undefined) {
+        res.statusCode = 404
+        res.end('app not found')
+        return
+      }
+      // 打开壁纸所在文件夹（资源管理器）；纯打开目录，不启动 exe/分卷程序
+      const target = app.file !== '' ? app.dir + '/' + app.file : app.dir
+      execFile('explorer.exe', ['/select,' + target], { windowsHide: true }, () => {
+        // explorer /select 若目标已删除会静默失败；兜底直接打开目录
+        execFile('explorer.exe', [app.dir], { windowsHide: true }, () => { /* 忽略 */ })
+      })
+      sendJson(res, { opened: true, dir: app.dir })
+    },
+  }))
+
   disposers.push(webServer.register({
     kind: 'exact',
     path: '/we-sync/preview',
@@ -891,28 +1018,105 @@ export function apply(ctx: CordisCtx): void {
       }
       let name: string
       try { name = decodeURIComponent(match[1]) } catch { name = '' }
-      if (!/^[a-zA-Z0-9_\/\-\.]+$/.test(name) || name.includes('..') || state.weDir === '') {
+      // 放行空格/中文（workshop 纹理名如 "particles 256x1280 blank"）；仍拒绝路径穿越
+      if (!/^[a-zA-Z0-9_\/\-\.\s\u4e00-\u9fff]+$/.test(name) || name.includes('..') || state.weDir === '') {
         res.statusCode = 403
         res.end('forbidden')
         return
       }
+      // 读取纹理字节：优先壁纸 pkg（workshop 纹理如 materials/workshop/2446129945/...），
+      // 否则 WE 引擎资产 <weDir>/assets/materials/<name>.tex
+      let bytes: Uint8Array | null = null
+      let metaText: string | null = null
       try {
-        const bytes = new Uint8Array(readFileSync(state.weDir + '/assets/materials/' + name + '.tex'))
-        const tex = decodeTex(bytes)
-        const png = tex !== null ? texMipToPng(tex) : null
-        if (png === null) {
-          res.statusCode = 415
-          res.end('asset tex decode failed: ' + name)
-          return
+        const key = effectiveKey(monitorFromQuery(req))
+        const monitor = state.monitors.find((m) => m.key === key)
+        if (monitor !== undefined && monitor.kind === 'scene') {
+          const pkg = parseScenePkg(new Uint8Array(readFileSync(monitor.file)))
+          const entry = pkg.entries.find((e) => e.name === 'materials/' + name + '.tex')
+          if (entry !== undefined) {
+            const fileBuf = readFileSync(monitor.file)
+            bytes = new Uint8Array(fileBuf.subarray(pkg.dataStart + entry.offset, pkg.dataStart + entry.offset + entry.size))
+            const metaEntry = pkg.entries.find((e) => e.name === 'materials/' + name + '.tex-json')
+            if (metaEntry !== undefined) {
+              metaText = fileBuf.subarray(pkg.dataStart + metaEntry.offset, pkg.dataStart + metaEntry.offset + metaEntry.size).toString('utf8')
+            }
+          }
         }
-        res.statusCode = 200
-        res.setHeader('Content-Type', 'image/png')
-        res.setHeader('Cache-Control', 'no-store')
-        res.end(Buffer.from(png))
+        if (bytes === null) {
+          bytes = new Uint8Array(readFileSync(state.weDir + '/assets/materials/' + name + '.tex'))
+        }
+        if (metaText === null) {
+          try { metaText = readFileSync(state.weDir + '/assets/materials/' + name + '.tex-json', 'utf8') } catch { /* 无 tex-json */ }
+        }
       } catch {
         res.statusCode = 404
         res.end('no such asset texture: ' + name)
+        return
       }
+      const tex = decodeTex(bytes)
+      const png = tex !== null ? texMipToPng(tex) : null
+      if (png === null) {
+        res.statusCode = 415
+        res.end('asset tex decode failed: ' + name)
+        return
+      }
+      res.statusCode = 200
+      res.setHeader('Content-Type', 'image/png')
+      res.setHeader('Cache-Control', 'no-store')
+      // spritesheet 序列帧元数据（同名 .tex-json 的 spritesheetsequences[0]）：
+      // 帧数/帧宽/帧高写入响应头，浏览器侧按粒子年龄取帧裁剪绘制。
+      let framesH = 0
+      let fwH = 0
+      let fhH = 0
+      if (metaText !== null) {
+        try {
+          const meta = JSON.parse(metaText) as {
+            spritesheetsequences?: Array<{ frames?: unknown; width?: unknown; height?: unknown }>
+          }
+          const seq = Array.isArray(meta.spritesheetsequences) ? meta.spritesheetsequences[0] : undefined
+          if (seq !== undefined) {
+            const frames = Number(seq.frames)
+            const fw = Number(seq.width)
+            const fh = Number(seq.height)
+            if (Number.isFinite(frames) && frames > 1 && Number.isFinite(fw) && fw > 0 && Number.isFinite(fh) && fh > 0) {
+              framesH = frames
+              fwH = fw
+              fhH = fh
+            }
+          }
+        } catch { /* 无 tex-json 或解析失败：非序列帧纹理，不带头 */ }
+      }
+      // workshop 纹理常缺 .tex-json：按纹理名 "WxH" 推断序列帧布局
+      // （如 "particles 256x1280 blank" = 256×256 帧 5 张竖排 = 1280 高）。
+      // 规则：name 中 "数字x数字"，较大值 = 较小值 × 整数（帧数），帧为正方形。
+      if (framesH <= 1 || fwH <= 0 || fhH <= 0) {
+        const m = /(\d{2,4})x(\d{2,4})/.exec(name)
+        if (m !== null) {
+          const a = Number(m[1])
+          const b = Number(m[2])
+          const small = Math.min(a, b)
+          const large = Math.max(a, b)
+          const count = large / small
+          if (Number.isInteger(count) && count >= 2 && count <= 64 && small >= 32 && tex !== null) {
+            // 解码出的位图尺寸应与推断一致（宽或高有一边 = small）
+            const iw = tex.imageWidth > 0 ? tex.imageWidth : tex.textureWidth
+            const ih = tex.imageHeight > 0 ? tex.imageHeight : tex.textureHeight
+            const okW = iw === small || ih === small || iw === large || ih === large
+            if (okW) {
+              framesH = count
+              fwH = small
+              fhH = small
+            }
+          }
+        }
+      }
+      if (framesH > 1 && fwH > 0 && fhH > 0) {
+        res.setHeader('X-Sprite-Frames', String(framesH))
+        res.setHeader('X-Sprite-Width', String(fwH))
+        res.setHeader('X-Sprite-Height', String(fhH))
+      }
+      res.end(Buffer.from(png))
     },
   }))
 

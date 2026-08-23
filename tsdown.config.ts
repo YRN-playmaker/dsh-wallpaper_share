@@ -19,7 +19,7 @@ export default [
     dts: false,
     clean: false,
     sourcemap: false,
-    external: [...PLATFORM_EXTERNALS],
+    deps: { neverBundle: [...PLATFORM_EXTERNALS] },
     outputOptions: {
       entryFileNames: 'index.js',
     },
@@ -34,7 +34,7 @@ export default [
     dts: false,
     clean: false,
     sourcemap: true,
-    external: [...PLATFORM_EXTERNALS],
+    deps: { neverBundle: [...PLATFORM_EXTERNALS] },
     define: {
       'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV ?? 'production'),
       'import.meta.env.MODE': JSON.stringify(process.env.NODE_ENV ?? 'production'),
