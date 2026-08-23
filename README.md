@@ -1,4 +1,5 @@
-# dsh-wallpaper_share · Wallpaper Engine ↔ DeepSeek Harness 壁纸同步
+# dsh-wallpaper_share
+# Wallpaper Engine ↔ DeepSeek Harness 壁纸同步
 
 
 https://github.com/user-attachments/assets/4461d385-de62-42be-8420-7edce5606f44
@@ -7,7 +8,7 @@ https://github.com/user-attachments/assets/4461d385-de62-42be-8420-7edce5606f44
 
 [中文](#中文) | [English](#english)
 
-把 Wallpaper Engine 当前显示的壁纸实时同步为 DeepSeek Harness Web 界面的背景（磨砂玻璃风格），并提供 `wallpaper_share` 会话视图标签页用于控制显示器来源、透明度 / 模糊 / 阴影、渲染模式与专注模式。
+把 Wallpaper Engine 当前显示的壁纸实时同步为 DeepSeek Harness Web 界面的背景，并提供 `wallpaper_share` 会话视图标签页用于控制显示器来源、透明度 / 模糊 / 阴影、渲染模式与专注模式。
 
 > **纯显示同步**：只读取 WE 状态，不控制 / 不修改桌面壁纸（换壁纸请在 WE 内操作）。
 > **无敏感信息**：代码不含 Steam 用户名 / SteamID / 令牌；WE 安装目录运行时自动检测（注册表 `HKCU\Software\WallpaperEngine\installPath` → 常见 Steam 路径），检测不到时才需要手动配置。
@@ -19,13 +20,13 @@ https://github.com/user-attachments/assets/4461d385-de62-42be-8420-7edce5606f44
 
 ## 增强模式兼容矩阵
 
-| 壁纸类型 | 增强模式行为 |
-| --- | --- |
-| `video` | 播放源视频（支持 HTTP Range，可正常 seek） |
-| `web` | iframe 加载源页面 |
-| `image` | 显示源图 |
-| `scene` | **浏览器子集渲染器**（默认）：真实图层树 + transform + 已解码纹理 / 粒子 / puppet 动画合成进 canvas；或**外部 renderer**（`sceneRendererPath` + WS 帧流）；renderer 不可用/失败 → 提取 pkg 内嵌高清纹理 → 预览 |
-| `application` / `other` | 回退静态预览 |
+| 壁纸类型 | 增强模式 | 性能模式
+| --- | --- | --- |
+| `video` | 播放源视频（支持 HTTP Range，可正常 seek） | 显示静态预览图或gif |
+| `web` | iframe 加载源页面 | 显示静态预览图或gif |
+| `image` | 显示源图 | 显示源图 |
+| `scene` | **浏览器渲染器**逆向渲染 | 显示pkg静态纹理 |
+| `application` | 可从wallpaper_share预览 |
 
 > scene 增强的完整 fallback 链与各层实现（渲染模式 / 纹理解码 / 粒子 / puppet）见 **[docs/scene-fallback.md](docs/scene-fallback.md)**。
 
@@ -33,16 +34,16 @@ https://github.com/user-attachments/assets/4461d385-de62-42be-8420-7edce5606f44
 
 - **实时同步**：在 Wallpaper Engine 中应用壁纸后，页面背景约 2 秒内自动跟随
 - **多显示器**：自动跟随"最近变化"的一台；复数显示器时可手动锁定某台作为背景来源
-- **视觉效果滑块（即时生效）**：面板透明度 0–100% / 背景模糊 0–30px / 阴影深度 0–100%
+- **视觉效果滑块**：面板透明度 0–100% / 背景模糊 0–30px / 阴影深度 0–100%
 - **渲染模式切换**：性能（静态预览图，默认）⇄ 增强（加载壁纸源内容）
-- **Scene 实时渲染（新增）**：scene 壁纸增强模式默认走**浏览器子集渲染器**（真实 `scene.json` 图层树 + transform + 已解码纹理合成进 canvas，含粒子与 puppet 动画）；显式配置 `sceneRendererPath` 后走独立 renderer 子进程（offscreen，不弹窗）→ WebSocket 帧流；完整回退链见 [docs/scene-fallback.md](docs/scene-fallback.md)
-- **专注模式 🎯**：任务进行中自动切换为 30% / 15px / 90%，任务完成后自动切换为 9% / 6px / 40%
+- **Scene 实时渲染（实验内容）**：scene 壁纸增强模式默认走**浏览器子集渲染器**（真实 `scene.json` 图层树 + transform + 已解码纹理合成进 canvas，含粒子与 puppet 动画）；显式配置 `sceneRendererPath` 后走独立 renderer 子进程（offscreen，不弹窗）→ WebSocket 帧流；完整回退链见 [docs/scene-fallback.md](docs/scene-fallback.md)
+- **专注模式**：任务进行中自动切换为 30% / 15px / 90%，任务完成后自动切换为 9% / 6px / 40%
 - **同步开关** ⏻ 一键启停
 - 自诊断路由 `/we-sync/diag`（仅本机可访问，含 scene renderer 状态与纹理提取结果）
 
 ## 安装（官方 `dsh plugin` 通道，零手工配置）
 
-> 前置：DSH 已用 `dsh --profile web` 启动过至少一次。
+> 前置：DSH 已用 `dsh --profile web` 验证。
 
 ```bash
 # 任选其一：
