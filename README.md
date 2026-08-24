@@ -32,12 +32,13 @@ https://github.com/user-attachments/assets/4461d385-de62-42be-8420-7edce5606f44
 
 ## 功能
 
-- **实时同步**：在 Wallpaper Engine 中应用壁纸后，页面背景自动跟随
+- **实时同步**：在 Wallpaper Engine 切换壁纸后，harness页面背景自动跟随
 - **多显示器**：复数显示器时可手动锁定某台作为背景来源
 - **视觉效果滑块**：支持面板透明度/ 背景模糊/ 阴影深度调整
 - **渲染模式切换**：性能（静态预览图）⇄ 增强（加载包括特效动画在内的所有壁纸内容）
 - **Scene 实时渲染（实验内容）**：scene 壁纸增强模式默认走**浏览器子集渲染器**（真实 `scene.json` 图层树 + transform + 已解码纹理合成进 canvas，含粒子与 puppet 动画）；显式配置 `sceneRendererPath` 后走独立 renderer 子进程（offscreen，不弹窗）→ WebSocket 帧流；完整回退链见 [docs/scene-fallback.md](docs/scene-fallback.md)
 - **专注模式**：随任务启停变化背景的复杂度以专注于当前任务内容
+- **后台任务可视化** 收纳侧边栏时，通过圆形ui感知任务进度：绿-空闲；蓝-任务进行；橙-需要手动介入
 - **同步开关** ⏻ 一键启停
 - 自诊断路由 `/we-sync/diag`（仅本机可访问，含 scene renderer 状态与纹理提取结果）
 
