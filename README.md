@@ -57,7 +57,7 @@ dsh plugin --profile web add ./dsh-wallpaper_share-0.2.0.tgz
 ```
 
 ```bash
-# 安装 test 分支（最新开发版，含 Scene 渲染 / 粒子 / puppet 动画）：
+# 安装 test 分支（测试版本，包括：壁纸特效优化，页面功能更新等）：
 dsh plugin --profile web add github:YRN-playmaker/dsh-wallpaper_share#test
 ```
 
