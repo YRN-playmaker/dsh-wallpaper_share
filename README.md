@@ -1,4 +1,5 @@
-# dsh-wallpaper_share · Wallpaper Engine ↔ DeepSeek Harness 壁纸同步
+# dsh-wallpaper_share
+# Wallpaper Engine ↔ DeepSeek Harness 壁纸同步
 
 
 https://github.com/user-attachments/assets/4461d385-de62-42be-8420-7edce5606f44
@@ -7,7 +8,7 @@ https://github.com/user-attachments/assets/4461d385-de62-42be-8420-7edce5606f44
 
 [中文](#中文) | [English](#english)
 
-把 Wallpaper Engine 当前显示的壁纸实时同步为 DeepSeek Harness Web 界面的背景（磨砂玻璃风格），并提供 `wallpaper_share` 会话视图标签页用于控制显示器来源、透明度 / 模糊 / 阴影、渲染模式与专注模式。
+把 Wallpaper Engine 当前显示的壁纸实时同步为 DeepSeek Harness Web 界面的背景，并提供 `wallpaper_share` 标签页用于调整壁纸表现。支持**场景壁纸**的完整动效与应用壁纸的导入。
 
 > **纯显示同步**：只读取 WE 状态，不控制 / 不修改桌面壁纸（换壁纸请在 WE 内操作）。
 > **无敏感信息**：代码不含 Steam 用户名 / SteamID / 令牌；WE 安装目录运行时自动检测（注册表 `HKCU\Software\WallpaperEngine\installPath` → 常见 Steam 路径），检测不到时才需要手动配置。
@@ -17,32 +18,33 @@ https://github.com/user-attachments/assets/4461d385-de62-42be-8420-7edce5606f44
 <a name="中文"></a>
 # 中文
 
-## 增强模式兼容矩阵
+## 兼容矩阵
 
-| 壁纸类型 | 增强模式行为 |
-| --- | --- |
-| `video` | 播放源视频（支持 HTTP Range，可正常 seek） |
-| `web` | iframe 加载源页面 |
-| `image` | 显示源图 |
-| `scene` | **浏览器子集渲染器**（默认）：真实图层树 + transform + 已解码纹理 / 粒子 / puppet 动画合成进 canvas；或**外部 renderer**（`sceneRendererPath` + WS 帧流）；renderer 不可用/失败 → 提取 pkg 内嵌高清纹理 → 预览 |
-| `application` / `other` | 回退静态预览 |
+| 壁纸类型 | 增强模式 | 性能模式
+| --- | --- | --- |
+| `video` | 播放源视频（支持 HTTP Range，可正常 seek） | 显示静态预览图或gif |
+| `web` | iframe 加载源页面 | 显示静态预览图或gif |
+| `image` | 显示源图 | 显示源图 |
+| `scene` | 读取pkg并由**浏览器渲染器** | 显示pkg静态纹理 |
+| `application` | 可从wallpaper_share预览 | 可从wallpaper_share预览
 
 > scene 增强的完整 fallback 链与各层实现（渲染模式 / 纹理解码 / 粒子 / puppet）见 **[docs/scene-fallback.md](docs/scene-fallback.md)**。
 
 ## 功能
 
-- **实时同步**：在 Wallpaper Engine 中应用壁纸后，页面背景约 2 秒内自动跟随
-- **多显示器**：自动跟随"最近变化"的一台；复数显示器时可手动锁定某台作为背景来源
-- **视觉效果滑块（即时生效）**：面板透明度 0–100% / 背景模糊 0–30px / 阴影深度 0–100%
-- **渲染模式切换**：性能（静态预览图，默认）⇄ 增强（加载壁纸源内容）
-- **Scene 实时渲染（新增）**：scene 壁纸增强模式默认走**浏览器子集渲染器**（真实 `scene.json` 图层树 + transform + 已解码纹理合成进 canvas，含粒子与 puppet 动画）；显式配置 `sceneRendererPath` 后走独立 renderer 子进程（offscreen，不弹窗）→ WebSocket 帧流；完整回退链见 [docs/scene-fallback.md](docs/scene-fallback.md)
-- **专注模式 🎯**：任务进行中自动切换为 30% / 15px / 90%，任务完成后自动切换为 9% / 6px / 40%
+- **实时同步**：在 Wallpaper Engine 切换壁纸后，harness页面背景自动跟随
+- **多显示器**：复数显示器时可手动锁定某台作为背景来源
+- **视觉效果滑块**：支持面板透明度/ 背景模糊/ 阴影深度调整
+- **渲染模式切换**：性能（静态预览图）⇄ 增强（加载包括特效动画在内的所有壁纸内容）
+- **Scene 实时渲染（实验内容）**：scene 壁纸增强模式默认走**浏览器子集渲染器**（真实 `scene.json` 图层树 + transform + 已解码纹理合成进 canvas，含粒子与 puppet 动画）；显式配置 `sceneRendererPath` 后走独立 renderer 子进程（offscreen，不弹窗）→ WebSocket 帧流；完整回退链见 [docs/scene-fallback.md](docs/scene-fallback.md)
+- **专注模式**：随任务启停变化背景的复杂度以专注于当前任务内容
+- **后台任务可视化** 收纳侧边栏时，通过圆形ui感知任务进度：绿-空闲；蓝-任务进行；橙-需要手动介入
 - **同步开关** ⏻ 一键启停
 - 自诊断路由 `/we-sync/diag`（仅本机可访问，含 scene renderer 状态与纹理提取结果）
 
 ## 安装（官方 `dsh plugin` 通道，零手工配置）
 
-> 前置：DSH 已用 `dsh --profile web` 启动过至少一次。
+> 前置：DSH 已用 `dsh --profile web` 验证。
 
 ```bash
 # 任选其一：
@@ -135,117 +137,119 @@ gplv3
 
 # English
 <img width="1920" height="1080" alt="deepseek21" src="https://github.com/user-attachments/assets/4edaa26e-c5da-4801-b7b3-5ba04cd28184" />
-Sync the wallpaper currently displayed by Wallpaper Engine onto the DeepSeek Harness Web UI as a frosted-glass page background (display-only), with a `wallpaper_share` conversation-view tab for monitor selection, transparency / blur / shadow sliders, render-mode, and focus mode.
+Real-time synchronization of the wallpaper currently displayed in Wallpaper Engine to the background of the DeepSeek Harness Web interface, along with a `wallpaper_share` session view tab to control monitor source, transparency / blur / shadow, render modes, and focus mode.
 
-> **Display-only**: reads WE state only — never controls or changes your desktop wallpaper.
-> **No sensitive data**: no Steam username / SteamID / tokens. The WE install dir is auto-detected at runtime (registry `HKCU\Software\WallpaperEngine\installPath` → common Steam paths); manual config is only a fallback.
+> **Display-Only Sync**: Only reads WE status; does not control or modify desktop wallpapers (please change wallpapers within WE).  
+> **No Sensitive Data**: Code contains no Steam usernames / SteamIDs / tokens; WE installation directory is auto-detected at runtime (Registry `HKCU\Software\WallpaperEngine\installPath` → common Steam paths), requiring manual configuration only when detection fails.
 
-## Enhanced-mode compatibility matrix
+---
 
-| Wallpaper type | Enhanced-mode behavior |
-| --- | --- |
-| `video` | plays the source video (HTTP Range supported, so seeking works) |
-| `web` | loads the source page in an iframe |
-| `image` | shows the source image |
-| `scene` | **browser subset renderer** (default): real layer tree + transforms + decoded textures / particles / puppet animations composited into canvas; or **external renderer** (`sceneRendererPath` + WS frame stream); renderer unavailable/failed → extracted pkg texture → preview |
-| `application` / `other` | falls back to the static preview |
+## Compatibility Matrix
 
-> The full scene fallback chain and per-layer implementation (render modes / texture decoding / particles / puppet) is documented in **[docs/scene-fallback.md](docs/scene-fallback.md)**.
+| Wallpaper Type | Enhanced Mode | Performance Mode |
+| --- | --- | --- |
+| `video` | Plays source video (HTTP Range supported, seekable) | Shows static preview image or GIF |
+| `web` | Loads source page in iframe | Shows static preview image or GIF |
+| `image` | Displays source image | Displays source image |
+| `scene` | Reads PKG and rendered by the **browser renderer** | Displays PKG static texture |
+| `application` | Previewable via `wallpaper_share` | Previewable via `wallpaper_share` |
+
+> See **[docs/scene-fallback.md](docs/scene-fallback.md)** for the complete fallback chain and layer-by-layer implementations (render modes / texture decoding / particles / puppet) for Scene enhanced mode.
 
 ## Features
 
-- **Live sync**: after applying a wallpaper in Wallpaper Engine, the page background follows within ~2 seconds
-- **Multi-monitor**: follows the "most recently changed" monitor automatically; lock one as the background source when several monitors exist
-- **Instant visual sliders**: panel transparency 0–100% / background blur 0–30px / shadow depth 0–100%
-- **Render-mode toggle**: Performance (static preview, default) ⇄ Enhanced (loads the wallpaper source)
-- **Scene live rendering (new)**: scene wallpapers in enhanced mode use the **browser subset renderer** by default (real `scene.json` layer tree + transforms + decoded textures composited into canvas, including particles and puppet animations); with `sceneRendererPath` configured it runs a standalone renderer subprocess (offscreen, no window) → WebSocket frame stream; full fallback chain in [docs/scene-fallback.md](docs/scene-fallback.md)
-- **Focus mode 🎯**: auto-switches to 30% / 15px / 90% while a task runs, then 9% / 6px / 40% when all tasks finish
-- **Sync toggle** ⏻ one-click on/off
-- Self-diagnostic route `/we-sync/diag` (localhost only, includes scene renderer status and texture extraction results)
+- **Real-Time Sync**: Background updates automatically within ~2 seconds after applying a wallpaper in Wallpaper Engine.
+- **Multi-Monitor Support**: Automatically follows the "most recently changed" monitor; manually lock a specific monitor as the background source when multiple displays are connected.
+- **Visual Effect Sliders**: Panel opacity (0–100%) / Background blur (0–30px) / Shadow depth (0–100%).
+- **Render Mode Toggle**: Performance (static preview, default) ⇄ Enhanced (loads wallpaper source content).
+- **Scene Live Rendering (Experimental)**: Scene wallpapers in enhanced mode default to the **browser subset renderer** (real `scene.json` layer tree + transforms + decoded textures composited into canvas, including particles and puppet animations); falls back to a standalone renderer subprocess (offscreen, no popups) → WebSocket frame stream when `sceneRendererPath` is explicitly configured. Full fallback chain documented in [docs/scene-fallback.md](docs/scene-fallback.md).
+- **Focus Mode**: Automatically switches to 30% / 15px / 90% while tasks are running, and restores to 9% / 6px / 40% upon completion.
+- **Sync Toggle** ⏻: One-click start/stop.
+- Self-diagnostic route `/we-sync/diag` (localhost only, includes scene renderer status and texture extraction results).
 
-## Install (official `dsh plugin` flow, zero manual config)
+## Installation (Official `dsh plugin` Channel, Zero Manual Config)
 
-> Prerequisite: DSH has been started at least once with `dsh --profile web`.
+> Prerequisite: DSH has been verified with `dsh --profile web`.
 
 ```bash
-# Pick one:
+# Choose one of the following:
 dsh plugin --profile web add github:YRN-playmaker/dsh-wallpaper_share
-#   install from GitHub (the repo ships prebuilt lib/, no build allowance needed)
+#   Install from GitHub (includes prebuilt lib/, no build toolchain required)
 dsh plugin --profile web add dsh-wallpaper_share
-#   install from npm (once published)
+#   Install from npm (after release)
 dsh plugin --profile web add ./dsh-wallpaper_share-0.2.0.tgz
-#   install from the local tarball
+#   Install from local tarball
 ```
 
 ```bash
-# Install the test branch (latest dev build: Scene rendering / particles / puppet animations):
+# Install test branch (latest dev build with Scene rendering / particles / puppet animation):
 dsh plugin --profile web add github:YRN-playmaker/dsh-wallpaper_share#test
 ```
 
 ```bash
-# Restart dsh (web profile) and open the page — the wallpaper_share tab appears
+# Restart dsh (web profile) and open the page to see the wallpaper_share tab
 ```
 
-**No config files to edit by hand**: the `cordis.patch.yml` referenced by `dsh.bundle.patch` is added to the profile's bundle layers automatically on install. Its single row is both a host row (node half: polling + HTTP routes) and a `dsh.client` roster row (the prebuilt browser half `lib/client.js` is injected into the page by the module system). The published package ships **prebuilt artifacts**, so users never build anything.
+**No manual configuration required**: The `cordis.patch.yml` specified by `dsh.bundle.patch` is automatically added to the profile's bundle layer during installation. Its entry acts simultaneously as a host entry (Node side: polling + HTTP routing) and a `dsh.client` roster entry (browser side: prebuilt `lib/client.js` automatically injected by the module system). The package **ships with prebuilt artifacts**, requiring zero user-side builds.
 
-## Build from source (developers)
+## Build from Source (Developers)
 
-1. Copy the repo root (`package.json` / `src/` / `tsconfig.json` / `tsdown.config.ts`) into your DSH checkout as `packages/client/we-sync/`;
-2. `pnpm install`
-3. `pnpm --filter dsh-wallpaper_share exec tsc -b`
-4. `pnpm --filter dsh-wallpaper_share bundle`
-5. Artifacts land in `packages/client/we-sync/lib/` (`index.js` node half + `client.js` browser half); copy them back to the repo `lib/` and run `pnpm pack` for a new tarball.
+1. Copy this repository root (`package.json` / `src/` / `tsconfig.json` / `tsdown.config.ts`) into your DSH checkout at `packages/client/we-sync/`;
+2. Run `pnpm install`;
+3. Run `pnpm --filter dsh-wallpaper_share exec tsc -b`;
+4. Run `pnpm --filter dsh-wallpaper_share bundle`;
+5. Outputs will be in `packages/client/we-sync/lib/` (`index.js` for Node + `client.js` for browser). Copy them back to this repository's `lib/` and run `pnpm pack` to generate a new tarball.
 
-> You can also run `pnpm install && pnpm build` directly in this repo root (`tsdown` standalone build, no DSH checkout required).
+> You can also run `pnpm install && pnpm build` directly in this repository root (`tsdown` standalone build, independent of DSH checkout).
 
 ## Configuration
 
-`CONFIG` at the top of `src/index.ts`:
+Top of `src/index.ts` under `CONFIG`:
 
-| Key | Default | Meaning |
+| Option | Default | Description |
 | --- | --- | --- |
-| `wallpaperEngineDir` | `''` (auto-detect) | Manual install dir when detection fails |
-| `workshopContentDir` | `''` (auto-derived) | Workshop content directory |
-| `pollIntervalMs` | `2000` | Polling interval |
-| `previewMaxBytes` | `6291456` | Preview size cap |
-| `sceneRendererPath` | `''` (built-in reference renderer) | External scene renderer executable; empty = built-in reference renderer (diagnostic animation) |
-| `wallpaperEngineAssetsDir` | `''` (auto-derived) | WE engine assets dir (`<weDir>/assets`; renderer unavailable when missing) |
+| `wallpaperEngineDir` | `''` (Auto-detect) | Manually specify installation directory if auto-detection fails |
+| `workshopContentDir` | `''` (Auto-derived) | Steam Workshop content directory |
+| `pollIntervalMs` | `2000` | Polling interval in ms |
+| `previewMaxBytes` | `6291456` | Maximum preview file size limit |
+| `sceneRendererPath` | `''` (Built-in reference renderer) | External scene renderer executable; leave empty to use built-in reference renderer (diagnostic animation) |
+| `wallpaperEngineAssetsDir` | `''` (Auto-derived) | WE engine assets directory (defaults to `<weDir>/assets`; renderer unavailable if missing) |
 | `sceneRenderWidth` | `1920` | Scene renderer output width |
 | `sceneRenderHeight` | `1080` | Scene renderer output height |
 | `sceneRenderFps` | `30` | Scene renderer target FPS |
 | `sceneRenderQuality` | `80` | JPEG/WebP frame quality (0..100) |
-| `sceneRenderMode` | `'auto'` | `'auto'` (browser subset renderer by default; external when `sceneRendererPath` set) \| `'browser'` \| `'external'` |
+| `sceneRenderMode` | `'auto'` | `'auto'` (browser subset renderer first; external if `sceneRendererPath` is configured) | `'browser'` | `'external'` |
 | `particleRateScale` | `1` | Particle emission rate scale (WE rate unit = particles per second) |
 | `particleSizeScale` | `1` | Particle size scale |
 
 ## Troubleshooting
 
-- `http://127.0.0.1:3080/we-sync/diag`: internal state (`kind` / `fingerprint` / `weDir` / `lastError` / per-monitor `sceneImage` extraction results / scene renderer capabilities / status / fallback layer);
-- `lastError` says the install dir was not found → set `CONFIG.wallpaperEngineDir` manually and rebuild / reinstall;
-- Scene enhanced mode shows no dynamic footage → check `scene.available`: `false` means the renderer or assets dir is missing (`reason` is shown in `/we-sync/diag`);
-- Nothing changes on the page → refresh, and confirm the `wallpaper_share` tab exists.
+- `http://127.0.0.1:3080/we-sync/diag`: View internal status (`kind` / `fingerprint` / `weDir` / `lastError` / per-monitor `sceneImage` extraction results / **scene renderer capabilities / status / fallback layer**).
+- `lastError` indicates installation directory not found → Manually specify `CONFIG.wallpaperEngineDir` in source and rebuild/reinstall.
+- Scene enhanced mode has no dynamic visuals → Check `scene.available`: `false` indicates missing renderer or assets directory (refer to `reason` in `/we-sync/diag`).
+- No UI changes → Refresh the page and confirm the `wallpaper_share` tab is present in the tab bar.
 
-## Known limitations
+## Known Limitations
 
-- For scene wallpapers, the "real dynamic footage" depends on the render mode: the default browser subset renderer composites the layer tree + transforms + decoded textures/particles/puppet animations (shader effects / SceneScript / keyframe animations are future work); the external renderer (`sceneRendererPath`) provides true rendering but must be provided by the user (e.g. a WSL2-wrapped headless linux-wallpaperengine, GPL, standalone);
-- The reference renderer transmits full 1920×1080 RGBA frames — CPU-heavy (~24-27fps @960×540 measured locally); a real renderer should output JPEG/WebP to reduce bandwidth;
-- Multi-monitor setups use `lastselectedmonitor` (or the first monitor);
-- Visual settings live in page memory only and reset on refresh (72% / 6px / 30%).
+- "True dynamic rendering" for Scene wallpapers depends on the render mode: the default browser subset renderer handles **layer tree + transforms + texture / particle / puppet animation compositing** (shader effects / SceneScript / keyframe animations are planned for future updates); an external renderer (`sceneRendererPath`) provides full native rendering but must be provided separately (e.g., WSL2-wrapped headless linux-wallpaperengine, GPL, standalone).
+- The reference renderer transmits full 1920×1080 RGBA frames, resulting in higher CPU usage (~24–27 fps @ 960×540 benchmarked locally); dedicated renderers should stream JPEG/WebP to reduce bandwidth.
+- Multi-monitor setups default to `lastselectedmonitor` (or display 1 if unavailable).
+- Visual slider parameters are stored in page memory only and reset to defaults (72% / 6px / 30%) on reload.
 
-## Contents
+## Directory Structure
 
-- `package.json` — manifest: `dsh.bundle.patch` → `cordis.patch.yml`, `dsh.client` → browser half, `exports["./client"]` → prebuilt `lib/client.js`
-- `cordis.patch.yml` — the bundle patch layer (host row + dsh.client roster row)
-- `src/index.ts` — node half source (polling / HTTP routes / scene-texture extraction / HTTP Range / SceneAdapter / SceneModel routes / WebSocket frame stream)
-- `src/scene/` — SceneAdapter modules (protocol / capability probe / renderer process / WebSocket / fallback / PKGV0001 parsing / SceneModel layer model / .tex decoding / puppet mdl parsing)
-- `src/client/` — browser half source (theme overrides / background layers / SceneCanvas / SceneModelRenderer subset renderer / ParticleRuntime / wallpaper_share panel)
-- `docs/` — format & implementation docs (`tex-format-findings.md` / `mdl-skinning-findings.md` / `scene-fallback.md`)
-- `tools/scene-renderer/` — built-in reference renderer (protocol contract implementation; real renderers replace it with the same protocol)
-- `lib/` — prebuilt artifacts (zero build for users; GitHub installs need no build allowance)
-- `dsh-wallpaper_share-0.2.0.tgz` — release tarball (attach it to GitHub Releases)
-- `install.ps1` — optional one-shot installer (uses the official `dsh plugin add` flow)
-- `CHANGELOG.md` — release notes
+- `package.json` — Package manifest: `dsh.bundle.patch` → `cordis.patch.yml`, `dsh.client` → browser side, `exports["./client"]` → prebuilt `lib/client.js`
+- `cordis.patch.yml` — Bundle patch layer (host entry + dsh.client roster entry)
+- `src/index.ts` — Node-side source (polling / HTTP routes / scene texture extraction / HTTP Range / SceneAdapter integration / SceneModel routing / WebSocket frame streaming)
+- `src/scene/` — SceneAdapter module (protocol / capability probing / renderer process / WebSocket / fallback / **PKGV0001 parsing / SceneModel layer model / .tex decoding / puppet mdl parsing**)
+- `src/client/` — Browser-side source (theme overrides / background layer / SceneCanvas / **SceneModelRenderer subset renderer / ParticleRuntime** / wallpaper_share panel)
+- `docs/` — Format specifications & technical docs (`tex-format-findings.md` / `mdl-skinning-findings.md` / **`scene-fallback.md`**)
+- `tools/scene-renderer/` — Built-in reference renderer (implements protocol contract; drop-in replacement target for native renderers)
+- `lib/` — Prebuilt distribution artifacts (zero-build for end users; GitHub direct install requires no build pipeline)
+- `dsh-wallpaper_share-0.2.0.tgz` — Release tarball (GitHub Releases asset)
+- `install.ps1` — Optional one-click install script (via official `dsh plugin add` flow)
+- `CHANGELOG.md` — Release history & changelog
 
 ## License
 
-gplv3.
+GPL-3.0

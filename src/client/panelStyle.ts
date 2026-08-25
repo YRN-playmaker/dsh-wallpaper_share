@@ -212,4 +212,90 @@ export const PANEL_CSS = `
   color: var(--dsw-alias-label-secondary);
   padding: 10px 2px;
 }
+
+/* 壁纸读取位置：自定义壁纸目录管理（App Launcher 与视觉效果之间） */
+.wesync-dirs {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-bottom: 12px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--dsw-alias-border-l1);
+}
+
+.wesync-dir-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.wesync-dir-input {
+  flex: 1;
+  min-width: 0;
+  padding: 5px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+  font-family: inherit;
+}
+
+.wesync-dir-input::placeholder {
+  color: var(--dsw-alias-label-secondary);
+  opacity: 0.7;
+}
+
+.wesync-dir-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 140px;
+  overflow-y: auto;
+}
+
+.wesync-dir-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-2);
+  border: 1px solid var(--dsw-alias-border-l1);
+}
+
+.wesync-dir-path {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--dsw-alias-label-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+}
+
+.wesync-dir-remove {
+  flex: 0 0 auto;
+  padding: 2px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+  font-size: 12px;
+  font-family: inherit;
+}
+
+.wesync-dir-remove:hover {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.5);
+  color: #fca5a5;
+}
+
+.wesync-dir-status {
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+}
 `

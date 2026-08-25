@@ -8,7 +8,7 @@
  * 无敏感信息。安装目录运行时自动检测（注册表 → 常见 Steam 路径），
  * 检测不到时在下方 CONFIG.wallpaperEngineDir 手动指定。
  */
-import { createReadStream, existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
+import { createReadStream, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
 import { execFile, execFileSync } from 'node:child_process'
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
@@ -769,6 +769,29 @@ export function apply(ctx: CordisCtx): void {
   let appsCache: AppEntry[] | null = null
   let appsCacheMtime = 0
 
+  /** 用户自定义壁纸读取目录（持久化到 $DSH_HOME/storages/we-sync-app-dirs.json）。
+   *  支持两种形态：目录本身是一个壁纸（内含 project.json），或是一个集合目录（子目录各为壁纸）。 */
+  let appDirs: string[] = []
+  function appDirsFile(): string {
+    const home = (process.env.DSH_HOME ?? process.env.USERPROFILE ?? '') + '/.dsh'
+    return home + '/storages/we-sync-app-dirs.json'
+  }
+  function loadAppDirs(): string[] {
+    try {
+      const parsed = JSON.parse(readText(appDirsFile())) as unknown
+      if (Array.isArray(parsed)) return parsed.filter((x): x is string => typeof x === 'string').map(normalize)
+    } catch { /* 无配置文件 */ }
+    return []
+  }
+  function saveAppDirs(): void {
+    try {
+      const file = appDirsFile()
+      mkdirSync(file.slice(0, file.lastIndexOf('/')), { recursive: true })
+      writeFileSync(file, JSON.stringify(appDirs, null, 2), 'utf8')
+    } catch (e) { console.log('[we-sync] 保存自定义壁纸目录失败:', (e as Error).message ?? e) }
+  }
+  appDirs = loadAppDirs()
+
   function scanApps(weDir: string, workshopDir: string): AppEntry[] {
     const roots: string[] = []
     try {
@@ -780,44 +803,118 @@ export function apply(ctx: CordisCtx): void {
       const defaults = weDir + '/projects/defaultprojects'
       if (exists(defaults)) roots.push(defaults)
     } catch { /* 忽略 */ }
+    // 用户自定义壁纸读取目录：既支持"目录本身是壁纸"（有 project.json），
+    // 也支持"集合目录"（每个子目录是壁纸），通过 isDirWallpaper 区分
+    for (let d of appDirs) {
+      d = normalize(d)
+      try {
+        if (d !== '' && exists(d)) roots.push(d)
+      } catch { /* 跳过不可读目录 */ }
+    }
     const out: AppEntry[] = []
     const seen = new Set<string>()
-    const visitDir = (root: string): void => {
+    /** 处理单个壁纸目录（该目录必须有 project.json） */
+    const visitWallpaperDir = (dir: string): void => {
+      if (seen.has(dir)) return
+      seen.add(dir)
+      const projectPath = dir + '/project.json'
+      let title = dir.slice(dir.lastIndexOf('/') + 1)
+      let type = ''
+      let file = ''
+      let preview: string | null = null
+      try {
+        const project = JSON.parse(readText(projectPath)) as { title?: unknown; type?: unknown; file?: unknown; preview?: unknown }
+        if (project !== null && typeof project === 'object') {
+          if (project.title !== undefined) title = String(project.title)
+          if (project.type !== undefined) type = String(project.type)
+          if (project.file !== undefined) file = String(project.file)
+          if (typeof project.preview === 'string' && project.preview !== '') {
+            const p = normalize(dir + '/' + project.preview)
+            if (exists(p)) preview = p
+          }
+        }
+      } catch { return }
+      if (type.toLowerCase() !== 'application') return
+      if (preview === null) {
+        const probed = probePreview(dir)
+        preview = probed !== null ? probed.path : null
+      }
+      out.push({ id: dir, title, dir, file, preview })
+    }
+    /** 遍历集合目录下的每个子目录（每个子目录当壁纸扫） */
+    const visitCollectionDir = (root: string): void => {
       let entries: string[]
       try { entries = readdirSync(root) } catch { return }
       for (const name of entries) {
         const dir = normalize(root + '/' + name)
-        const projectPath = dir + '/project.json'
-        if (!exists(projectPath)) continue
-        let title = name
-        let type = ''
-        let file = ''
-        let preview: string | null = null
-        try {
-          const project = JSON.parse(readText(projectPath)) as { title?: unknown; type?: unknown; file?: unknown; preview?: unknown }
-          if (project !== null && typeof project === 'object') {
-            if (project.title !== undefined) title = String(project.title)
-            if (project.type !== undefined) type = String(project.type)
-            if (project.file !== undefined) file = String(project.file)
-            if (typeof project.preview === 'string' && project.preview !== '') {
-              const p = normalize(dir + '/' + project.preview)
-              if (exists(p)) preview = p
-            }
-          }
-        } catch { /* project.json 不可用 */ }
-        if (type.toLowerCase() !== 'application') continue
-        if (seen.has(dir)) continue
-        seen.add(dir)
-        if (preview === null) {
-          const probed = probePreview(dir)
-          preview = probed !== null ? probed.path : null
-        }
-        out.push({ id: name, title, dir, file, preview })
+        if (exists(dir + '/project.json')) visitWallpaperDir(dir)
       }
     }
-    for (const root of roots) visitDir(root)
+    for (const root of roots) {
+      // 如果目录本身有 project.json，把它当作壁纸；否则当作集合目录遍历子目录
+      if (exists(root + '/project.json')) visitWallpaperDir(root)
+      else visitCollectionDir(root)
+    }
     return out
   }
+
+  /** 缓存读取：所有 apps 路由共用同一 30s 缓存，避免每次请求全量扫描 100+ 目录的 project.json */
+  function getCachedApps(weDir: string, workshopDir: string): AppEntry[] {
+    const now = Date.now()
+    if (appsCache === null || now - appsCacheMtime > 30000) {
+      appsCache = scanApps(weDir, workshopDir)
+      appsCacheMtime = now
+    }
+    return appsCache
+  }
+
+  disposers.push(webServer.register({
+    kind: 'exact',
+    path: '/we-sync/apps/dirs',
+    handler(_req, res) {
+      sendJson(res, { dirs: appDirs })
+    },
+  }))
+
+  disposers.push(webServer.register({
+    kind: 'exact',
+    path: '/we-sync/apps/dirs/add',
+    handler(req, res) {
+      const url = req.url ?? ''
+      const q = url.indexOf('?')
+      const dir = q >= 0 ? decodeURIComponent(url.slice(q + 1).replace(/^dir=/, '')) : ''
+      const norm = normalize(dir.trim())
+      if (norm === '' || !exists(norm)) {
+        res.statusCode = 400
+        sendJson(res, { error: '目录不存在', dirs: appDirs })
+        return
+      }
+      if (!appDirs.includes(norm)) {
+        appDirs.push(norm)
+        saveAppDirs()
+        appsCache = null // 强制下次重扫
+      }
+      sendJson(res, { dirs: appDirs })
+    },
+  }))
+
+  disposers.push(webServer.register({
+    kind: 'exact',
+    path: '/we-sync/apps/dirs/remove',
+    handler(req, res) {
+      const url = req.url ?? ''
+      const q = url.indexOf('?')
+      const dir = q >= 0 ? decodeURIComponent(url.slice(q + 1).replace(/^dir=/, '')) : ''
+      const norm = normalize(dir.trim())
+      const idx = appDirs.indexOf(norm)
+      if (idx >= 0) {
+        appDirs.splice(idx, 1)
+        saveAppDirs()
+        appsCache = null
+      }
+      sendJson(res, { dirs: appDirs })
+    },
+  }))
 
   disposers.push(webServer.register({
     kind: 'exact',
@@ -828,14 +925,9 @@ export function apply(ctx: CordisCtx): void {
         return
       }
       const workshopDir = resolveWorkshopDir(state.weDir)
-      // 缓存 30s：扫描 100+ 目录的 project.json 有 IO 开销，不必每次点击都扫
-      const now = Date.now()
-      if (appsCache === null || now - appsCacheMtime > 30000) {
-        appsCache = scanApps(state.weDir, workshopDir)
-        appsCacheMtime = now
-      }
+      const apps = getCachedApps(state.weDir, workshopDir)
       sendJson(res, {
-        apps: appsCache.map((a) => ({ id: a.id, title: a.title, file: a.file, hasPreview: a.preview !== null })),
+        apps: apps.map((a) => ({ id: a.id, title: a.title, file: a.file, hasPreview: a.preview !== null })),
       })
     },
   }))
@@ -849,7 +941,7 @@ export function apply(ctx: CordisCtx): void {
       const q = url.indexOf('?')
       const id = q >= 0 ? decodeURIComponent(url.slice(q + 1).replace(/^id=/, '')) : ''
       const workshopDir = resolveWorkshopDir(state.weDir)
-      const apps = scanApps(state.weDir, workshopDir)
+      const apps = getCachedApps(state.weDir, workshopDir)
       const app = apps.find((a) => a.id === id)
       if (app === null || app === undefined || app.preview === null) {
         res.statusCode = 404
@@ -873,18 +965,18 @@ export function apply(ctx: CordisCtx): void {
         return
       }
       const workshopDir = resolveWorkshopDir(state.weDir)
-      const apps = scanApps(state.weDir, workshopDir)
+      const apps = getCachedApps(state.weDir, workshopDir)
       const app = apps.find((a) => a.id === id)
       if (app === undefined) {
         res.statusCode = 404
         res.end('app not found')
         return
       }
-      // 打开壁纸所在文件夹（资源管理器）；纯打开目录，不启动 exe/分卷程序
-      const target = app.file !== '' ? app.dir + '/' + app.file : app.dir
-      execFile('explorer.exe', ['/select,' + target], { windowsHide: true }, () => {
-        // explorer /select 若目标已删除会静默失败；兜底直接打开目录
-        execFile('explorer.exe', [app.dir], { windowsHide: true }, () => { /* 忽略 */ })
+      // 打开壁纸所在文件夹。explorer.exe 对含中文/特殊字符路径的 /select, 参数解析有已知怪癖
+      // 且作为 GUI 程序 spawn 后立即返回，回调链不可靠；改用 DSH 宿主同款 PowerShell 方案：
+      // Invoke-Item -LiteralPath 保证路径按字面处理（不转义、不解析通配符），对目录直接在资源管理器中打开。
+      execFile('powershell.exe', ['-NoProfile', '-Command', "Invoke-Item -LiteralPath '" + app.dir.replace(/'/g, "''") + "'"], { windowsHide: true }, (err) => {
+        if (err !== null) console.log('[we-sync] apps/open 打开文件夹失败:', err.message)
       })
       sendJson(res, { opened: true, dir: app.dir })
     },

@@ -64,6 +64,18 @@ const DICT = {
     noPreview: '无预览',
     loadFailed: '列表加载失败',
     openFolderFailed: '打开文件夹失败',
+
+    // 壁纸读取位置（自定义目录）
+    dirsTitle: '壁纸读取位置',
+    dirsHint: '添加自己收藏的壁纸文件夹：可直接指向某个壁纸目录（含 project.json），或指向包含多个壁纸目录的集合文件夹',
+    dirPlaceholder: '粘贴本地壁纸目录路径，如 D:\\MyWallpapers',
+    addDir: '添加',
+    removeDir: '移除',
+    dirEmpty: '尚未添加自定义目录（默认扫描 workshop + projects）',
+    dirExists: '该目录已在列表中',
+    dirNotFound: '目录不存在或不可读',
+    dirAdded: '已添加目录，重新扫描中',
+    dirRemoved: '已移除目录',
   },
   en: {
     // Header & Wallpaper status
@@ -119,6 +131,18 @@ const DICT = {
     noPreview: 'No Preview',
     loadFailed: 'Failed to load list',
     openFolderFailed: 'Failed to open folder',
+
+    // Wallpaper read locations (custom dirs)
+    dirsTitle: 'Wallpaper Read Locations',
+    dirsHint: 'Add your own wallpaper folders: point to a single wallpaper dir (with project.json) or a collection folder containing wallpaper dirs',
+    dirPlaceholder: 'Paste a local wallpaper dir path, e.g. D:\\MyWallpapers',
+    addDir: 'Add',
+    removeDir: 'Remove',
+    dirEmpty: 'No custom dirs yet (defaults: workshop + projects)',
+    dirExists: 'Dir already in list',
+    dirNotFound: 'Dir missing or unreadable',
+    dirAdded: 'Dir added, rescanning',
+    dirRemoved: 'Dir removed',
   },
 }
 
@@ -190,11 +214,17 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
   const [appsOpen, setAppsOpen] = useState(false)
   const [apps, setApps] = useState<Array<{ id: string; title: string; file: string; hasPreview: boolean }>>([])
   const [appsError, setAppsError] = useState('')
+  const [dirs, setDirs] = useState<string[]>([])
+  const [dirInput, setDirInput] = useState('')
+  const [dirStatus, setDirStatus] = useState('')
 
   useEffect(() => store.subscribe(() => {
     setInfo(store.info)
     force((x) => x + 1)
   }), [])
+
+  // 挂载时加载自定义壁纸目录列表
+  useEffect(() => { void loadDirs() }, [])
 
   const flash = (text: string): void => {
     setStatus(text)
@@ -262,22 +292,68 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
   const onAppsToggle = async (): Promise<void> => {
     const next = !appsOpen
     setAppsOpen(next)
-    if (next && apps.length === 0) {
-      try {
-        const res = await fetch('/we-sync/apps', { cache: 'no-store' })
-        const body = (await res.json()) as { apps?: Array<{ id: string; title: string; file: string; hasPreview: boolean }>; error?: string }
-        if (body.error !== undefined) setAppsError(body.error)
-        else setApps(body.apps ?? [])
-      } catch {
-        setAppsError(t.loadFailed)
-      }
-    }
+    if (next) void loadApps()
   }
 
   const onAppOpen = (id: string): void => {
     void fetch('/we-sync/apps/open?id=' + encodeURIComponent(id), { cache: 'no-store' }).then((res) => {
       if (!res.ok) flash(t.openFolderFailed)
     }).catch(() => flash(t.openFolderFailed))
+  }
+
+  // 壁纸读取位置：加载自定义目录、添加/移除
+  const loadDirs = async (): Promise<void> => {
+    try {
+      const res = await fetch('/we-sync/apps/dirs', { cache: 'no-store' })
+      const body = (await res.json()) as { dirs: string[] }
+      setDirs(body.dirs ?? [])
+    } catch { /* 忽略 */ }
+  }
+
+  const loadApps = async (): Promise<void> => {
+    try {
+      const res = await fetch('/we-sync/apps', { cache: 'no-store' })
+      const body = (await res.json()) as { apps?: Array<{ id: string; title: string; file: string; hasPreview: boolean }>; error?: string }
+      if (body.error !== undefined) setAppsError(body.error)
+      else setApps(body.apps ?? [])
+    } catch {
+      setAppsError(t.loadFailed)
+    }
+  }
+
+  const onAddDir = async (): Promise<void> => {
+    const dir = dirInput.trim()
+    if (dir === '') return
+    // 检查是否已在列表中
+    if (dirs.some((d) => d.replace(/\\/g, '/') === dir.replace(/\\/g, '/'))) {
+      setDirStatus(t.dirExists)
+      return
+    }
+    try {
+      const res = await fetch('/we-sync/apps/dirs/add?dir=' + encodeURIComponent(dir), { cache: 'no-store' })
+      const body = (await res.json()) as { dirs: string[]; error?: string }
+      if (body.error !== undefined) {
+        setDirStatus(body.error)
+        return
+      }
+      setDirs(body.dirs ?? [])
+      setDirInput('')
+      setDirStatus(t.dirAdded)
+      // 重新加载 apps 列表
+      if (appsOpen) void loadApps()
+    } catch {
+      setDirStatus(t.dirNotFound)
+    }
+  }
+
+  const onRemoveDir = async (dir: string): Promise<void> => {
+    try {
+      const res = await fetch('/we-sync/apps/dirs/remove?dir=' + encodeURIComponent(dir), { cache: 'no-store' })
+      const body = (await res.json()) as { dirs: string[] }
+      setDirs(body.dirs ?? [])
+      setDirStatus(t.dirRemoved)
+      if (appsOpen) void loadApps()
+    } catch { /* 忽略 */ }
   }
 
   const wallpaper = info !== null && info.wallpaper !== null ? info.wallpaper : null
@@ -344,6 +420,33 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
       </div>
       <div className="wesync-card">
         <div className="wesync-apps">
+          <div className="wesync-dirs">
+            <div className="wesync-sub">{t.dirsTitle}</div>
+            <div className="wesync-sub" style={{ fontSize: 11, opacity: 0.85 }}>{t.dirsHint}</div>
+            <div className="wesync-dir-row">
+              <input
+                className="wesync-dir-input"
+                placeholder={t.dirPlaceholder}
+                value={dirInput}
+                onChange={(e) => setDirInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') void onAddDir() }}
+              />
+              <button className="wesync-btn" onClick={() => { void onAddDir() }}>{t.addDir}</button>
+            </div>
+            {dirStatus !== '' ? <div className="wesync-dir-status">{dirStatus}</div> : null}
+            {dirs.length === 0
+              ? <div className="wesync-dir-status">{t.dirEmpty}</div>
+              : (
+                  <div className="wesync-dir-list">
+                    {dirs.map((dir) => (
+                      <div key={dir} className="wesync-dir-item">
+                        <span className="wesync-dir-path" title={dir}>{dir}</span>
+                        <button className="wesync-dir-remove" onClick={() => { void onRemoveDir(dir) }}>{t.removeDir}</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+          </div>
           <div className="wesync-apps-head">
             <div className="wesync-sub">{t.appsTitle}</div>
             <button className="wesync-btn" onClick={() => { void onAppsToggle() }}>
