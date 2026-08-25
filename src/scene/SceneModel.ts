@@ -31,6 +31,8 @@ export interface ParticleSystemDesc {
   blending: string
   /** 材质 REFRACT 折射（雨滴/玻璃：采样背景折射变形，视觉透明） */
   refract: boolean
+  /** REFRACT 折射强度（材质 ui_editor_properties_refract_amount，可为负） */
+  refractAmount: number
   /** 动画模式（animationmode）："randomframe" = 粒子出生随机帧后固定（静态水珠） */
   animationMode: string | null
   /** 材质 overbright（genericparticle 的 g_Overbright，颜色亮度系数） */
@@ -38,14 +40,32 @@ export interface ParticleSystemDesc {
   /** 材质 textures（如 ["particle/fog/fog1"]，相对 assets/materials/ 的 .tex） */
   textureNames: string[]
   maxCount: number
+  /** starttime：创建时预模拟秒数（官方语义，见 particles-general "Start Time"） */
   startTime: number
+  /** 预设 flags bit0：worldspace（粒子忽略粒子系统自身的位移/旋转，仅用自身坐标） */
+  worldSpace: boolean
+  /**
+   * 预设 flags bit2：perspective rendering（particles-general "Perspective rendering"）。
+   * 2D 场景中开启深度：粒子按发射区 z 深度近大远小（位置/尺寸/速度 × depthFactor）。
+   * 如 "Rain perspective"（sphererandom dirs.z=1, distMax=1024）雨幕；leaves 树叶飘落。
+   */
+  perspective: boolean
+  /** 透视焦距（像素）：depthFactor = 1 / (1 + max(0, -z) / focal)，focal = (h/2)/tan(fov/2) */
+  perspectiveFocal: number
   emitter: {
     type: string
     rate: number
+    /** instantaneous：系统创建时立即生成的粒子数（rate=0 的一次性爆发，常用于子粒子） */
+    instantaneous: number
     directions: [number, number, number]
     distanceMin: number
     distanceMax: number | [number, number, number]
     origin: [number, number, number]
+    /** emitter 初始速度范围（无 velocityrandom 时的球面随机方向速度；如 sparktrails 0..1024） */
+    speedMin?: number
+    speedMax?: number
+    /** 发射区符号（sign "x y z"：0=双向，1=只正，-1=只负；如 sparktrails "0 1 0" 只在 y 上方生成） */
+    sign?: [number, number, number]
   }
   initializers: {
     lifetime?: [number, number]
@@ -58,7 +78,22 @@ export interface ParticleSystemDesc {
     colorMax?: [number, number, number]
     alphaMin?: number
     alphaMax?: number
-    turbulentVelocity?: { offset: number; scale: number }
+    /**
+     * turbulentvelocityrandom：噪声驱动的湍流速度（烟流"一阵阵风"效果）。
+     * direction = normalize(forward × offset + noise(phase, time·timescale) × scale)，
+     * velocity = direction × rand(speedMin, speedMax)。
+     * scale 控制方向发散度（1 = 全方向，0 = 沿 forward 直线）；
+     * offset 为 forward 方向的定向偏移；timescale 为噪声时间速度。
+     */
+    turbulentVelocity?: {
+      offset: number
+      scale: number
+      speedMin?: number
+      speedMax?: number
+      phaseMin?: number
+      phaseMax?: number
+      timescale?: number
+    }
     /** rotationrandom：随机初始旋转（弧度范围） */
     rotation?: [number, number]
     /** angularvelocityrandom：随机角速度（弧度/秒范围，取 z 分量） */
@@ -83,7 +118,11 @@ export interface ParticleSystemDesc {
     velocityRemap?: { min: [number, number, number]; max: [number, number, number] }
   }
   renderer: { type: string; length?: number; maxlength?: number; minlength?: number }
-  children: ParticleSystemDesc[]
+  /** spritesheet 序列播放速度倍数（sequence multiplier，如 smoke1=2 帧速×2） */
+  sequenceMultiplier: number
+  /** 子粒子系统（children：rain_screen 的 static/fast 子雨滴）；type 为预设 children[].type
+   *  （"eventfollow" = 在父粒子位置生成并跟随父粒子事件；undefined = 独立于父系统原点） */
+  children: Array<{ desc: ParticleSystemDesc; type: string | null }>
   /** 控制点线段（mapsequencebetweencontrolpoints）：粒子沿 cp0(原点)→cp1 线段分布。
    *  局部坐标；worldSpace 时 cp1 = 世界坐标 - origin。如 discharge 的"闪电包裹线段"。 */
   controlPointLine: [number, number] | null
@@ -189,6 +228,12 @@ export function buildSceneModel(pkgBuf: Uint8Array, opts?: { particleRateScale?:
   const width = toInt(proj?.width, 1920)
   const height = toInt(proj?.height, 1080)
 
+  // 透视焦距（perspective rendering = 粒子深度近大远小）：
+  //   focal = (height/2) / tan(fov/2)，fov 默认 50
+  const fovDeg = numOr(general.fov, 50)
+  const fovRad = fovDeg * Math.PI / 180
+  const perspectiveFocal = (height / 2) / Math.tan(fovRad / 2)
+
   const clearRaw = typeof general.clearcolor === 'string' ? general.clearcolor : null
   const clearColor = clearRaw !== null ? parseColor3(clearRaw) : null
 
@@ -205,7 +250,7 @@ export function buildSceneModel(pkgBuf: Uint8Array, opts?: { particleRateScale?:
     const refs = image !== undefined ? resolveTextureRefs(pkg, image) : { materials: [], textures: [], decodable: null }
     const decodable = refs.decodable
     const puppet = image !== undefined ? resolvePuppet(pkg, image) : null
-    const particle = typeof o.particle === 'string' ? resolveParticleSystem(pkg, o.particle, o) : null
+    const particle = typeof o.particle === 'string' ? resolveParticleSystem(pkg, o.particle, o, perspectiveFocal) : null
     layers.push({
       id: toInt(o.id, 0),
       name: typeof o.name === 'string' ? o.name : '',
@@ -420,7 +465,7 @@ function parseLayerEffects(o: Record<string, unknown>): LayerEffect[] {
 }
 
 /** 解析粒子预设（particles/*.json）→ 归一化粒子系统描述（best-effort 容错） */
-function resolveParticleSystem(pkg: ParsedPkg, ref: string, obj: Record<string, unknown>): ParticleSystemDesc | null {
+function resolveParticleSystem(pkg: ParsedPkg, ref: string, obj: Record<string, unknown>, perspectiveFocal: number): ParticleSystemDesc | null {
   try {
     const buf = pkg.read(ref)
     if (buf === null) return null
@@ -431,6 +476,7 @@ function resolveParticleSystem(pkg: ParsedPkg, ref: string, obj: Record<string, 
     let blending = 'translucent'
     let overbright = 1
     let refract = false
+    let refractAmount = 0
     if (matRef !== '') {
       try {
         const mat = parseJsonLike(pkg.read(matRef) as Uint8Array) as { passes?: Array<{ textures?: unknown; blending?: string; constantshadervalues?: Record<string, unknown>; combos?: Record<string, unknown> }> }
@@ -443,6 +489,9 @@ function resolveParticleSystem(pkg: ParsedPkg, ref: string, obj: Record<string, 
             if (csv !== undefined && typeof csv === 'object') {
               const ob = Number(csv.ui_editor_properties_overbright)
               if (Number.isFinite(ob) && ob > 0) overbright = ob
+              // 折射强度（官方 g_RefractAmount，可为负，如 rain_screen -0.1）
+              const ra = Number(csv.ui_editor_properties_refract_amount)
+              if (Number.isFinite(ra)) refractAmount = ra
             }
             if (Array.isArray(pass.textures)) {
               for (const t of pass.textures) {
@@ -469,12 +518,19 @@ function resolveParticleSystem(pkg: ParsedPkg, ref: string, obj: Record<string, 
     const emitter = {
       type: typeof em.name === 'string' ? em.name : 'sphererandom',
       rate,
+      instantaneous: toInt(em.instantaneous, 0),
       directions: parseVec3(em.directions, [1, 1, 0]),
       distanceMin: numOr(em.distancemin, 0),
       distanceMax: typeof em.distancemax === 'string' && em.distancemax.includes(' ')
         ? parseVec3(em.distancemax, [1, 1, 1])
         : numOr(em.distancemax, 1),
       origin: parseVec3(em.origin, [0, 0, 0]),
+      // emitter 初始速度（speedmin/speedmax）：sphererandom/boxrandom 在无 velocityrandom
+      // 时也用球面随机方向 × speed 生成初始速度（如 sparktrails 0..1024 火花四溅）
+      speedMin: em.speedmin !== undefined ? numOr(em.speedmin, 0) : undefined,
+      speedMax: em.speedmax !== undefined ? numOr(em.speedmax, 0) : undefined,
+      // 发射区符号（sign）：sparktrails "0 1 0" → y 只正（火花从父粒子上方爆发）
+      sign: em.sign !== undefined ? parseVec3(em.sign, [0, 0, 0]) : undefined,
     }
 
     const initializers: ParticleSystemDesc['initializers'] = {}
@@ -494,8 +550,30 @@ function resolveParticleSystem(pkg: ParsedPkg, ref: string, obj: Record<string, 
         initializers.colorMin = cmn
         initializers.colorMax = init.max !== undefined ? parseVec3(init.max, cmn) : cmn
       }
-      else if (name === 'turbulentvelocityrandom') initializers.turbulentVelocity = { offset: numOr(init.offset, -0.5), scale: numOr(init.scale, 0.1) }
-      else if (name === 'rotationrandom') initializers.rotation = [mn, mx !== 0 ? mx : Math.PI * 2]
+      else if (name === 'turbulentvelocityrandom') {
+        // 噪声驱动湍流速度（particles-initializer "Turbulent velocity random"）：
+        //   speedmin/speedmax = 速度范围；scale = 方向发散度；offset = forward 偏移；
+        //   phasemin/phasemax = 每粒子相位；timescale = 噪声时间速度（noise speed）
+        const smin = init.speedmin !== undefined ? numOr(init.speedmin, 0) : undefined
+        const smax = init.speedmax !== undefined ? numOr(init.speedmax, 0) : undefined
+        initializers.turbulentVelocity = {
+          offset: init.offset !== undefined ? numOr(init.offset, -0.5) : -0.5,
+          scale: init.scale !== undefined ? numOr(init.scale, 0.1) : 0.1,
+          speedMin: smin,
+          speedMax: smax,
+          phaseMin: init.phasemin !== undefined ? numOr(init.phasemin, 0) : undefined,
+          phaseMax: init.phasemax !== undefined ? numOr(init.phasemax, 1) : undefined,
+          timescale: init.timescale !== undefined ? numOr(init.timescale, 0.1) : undefined,
+        }
+      }
+      else if (name === 'rotationrandom') {
+        // WE 官方 rotationrandom 的 min/max 为 vec3 字符串（如 "0 0 6"），
+        // 取 z 分量（绕屏幕法线旋转，即 sprite 在屏幕面上的旋转角）
+        const rmn = parseVec3(init.min, [0, 0, 0])
+        const rmx = parseVec3(init.max, [0, 0, 0])
+        const rz = rmx[2] !== 0 ? rmx[2] : Math.PI * 2
+        initializers.rotation = [rmn[2] !== 0 ? rmn[2] : 0, Math.max(rz, rmn[2])]
+      }
       else if (name === 'angularvelocityrandom') {
         const v = parseVec3(init.min, [0, 0, 0])
         const w = parseVec3(init.max, [0, 0, 0])
@@ -540,13 +618,23 @@ function resolveParticleSystem(pkg: ParsedPkg, ref: string, obj: Record<string, 
     const renderers = Array.isArray(preset.renderer) ? preset.renderer as Record<string, unknown>[] : []
     const rd = renderers[0] ?? {}
     const renderer = { type: typeof rd.name === 'string' ? rd.name : 'sprite', length: numOr(rd.length, undefined), maxlength: numOr(rd.maxlength, undefined), minlength: numOr(rd.minlength, undefined) }
+    // sequence multiplier：spritesheet 序列播放速度倍数（particles-general "Sequence multiplier"，
+    // 如 smoke1=2 → 帧速 ×2；null/0 → 1）
+    const seqMultRaw = preset.sequencemultiplier
+    const sequenceMultiplier = typeof seqMultRaw === 'number' && Number.isFinite(seqMultRaw) && seqMultRaw > 0 ? seqMultRaw : 1
 
-    const children: ParticleSystemDesc[] = []
+    const children: Array<{ desc: ParticleSystemDesc; type: string | null }> = []
     if (Array.isArray(preset.children)) {
       for (const c of preset.children) {
         if (c !== null && typeof c === 'object' && typeof (c as { name?: unknown }).name === 'string') {
-          const child = resolveParticleSystem(pkg, (c as { name: string }).name, obj)
-          if (child !== null) children.push(child)
+          const child = resolveParticleSystem(pkg, (c as { name: string }).name, obj, perspectiveFocal)
+          if (child !== null) {
+            children.push({
+              desc: child,
+              // children[].type：eventfollow = 在父粒子位置生成并跟随父粒子事件
+              type: typeof (c as { type?: unknown }).type === 'string' ? (c as { type: string }).type : null,
+            })
+          }
         }
       }
     }
@@ -563,7 +651,7 @@ function resolveParticleSystem(pkg: ParsedPkg, ref: string, obj: Record<string, 
     // 不 clamp——fog 0.15-0.2 × 2 = 0.3-0.4）。旧实现 clamp 成 1 使雾偏淡。
     if (typeof override.alpha === 'number') {
       const f = Math.max(0, override.alpha)
-      if (initializers.alphaMin !== undefined) {
+      if (initializers.alphaMin !== undefined && initializers.alphaMax !== undefined) {
         initializers.alphaMin *= f
         initializers.alphaMax *= f
       } else {
@@ -627,15 +715,21 @@ function resolveParticleSystem(pkg: ParsedPkg, ref: string, obj: Record<string, 
       materialRef: matRef,
       blending,
       refract,
+      refractAmount,
       animationMode: typeof preset.animationmode === 'string' ? preset.animationmode : null,
       overbright,
       textureNames,
       maxCount: maxcount,
       startTime: numOr(preset.starttime, 0),
+      worldSpace: (numOr(preset.flags, 0) & 1) !== 0,
+      // flags bit2 = perspective rendering（2D 场景深度，近大远小）
+      perspective: (numOr(preset.flags, 0) & 4) !== 0,
+      perspectiveFocal,
       emitter,
       initializers,
       operators: ops,
       renderer,
+      sequenceMultiplier,
       children,
       controlPointLine,
       sequenceCount,

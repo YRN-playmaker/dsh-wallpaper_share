@@ -16,6 +16,8 @@ import type { GlParticle } from './ParticleGL.ts'
 interface Particle {
   x: number
   y: number
+  /** 深度（perspective rendering：发射区 z，局部坐标；影响屏幕缩放近大远小） */
+  z: number
   vx: number
   vy: number
   life: number
@@ -63,16 +65,44 @@ export class ParticleRuntime {
   private frames = 0
   private fw = 0
   private fh = 0
-  /** 子粒子系统（children：如 rain_screen 的 static/fast 子雨滴） */
-  private children: ParticleRuntime[] = []
+  /** 子粒子系统（children：如 rain_screen 的 static/fast 子雨滴）；
+   *  type="eventfollow" 的子系在父粒子位置生成并跟随父粒子事件 */
+  private children: Array<{ rt: ParticleRuntime; type: string | null }> = []
+  /** 本 runtime 是否为 eventfollow 子系（自身不独立发射，只响应父粒子事件） */
+  private eventFollow = false
+  /** instantaneous 一次性爆发是否已生成（rate=0 + instantaneous 的系统只爆发一次） */
+  private instantSpawned = false
+  /** 折射法线纹理（材质第二个纹理，REFRACT 粒子用；RG88/RGBA8888n 布局通用解压 (a,g)） */
+  private normalTexture: ImageBitmap | HTMLCanvasElement | null = null
+  private normalFrames = 0
+  private normalFw = 0
+  private normalFh = 0
 
-  constructor(private desc: ParticleSystemDesc, private rateScale = 1, private sizeScale = 1) {
+  constructor(private desc: ParticleSystemDesc, private rateScale = 1, private sizeScale = 1, eventFollow = false) {
     this.rendererType = desc.renderer?.type ?? 'sprite'
     this.trailLength = desc.renderer?.length ?? 0
     this.trailMaxLength = desc.renderer?.maxlength ?? 0
     this.trailMinLength = desc.renderer?.minlength ?? 0
+    this.eventFollow = eventFollow
     for (const c of desc.children) {
-      this.children.push(new ParticleRuntime(c, rateScale, sizeScale))
+      this.children.push({
+        rt: new ParticleRuntime(c.desc, rateScale, sizeScale, c.type === 'eventfollow'),
+        type: c.type,
+      })
+    }
+  }
+
+  /** WE Start Time 语义：创建时预模拟（非延迟启动），避免开场空屏。
+   *  由 SceneModelRenderer 在根 runtime 上调用一次；子 runtime 随父 update 自然推进。 */
+  preSimulate(): void {
+    const target = this.desc.startTime
+    if (target <= 0) return
+    const step = 1 / 30
+    let t = 0
+    while (t < target) {
+      const dt = Math.min(step, target - t)
+      this.update(dt)
+      t += dt
     }
   }
 
@@ -84,12 +114,26 @@ export class ParticleRuntime {
     this.fh = fh
   }
 
+  /** 注入折射法线纹理（REFRACT 材质第二个纹理） */
+  setNormalTexture(tex: ImageBitmap | HTMLCanvasElement, frames = 0, fw = 0, fh = 0): void {
+    this.normalTexture = tex
+    this.normalFrames = frames
+    this.normalFw = fw
+    this.normalFh = fh
+  }
+
   /** 递归收集自身及所有子 runtime（供 SceneModelRenderer 逐层加载纹理） */
-  collect(): Array<{ rt: ParticleRuntime; texName: string }> {
-    const out: Array<{ rt: ParticleRuntime; texName: string }> = []
+  collect(): Array<{ rt: ParticleRuntime; texName: string; normalName: string | null }> {
+    const out: Array<{ rt: ParticleRuntime; texName: string; normalName: string | null }> = []
     const walk = (rt: ParticleRuntime): void => {
-      if (rt.desc.textureNames.length > 0) out.push({ rt, texName: rt.desc.textureNames[0] })
-      for (const c of rt.children) walk(c)
+      if (rt.desc.textureNames.length > 0) {
+        out.push({
+          rt,
+          texName: rt.desc.textureNames[0],
+          normalName: rt.desc.refract && rt.desc.textureNames.length > 1 ? rt.desc.textureNames[1] : null,
+        })
+      }
+      for (const c of rt.children) walk(c.rt)
     }
     walk(this)
     return out
@@ -98,7 +142,7 @@ export class ParticleRuntime {
   /** 纹理是否已就绪（自身或任一子 runtime）——用于区分"无粒子"与"纹理未加载" */
   get textureReady(): boolean {
     if (this.texture !== null) return true
-    for (const c of this.children) if (c.textureReady) return true
+    for (const c of this.children) if (c.rt.textureReady) return true
     return false
   }
 
@@ -108,13 +152,17 @@ export class ParticleRuntime {
       try { (this.texture as ImageBitmap).close() } catch { /* 忽略 */ }
     }
     this.texture = null
-    for (const c of this.children) c.dispose()
+    if (this.normalTexture !== null && 'close' in this.normalTexture) {
+      try { (this.normalTexture as ImageBitmap).close() } catch { /* 忽略 */ }
+    }
+    this.normalTexture = null
+    for (const c of this.children) c.rt.dispose()
   }
 
   /** 是否存在 rope/ropetrail 线渲染器（需 Canvas 绘制，不能走 WebGL 实例化） */
   hasLineRenderer(): boolean {
     if (this.rendererType === 'rope' || this.rendererType === 'ropetrail') return true
-    return this.children.some((c) => c.hasLineRenderer())
+    return this.children.some((c) => c.rt.hasLineRenderer())
   }
 
   /**
@@ -122,24 +170,32 @@ export class ParticleRuntime {
    * 含纹理/帧/混合/折射信息；rope/ropetrail 由调用方走 Canvas）。
    * 变换与 Canvas draw 一致：屏幕 x = px0 + p.x·lx·s，y = py0 − p.y·ly·s，
    * 尺寸不乘对象 scale；spritetrail 沿速度方向拉伸。
+   * 官方 quad 语义（genericparticle.vert ComputeParticlePosition）：
+   *   quad 宽度 = size，高度 = size × textureRatio（h/w），quad 居中于粒子。
    */
   collectGl(lx: number, ly: number, px0: number, py0: number, s: number): Array<{
     particles: GlParticle[]
     tex: ImageBitmap | HTMLCanvasElement
+    normalTex: ImageBitmap | HTMLCanvasElement | null
     frames: number
     fw: number
     fh: number
     additive: boolean
     refract: boolean
+    refractAmount: number
+    trail: boolean
   }> {
     const out: Array<{
       particles: GlParticle[]
       tex: ImageBitmap | HTMLCanvasElement
+      normalTex: ImageBitmap | HTMLCanvasElement | null
       frames: number
       fw: number
       fh: number
       additive: boolean
       refract: boolean
+      refractAmount: number
+      trail: boolean
     }> = []
     const walk = (rt: ParticleRuntime): void => {
       if (rt.texture !== null && rt.rendererType !== 'rope' && rt.rendererType !== 'ropetrail') {
@@ -148,41 +204,49 @@ export class ParticleRuntime {
         const fw = rt.fw
         const fh = rt.fh
         const sprite = frames > 1 && fw > 0 && fh > 0
-        const aspectTex = sprite ? fw / fh : tex.width / tex.height
+        // 官方 textureRatio = h/w（非 sprite：g_Texture0Resolution.y/x；sprite：frameH/frameW）
+        const texRatio = sprite ? (fh > 0 ? fh / fw : 1) : (tex.height > 0 ? tex.height / tex.width : 1)
         const list: GlParticle[] = []
         for (const p of rt.particles) {
-          const x = px0 + p.x * lx * s
-          const y = py0 - p.y * ly * s
-          const ph = Math.max(2, p.size * s)
-          const pw = ph * aspectTex
-          let size = ph
-          let aspect = aspectTex
+          // perspective rendering：按粒子深度 z（发射区）近大远小——
+          // 位置（相对层中心收缩）、尺寸、速度统一 × depthFactor（z 负 = 深处）
+          const df = rt.desc.perspective ? rt.depthFactor(p) : 1
+          const x = px0 + p.x * lx * s * df
+          const y = py0 - p.y * ly * s * df
+          // 官方 quad 顶点经 g_ModelViewProjectionMatrix → 尺寸乘 layer scale（lx/ly）。
+          // 宽度（沿屏幕 x/quad right 轴）× lx，高度（沿屏幕 y/quad up 轴）× ly。
+          const pwBase = Math.max(2, p.size * s * df) // 局部 quad 宽度 = size × 透视
+          const pw = pwBase * lx                     // 屏幕宽度 = size × lx
+          let size = pw
+          let aspect = texRatio * (ly / lx)          // 屏幕高度 = size × lx × (texRatio × ly/lx) = size × texRatio × ly
           let rot = p.rot
           let alpha = p.alpha
           let gx = x
           let gy = y
           if (rt.rendererType === 'spritetrail') {
             // 官方 spritetrail（common_particles.h ComputeParticleTrailTangents）：
-            //   stretch   = max(minLength, min(speed × length, maxLength))   // 场景 px
-            //   拖尾长度  = particleSize × textureRatio × stretch            // 场景 px
-            //   拖尾宽度  = particleSize；quad 居中于粒子，沿 normalize(velocity) 指向
-            // 旧实现把 length 当"秒"，忽略纹理宽高比 → 12px 水珠；这里改成官方公式。
-            const spd = Math.hypot(p.vx, p.vy)
+            //   stretch   = max(minLength, min(局部速度 × length, maxLength))  ← 局部速度
+            //   up = 速度方向 × stretch；quad 沿速度拉伸（uvs-0.5 双向居中）
+            //   屏幕拖尾长度 = size × textureRatio × stretch × |屏幕速度|/|局部速度|
+            //   屏幕速度 = 局部速度 × layer scale × 透视
+            const localSpd = Math.hypot(p.vx, p.vy)
+            const svx = p.vx * lx * df
+            const svy = p.vy * ly * df
+            const spd = Math.hypot(svx, svy)
             const maxL = rt.trailMaxLength > 0 ? rt.trailMaxLength : Infinity
             const minL = rt.trailMinLength > 0 ? rt.trailMinLength : 0
-            const stretch = Math.max(minL, Math.min(spd * rt.trailLength, maxL))
-            // 纹理宽高比 = 高/宽（genericparticle 用 g_Texture0Resolution.y/x）；单帧用 fh/fw
-            const texRatio = sprite ? (fh > 0 ? fh / fw : 1) : (tex.height > 0 ? tex.height / tex.width : 1)
-            const streakLen = ph * texRatio * stretch
+            const stretch = Math.max(minL, Math.min(localSpd * rt.trailLength, maxL))
+            const spdScale = localSpd > 0.001 ? spd / localSpd : 1
+            const streakLen = pwBase * texRatio * stretch * spdScale
             if (spd > 2 && streakLen > 2) {
-              size = ph
-              aspect = streakLen / ph
-              rot = Math.atan2(-p.vy, p.vx)
-              // 头在当前位置，尾沿反方向（过去位置）延伸 —— 偏移中心让头落在粒子处
-              const dirx = spd > 0 ? p.vx / spd : 0
-              const diry = spd > 0 ? -p.vy / spd : 0
-              gx = x - 0.5 * streakLen * dirx
-              gy = y - 0.5 * streakLen * diry
+              size = pw
+              aspect = streakLen / pw              // 长度/宽度
+              // GL 顶点着色器 corner = (宽, 长) 经 R(rot) 旋转：
+              // 长轴（corner.y）须指向屏幕速度方向 → rot = atan2(-svx, svy)
+              // （旧 atan2(-svy, svx) 把长轴转到水平 → 雨滴横躺"太扁"）
+              rot = Math.atan2(-svx, svy)
+              gx = x
+              gy = y                               // 居中于粒子（WE 语义）
             }
           }
           if (rt.desc.refract && rt.rendererType === 'spritetrail') alpha *= 0.5
@@ -199,15 +263,18 @@ export class ParticleRuntime {
           out.push({
             particles: list,
             tex,
+            normalTex: rt.desc.refract ? rt.normalTexture : null,
             frames,
             fw,
             fh,
             additive: rt.desc.blending === 'additive',
             refract: rt.desc.refract && rt.rendererType === 'sprite',
+            refractAmount: rt.desc.refractAmount,
+            trail: rt.rendererType === 'spritetrail',
           })
         }
       }
-      for (const c of rt.children) walk(c)
+      for (const c of rt.children) walk(c.rt)
     }
     walk(this)
     return out
@@ -223,18 +290,75 @@ export class ParticleRuntime {
     const ini = this.desc.initializers
     const ops = this.desc.operators
 
-    // starttime：粒子系统延迟启动（如 magic_sparkle=15、Rain2=10）。未到时间只更新
-    // 既有粒子（初始为空）与子 runtime，不发射。
-    if (this.time >= this.desc.startTime) {
-      // 发射（rate × 视觉缩放）
-      this.acc += em.rate * this.rateScale * dt
-      while (this.acc >= 1 && this.particles.length < this.desc.maxCount) {
-        this.acc -= 1
+    // instantaneous：系统创建时立即生成（rate=0 的一次性爆发，如 sparktrails=100）。
+    // eventfollow 子系不在此爆发（由 eventFollowUpdate 在父粒子位置生成）。
+    if (!this.instantSpawned && !this.eventFollow && em.instantaneous > 0) {
+      this.instantSpawned = true
+      for (let i = 0; i < em.instantaneous && this.particles.length < this.desc.maxCount; i++) {
         this.spawn(em, ini)
       }
     }
 
-    // 更新
+    // starttime 门控：WE 的 Start Time 是"创建时预模拟"（preSimulate 已把系统推进到
+    // 稳态）；实时运行中 time 已越过 startTime，这里保持门控只防止重复发射。
+    const newEvents: Array<Particle> = []
+    if (this.time >= this.desc.startTime && !this.eventFollow) {
+      // 发射（rate × 视觉缩放）
+      this.acc += em.rate * this.rateScale * dt
+      while (this.acc >= 1 && this.particles.length < this.desc.maxCount) {
+        this.acc -= 1
+        const p = this.spawn(em, ini)
+        if (p !== null) newEvents.push(p)
+      }
+    }
+
+    // 更新自身粒子
+    this.updateParticles(dt)
+
+    // 子粒子：eventfollow/eventspawn 在父粒子位置生成（含瞬时爆发）；
+    // eventspawn 与 eventfollow 语义相同（在父事件位置生成），区别在于 eventspawn
+    // 子系通常 rate=0、instantaneous>0 一次性爆发（如 spark→sparktrails）。
+    // 普通子粒子（type=null）独立更新。
+    for (const c of this.children) {
+      if (c.type === 'eventfollow' || c.type === 'eventspawn') c.rt.eventFollowUpdate(this.particles, newEvents, dt)
+      else c.rt.update(dt)
+    }
+  }
+
+  /**
+   * eventfollow 子粒子更新：在父粒子位置生成。
+   *  - 瞬时爆发：每个父粒子出生事件在其位置生成 instantaneous 个（如 shootingstarglow=1）
+   *  - 连续发射：rate × dt 分布在存活父粒子上（如 rain_screen_fast_child）
+   * 子粒子自身仍按各自算子更新（alphafade/sizechange 等），位置继承父粒子出生点。
+   */
+  private eventFollowUpdate(parents: Particle[], newEvents: Particle[], dt: number): void {
+    this.time += dt
+    const em = this.desc.emitter
+    const ini = this.desc.initializers
+    if (!this.instantSpawned) this.instantSpawned = true
+    for (const ev of newEvents) {
+      for (let i = 0; i < em.instantaneous && this.particles.length < this.desc.maxCount; i++) {
+        const o = this.emitterOffset(em)
+        this.spawnAt(ini, ev.x + o.x, ev.y + o.y, ev.z + o.z)
+      }
+    }
+    this.acc += em.rate * this.rateScale * dt
+    while (this.acc >= 1 && this.particles.length < this.desc.maxCount) {
+      this.acc -= 1
+      const par = parents.length > 0 ? parents[Math.floor(Math.random() * parents.length)] : null
+      const o = this.emitterOffset(em)
+      this.spawnAt(ini, (par !== null ? par.x : 0) + o.x, (par !== null ? par.y : 0) + o.y, (par !== null ? par.z : 0) + o.z)
+    }
+    this.updateParticles(dt)
+    for (const c of this.children) {
+      if (c.type === 'eventfollow' || c.type === 'eventspawn') c.rt.eventFollowUpdate(this.particles, [], dt)
+      else c.rt.update(dt)
+    }
+  }
+
+  /** 更新自身粒子：移动 / 算子（重力/阻尼/振荡/尺寸变化/透明度）/ 寿命过滤 */
+  private updateParticles(dt: number): void {
+    const ops = this.desc.operators
     const g = ops.gravity ?? [0, 0, 0]
     const drag = ops.drag ?? 0
     const angDrag = ops.angularDrag ?? 0
@@ -299,7 +423,6 @@ export class ParticleRuntime {
       p.alpha = Math.max(0, Math.min(1, a))
     }
     this.particles = this.particles.filter((p) => p.life > 0)
-    for (const c of this.children) c.update(dt)
   }
 
   /**
@@ -322,12 +445,12 @@ export class ParticleRuntime {
     if (tex !== null) {
       this.drawSelf(ctx, ox, oy, s, t, tex, frames, fw, fh, lx, ly, px0, py0, bg)
     }
-    for (const c of this.children) c.draw(ctx, ox, oy, s, t, bg)
+    for (const c of this.children) c.rt.draw(ctx, ox, oy, s, t, bg)
   }
 
   /** 该粒子系统（含子粒子）是否使用折射材质 */
   hasRefract(): boolean {
-    return this.desc.refract || this.children.some((c) => c.hasRefract())
+    return this.desc.refract || this.children.some((c) => c.rt.hasRefract())
   }
 
   /** 绘制自身粒子（tex 非空时） */
@@ -368,23 +491,34 @@ export class ParticleRuntime {
       ctx.restore()
       return
     }
-    // ropetrail 渲染器（官方："draws a line along the path of each particle"）：
-    // 沿每个粒子的位置历史画线（如流星/拖尾光带）。粒子本身不画 sprite。
+    // ropetrail 渲染器（官方 genericropeparticle："draws a line along the path of
+    // each particle" + 光束纹理沿线拉伸）：沿每个粒子的位置历史用光束纹理绘制
+    // 纹理化轨迹（如流星 drop 纹理的软边光带）。粒子本身不画 sprite。
     if (this.rendererType === 'ropetrail') {
-      ctx.lineCap = 'round'
       for (const p of this.particles) {
-        if (p.history.length < 2) continue
-        ctx.strokeStyle = 'rgb(' + p.color[0] + ',' + p.color[1] + ',' + p.color[2] + ')'
-        ctx.globalAlpha = Math.max(0, Math.min(1, p.alpha))
-        ctx.lineWidth = Math.max(1, p.size * s)
-        ctx.beginPath()
-        for (let hi = 0; hi < p.history.length; hi++) {
-          const hx = px0 + p.history[hi].x * lx * s
-          const hy = py0 - p.history[hi].y * ly * s
-          if (hi === 0) ctx.moveTo(hx, hy)
-          else ctx.lineTo(hx, hy)
+        const hist = p.history
+        if (hist.length < 2) continue
+        const img = this.tinted(tex, p.color)
+        const w = Math.max(1, p.size * s)
+        for (let hi = 1; hi < hist.length; hi++) {
+          const a = hist[hi - 1]
+          const b = hist[hi]
+          const ax = px0 + a.x * lx * s
+          const ay = py0 - a.y * ly * s
+          const bx = px0 + b.x * lx * s
+          const by = py0 - b.y * ly * s
+          const dx = bx - ax
+          const dy = by - ay
+          const segLen = Math.hypot(dx, dy)
+          if (segLen < 0.5) continue
+          ctx.save()
+          ctx.translate(ax, ay)
+          ctx.rotate(Math.atan2(dy, dx))
+          ctx.globalAlpha = Math.max(0, Math.min(1, p.alpha))
+          // 官方 rope：纹理 v 轴沿线（dest 高 = 段长），u 轴为线宽
+          ctx.drawImage(img, 0, 0, tex.width, tex.height, 0, -w / 2, segLen, w)
+          ctx.restore()
         }
-        ctx.stroke()
       }
       ctx.restore()
       return
@@ -396,19 +530,19 @@ export class ParticleRuntime {
     for (const p of this.particles) {
       if (drawn >= DRAW_LIMIT) break
       drawn++
-      const x = px0 + p.x * lx * s
-      const y = py0 - p.y * ly * s
-      // 官方 CParticle：quad 渲染尺寸 = sizerandom × instanceOverride.size（size 属性
-      // ×2 后），**不乘对象 scale**——对象 scale 只进 model matrix（发射区/位置）。
-      // 纹理宽高比由 aspect 处理（shader 的 textureRatio = h/w 等效）。
-      const pwBase = Math.max(2, p.size * s)
-      const phBase = Math.max(2, p.size * s)
-      // 帧区域宽高比（单帧内）；非序列帧用整张纹理宽高比（雾/风等非正方形纹理不拉伸变形）
+      // perspective rendering：位置（相对层中心）、尺寸、速度统一 × depthFactor
+      const df = this.desc.perspective ? this.depthFactor(p) : 1
+      const x = px0 + p.x * lx * s * df
+      const y = py0 - p.y * ly * s * df
+      // 官方 genericparticle.vert：quad 宽度 = size，高度 = size × textureRatio（h/w），
+      // quad 顶点经 g_ModelViewProjectionMatrix → 尺寸乘 layer scale（lx/ly）。
+      const pwBase = Math.max(2, p.size * s * df)
+      // 帧区域宽高比（单帧内）；非序列帧用整张纹理宽高比
       const fwPx = sprite ? fw : tex.width
       const fhPx = sprite ? fh : tex.height
-      const aspect = fwPx / fhPx
-      const pw = pwBase * aspect
-      const ph = phBase
+      const texRatio = fhPx / fwPx
+      const pw = pwBase * lx      // 屏幕宽度 = size × layerScale.x
+      const ph = pwBase * texRatio * ly // 屏幕高度 = size × (h/w) × layerScale.y
       const img = this.tinted(tex, p.color)
       ctx.globalAlpha = Math.max(0, Math.min(1, p.alpha))
       // REFRACT 折射：sprite 粒子（静态水珠/雨滴）用背景采样 + alpha 裁剪；
@@ -416,7 +550,7 @@ export class ParticleRuntime {
       if (this.desc.refract && bg !== null && this.rendererType === 'sprite') {
         ctx.save()
         // 折射偏移：官方 refract_amount（负值）+ 法线；此处用径向凸透镜近似——
-        // 偏移量与雨滴尺寸成正比（后续可接法线纹理逐块偏移）
+        // 偏移量与雨滴尺寸成正比（WebGL 路径用真实法线贴图）
         const off = pw * 0.06
         ctx.drawImage(bg, x - pw / 2 + off, y - ph / 2 + off, pw, ph, x - pw / 2, y - ph / 2, pw, ph)
         ctx.globalCompositeOperation = 'destination-in'
@@ -427,34 +561,38 @@ export class ParticleRuntime {
       if (this.desc.refract && this.rendererType === 'spritetrail') {
         ctx.globalAlpha *= 0.5
       }
-      // spritetrail 渲染器（官方 common_particles.h）：
-      //   stretch = max(minLength, min(speed × length, maxLength))
-      //   拖尾长度 = particleSize × textureRatio × stretch；宽度 = particleSize
-      // 沿运动方向拉成长丝，尾在反方向（过去位置），头在当前位置。
-      const spd = Math.hypot(p.vx, p.vy)
+      // spritetrail 渲染器（官方 common_particles.h ComputeParticleTrailTangents）：
+      //   stretch = max(minLength, min(局部速度 × length, maxLength))  ← 局部速度
+      //   屏幕拖尾长度 = size × textureRatio × stretch × |屏幕速度|/|局部速度|
+      const localSpd = Math.hypot(p.vx, p.vy)
+      const svx = p.vx * lx * df
+      const svy = p.vy * ly * df
+      const spd = Math.hypot(svx, svy)
       const maxL = this.trailMaxLength > 0 ? this.trailMaxLength : Infinity
       const minL = this.trailMinLength > 0 ? this.trailMinLength : 0
-      const stretch = Math.max(minL, Math.min(spd * this.trailLength, maxL))
-      const texRatio = sprite ? (fh > 0 ? fh / fw : 1) : (tex.height > 0 ? tex.height / tex.width : 1)
-      const streakLen = ph * texRatio * stretch
+      const stretch = Math.max(minL, Math.min(localSpd * this.trailLength, maxL))
+      const spdScale = localSpd > 0.001 ? spd / localSpd : 1
+      const streakLen = pwBase * texRatio * stretch * spdScale
       const stretched = this.rendererType === 'spritetrail' && spd > 2 && streakLen > 2
       if (stretched) {
-        const len = Math.max(pw, streakLen)
-        const wid = ph
-        const ang = Math.atan2(-p.vy, p.vx)
-        const dirx = spd > 0 ? p.vx / spd : 0
-        const diry = spd > 0 ? -p.vy / spd : 0
+        const len = streakLen
+        const wid = pw
+        // Canvas rotate 顺时针（屏幕 y 向下）：dest (wid, len) 的 len 轴
+        // 经 rotate(θ) 后指向 (sinθ, cosθ)，须 = 屏幕速度方向 → θ = atan2(svx, svy)
+        // （旧 atan2(-svy, svx) 把 len 轴转到水平 → 雨滴横躺"太扁"）
+        const ang = Math.atan2(svx, svy)
         ctx.save()
-        ctx.translate(x - 0.5 * len * dirx, y - 0.5 * len * diry)
+        ctx.translate(x, y)
         ctx.rotate(ang)
+        // dest (wid, len)：纹理 v 轴沿线（拖尾），u 轴为宽度（官方 UV 布局）
         if (sprite) {
           const frac = 1 - p.life / p.maxLife
           const frame = this.pickFrame(p, frac, frames)
           const col = frame % cols
           const row = Math.floor(frame / cols)
-          ctx.drawImage(img, col * fw, row * fh, fw, fh, -len / 2, -wid / 2, len, wid)
+          ctx.drawImage(img, col * fw, row * fh, fw, fh, -wid / 2, -len / 2, wid, len)
         } else {
-          ctx.drawImage(img, -len / 2, -wid / 2, len, wid)
+          ctx.drawImage(img, -wid / 2, -len / 2, wid, len)
         }
         ctx.restore()
       } else if (p.rot !== 0) {
@@ -487,10 +625,29 @@ export class ParticleRuntime {
   }
 
   /** 纹理染色（source-in 保留 alpha），按颜色缓存 */
-  /** 帧选择：randomframe 出生随机帧后固定（静态水珠/雨滴）；否则按粒子年龄推进动画 */
+  /**
+   * 帧选择（官方 genericparticle.vert ComputeSpriteFrame）：
+   *  - randomframe：粒子出生随机帧后固定（静态水珠/雨滴）
+   *  - 序列（默认，animationmode null/""/sequence）：从第 0 帧开始按寿命推进，
+   *    速度 × sequenceMultiplier（particles-general "Sequence multiplier"）。
+   *    旧实现给序列模式加随机起始帧 → 雾/烟每团动画相位错乱，此处修正。
+   */
+  /**
+   * 透视深度因子（perspective rendering — particles-general "Perspective rendering"）。
+   * 2D 场景中粒子按 z 深度近大远小：depthFactor = 1 / (1 + max(0, -z) / focal)，
+   * 其中 focal = (场景高/2) / tan(fov/2)，z 负 = 场景方向（远）。
+   * 粒子位置（向层中心收缩）、尺寸、速度统一 × depthFactor。
+   */
+  private depthFactor(p: Particle): number {
+    const depth = Math.max(0, -p.z)
+    return this.desc.perspectiveFocal / (this.desc.perspectiveFocal + depth)
+  }
+
   private pickFrame(p: Particle, frac: number, frames: number): number {
     if (this.desc.animationMode === 'randomframe') return p.frame % frames
-    return (p.frame + Math.floor(frac * frames)) % frames
+    const mult = this.desc.sequenceMultiplier > 0 ? this.desc.sequenceMultiplier : 1
+    const idx = Math.floor(frac * frames * mult)
+    return Math.max(0, Math.min(frames - 1, idx))
   }
 
   private tinted(tex: ImageBitmap | HTMLCanvasElement, color: [number, number, number]): HTMLCanvasElement {
@@ -517,7 +674,8 @@ export class ParticleRuntime {
     return c
   }
 
-  private spawn(em: ParticleSystemDesc['emitter'], ini: ParticleSystemDesc['initializers']): void {
+  /** 发射器随机位置（发射区 + origin，含 sign 符号限制）→ spawnAt（返回生成的粒子） */
+  private spawn(em: ParticleSystemDesc['emitter'], ini: ParticleSystemDesc['initializers']): Particle | null {
     let x = 0
     let y = 0
     // 控制点线段（mapsequencebetweencontrolpoints）：粒子沿 origin→cp1 线段按序列分布，
@@ -534,24 +692,58 @@ export class ParticleRuntime {
       this.seqIndex++
       // 序列分布粒子不叠加 emitter 随机位置；速度仍由 velocityrandom 决定（放电抖动）
     } else {
-      const [dx, dy] = em.directions
-      if (em.type === 'boxrandom') {
-        const d = Array.isArray(em.distanceMax) ? em.distanceMax : [em.distanceMax, em.distanceMax, 0]
-        x = (Math.random() * 2 - 1) * d[0] * 0.5
-        y = (Math.random() * 2 - 1) * d[1] * 0.5
-      } else {
-        // sphererandom：椭圆体内体积均匀（半径²均匀 → 中心密度高），
-        // directions 作为各轴半径缩放（如 fog1 "1 0.2 0" → x 宽 y 窄）
-        const maxD = typeof em.distanceMax === 'number' ? em.distanceMax : Math.hypot(em.distanceMax[0], em.distanceMax[1])
-        const ang = Math.random() * Math.PI * 2
-        const rr = em.distanceMin + Math.sqrt(Math.random()) * Math.max(0, maxD - em.distanceMin)
-        x = Math.cos(ang) * rr * dx
-        y = Math.sin(ang) * rr * dy
-      }
+      const o = this.emitterOffset(em)
+      x = o.x
+      y = o.y
+      const z = o.z
+      return this.spawnAt(ini, x, y, z)
+    }
+    return this.spawnAt(ini, x, y, 0)
+  }
+
+  /**
+   * 发射区随机偏移（boxrandom/sphererandom + origin + sign 符号限制）。
+   * eventfollow/eventspawn 子系在父粒子位置叠加此偏移（子系发射区相对父粒子）。
+   * z 为发射区深度（sphererandom dirs.z × 半径，perspective rendering 用）。
+   */
+  private emitterOffset(em: ParticleSystemDesc['emitter']): { x: number; y: number; z: number } {
+    let x = 0
+    let y = 0
+    let z = 0
+    const [dx, dy, dz] = em.directions
+    if (em.type === 'boxrandom') {
+      // 官方 boxrandom：Distance Max = 距中心最大距离 → 盒范围 ±distanceMax（无 0.5 折半）
+      const d = Array.isArray(em.distanceMax) ? em.distanceMax : [em.distanceMax, em.distanceMax, 0]
+      x = (Math.random() * 2 - 1) * d[0]
+      y = (Math.random() * 2 - 1) * d[1]
+      z = (Math.random() * 2 - 1) * (d[2] ?? 0)
+    } else {
+      // sphererandom：椭圆体内均匀（半径²均匀 → 中心密度高），
+      // directions 作为各轴半径缩放（如 fog1 "1 0.2 0" → x 宽 y 窄；
+      // rainperspective "1 0.25 1" → z 深度 ±distMax 用于透视雨）
+      const maxD = typeof em.distanceMax === 'number' ? em.distanceMax : Math.hypot(em.distanceMax[0], em.distanceMax[1])
+      const ang = Math.random() * Math.PI * 2
+      const rr = em.distanceMin + Math.sqrt(Math.random()) * Math.max(0, maxD - em.distanceMin)
+      x = Math.cos(ang) * rr * dx
+      y = Math.sin(ang) * rr * dy
+      // z 深度：±rr × dirs.z（3D 球体深度；perspective rendering 近大远小）
+      z = (Math.random() * 2 - 1) * rr * (dz ?? 0)
+    }
+    // 发射区符号（官方 emitter Sign：0=双向，1=只正，-1=只负；如 sparktrails "0 1 0"）
+    if (em.sign !== undefined) {
+      if (em.sign[0] === 1) x = Math.abs(x)
+      else if (em.sign[0] === -1) x = -Math.abs(x)
+      if (em.sign[1] === 1) y = Math.abs(y)
+      else if (em.sign[1] === -1) y = -Math.abs(y)
+      if (em.sign[2] === 1) z = Math.abs(z)
+      else if (em.sign[2] === -1) z = -Math.abs(z)
     }
     // emitter.origin 偏移（局部坐标，如 leaves2 origin="350 750 0" 从树上发射）
-    x += em.origin[0]
-    y += em.origin[1]
+    return { x: x + em.origin[0], y: y + em.origin[1], z: z + em.origin[2] }
+  }
+
+  /** 在指定位置生成粒子（eventfollow 子系在父粒子位置调用）；z 为发射区深度（perspective） */
+  private spawnAt(ini: ParticleSystemDesc['initializers'], x: number, y: number, z: number): Particle | null {
     const life = rand(ini.lifetime ?? [1, 1])
     // size：sizerandom 分布（exponent 幂次 >1 偏向小值）× 视觉缩放
     let size: number
@@ -564,8 +756,8 @@ export class ParticleRuntime {
     }
     let vx = 0
     let vy = 0
-    // remapvalue(output=velocity)：速度重映射（rain_screen_fast 的下落速度噪声，
-    // 范围如 -1200..-200）。优先级高于 velocityrandom。
+    // 速度来源优先级：velocityRemap（operator）> velocityrandom（initializer）>
+    // emitter speedmin/speedmax（发射器球面随机方向速度，如 sparktrails 0..1024 火花四溅）
     if (this.desc.operators.velocityRemap !== undefined) {
       const rm = this.desc.operators.velocityRemap
       vx = rand(rm.min[0], rm.max[0])
@@ -573,13 +765,41 @@ export class ParticleRuntime {
     } else if (ini.velocityMin !== undefined && ini.velocityMax !== undefined) {
       vx = rand(ini.velocityMin[0], ini.velocityMax[0])
       vy = rand(ini.velocityMin[1], ini.velocityMax[1])
+    } else if (this.desc.emitter.speedMin !== undefined && this.desc.emitter.speedMax !== undefined) {
+      // 官方 emitter speed（particles-emitter "Speed Min/Max"）：粒子以球面随机方向
+      // × rand(speedMin, speedMax) 的初始速度出生（2D 场景取 xy 平面方向）
+      const speed = rand(this.desc.emitter.speedMin, this.desc.emitter.speedMax)
+      const ang = Math.random() * Math.PI * 2
+      vx = Math.cos(ang) * speed
+      vy = Math.sin(ang) * speed
     }
     if (ini.turbulentVelocity !== undefined) {
       const tv = ini.turbulentVelocity
-      // WE 语义：随机方向湍流速度 ≈ scale × 1000（场景像素尺度）；
-      // 旧实现 ×100 让 ember/smoke 几乎静止，拖尾渲染不出来
-      vx += (Math.random() * 2 - 1) * Math.abs(tv.scale) * 1000
-      vy += (Math.random() * 2 - 1) * Math.abs(tv.scale) * 1000
+      // 官方 turbulentvelocityrandom（particles-initializer "Turbulent velocity random"）：
+      //   方向 = normalize(forward × offset + noise(phase, time×timescale) × scale)
+      //   速度 = 方向 × rand(speedMin, speedMax)
+      // scale 控制方向发散度（1=全方向 / 0=沿 forward 直线 / 2=可自我缠绕）；
+      // 噪声使相邻相位粒子的方向连续变化 → "一阵阵风"的烟流效果（非纯随机乱蹦）。
+      const spd = tv.speedMin !== undefined && tv.speedMax !== undefined
+        ? rand(tv.speedMin, tv.speedMax)
+        : (tv.speedMin ?? tv.speedMax ?? 100)
+      const phase = tv.phaseMin !== undefined && tv.phaseMax !== undefined
+        ? rand(tv.phaseMin, tv.phaseMax)
+        : Math.random() * 2 - 1
+      const ts = tv.timescale ?? 0.1
+      const t = this.time * ts
+      // 简化值噪声：多频 sin 组合（phase 连续 → 方向连续），范围 ≈ [-1, 1]
+      const nx = Math.sin(phase * 1.7 + t * 0.7) * 0.7 + Math.sin(phase * 3.1 + t * 1.3) * 0.3
+      const ny = Math.sin(phase * 2.3 + t * 1.1) * 0.7 + Math.sin(phase * 4.9 + t * 0.8) * 0.3
+      const nz = Math.sin(phase * 1.3 + t * 0.5) * 0.7 + Math.sin(phase * 3.7 + t * 1.7) * 0.3
+      // forward = 屏幕法线 +z（2D 场景）；可见湍流 = scale × noise 的 xy 分量
+      let dx = tv.scale * nx
+      let dy = tv.scale * ny
+      const dz = tv.offset + tv.scale * nz
+      const len = Math.hypot(dx, dy, dz)
+      if (len > 0.0001) { dx /= len; dy /= len }
+      vx += dx * spd
+      vy += dy * spd
     }
     const alpha = rand(ini.alphaMin ?? 1, ini.alphaMax ?? 1)
     // 颜色：colorrandom min/max 分量随机（0-255）
@@ -603,9 +823,10 @@ export class ParticleRuntime {
     const osc = this.desc.operators.oscillatePosition
     const oscFreq = osc !== undefined ? rand(osc.frequencyMin, osc.frequencyMax) : 0
     const oscPhase = Math.random() * Math.PI * 2
-    this.particles.push({
+    const p: Particle = {
       x,
       y,
+      z,
       vx,
       vy,
       life,
@@ -621,7 +842,9 @@ export class ParticleRuntime {
       phase: Math.random() * Math.PI * 2,
       oscPhase,
       oscFreq,
-    })
+    }
+    this.particles.push(p)
+    return p
   }
 }
 

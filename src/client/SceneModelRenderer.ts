@@ -422,8 +422,13 @@ export class SceneModelRenderer {
       if (layer.particle !== null) {
         const rt = new ParticleRuntime(layer.particle, model.particleRateScale, model.particleSizeScale)
         this.runtimes.set(layer.id, rt)
+        // WE Start Time 预模拟（官方语义：创建时预模拟，非延迟启动）
+        rt.preSimulate()
         for (const sub of rt.collect()) {
           jobs.push(this.loadParticleTexture(sub.rt, sub.texName))
+          if (sub.normalName !== null) {
+            jobs.push(this.loadParticleNormalTexture(sub.rt, sub.normalName))
+          }
         }
       }
     }
@@ -527,6 +532,27 @@ export class SceneModelRenderer {
       rt.setTexture(tex, frames > 1 && fw > 0 && fh > 0 ? frames : 0, fw, fh)
     } catch (err) {
       console.warn('[particle tex] 加载/解码失败', name, err)
+    }
+  }
+
+  /** 加载粒子折射法线纹理（REFRACT 材质第二个纹理，如 rain_drops_sheet_normal）。
+   *  法线纹理不做软边处理（需要原始 R/G/A 通道做 shader 解压）。 */
+  private async loadParticleNormalTexture(rt: ParticleRuntime, name: string): Promise<void> {
+    try {
+      const res = await fetch('/we-sync/asset/texture?name=' + encodeURIComponent(name), { cache: 'no-store' })
+      if (!res.ok) {
+        console.warn('[particle normal tex] 加载失败', name, res.status)
+        return
+      }
+      const frames = Number(res.headers.get('X-Sprite-Frames') ?? '0')
+      const fw = Number(res.headers.get('X-Sprite-Width') ?? '0')
+      const fh = Number(res.headers.get('X-Sprite-Height') ?? '0')
+      const blob = await res.blob()
+      const bmp = await createImageBitmap(blob)
+      if (this.closed) { bmp.close(); return }
+      rt.setNormalTexture(bmp, frames > 1 && fw > 0 && fh > 0 ? frames : 0, fw, fh)
+    } catch (err) {
+      console.warn('[particle normal tex] 加载/解码失败', name, err)
     }
   }
 
@@ -884,8 +910,19 @@ export class SceneModelRenderer {
             }
             this.particleGL.render(
               b.particles,
-              { viewW: this.el.clientWidth, viewH: this.el.clientHeight, additive: b.additive, refract: b.refract, frames: b.frames, fw: b.fw, fh: b.fh },
+              {
+                viewW: this.el.clientWidth,
+                viewH: this.el.clientHeight,
+                additive: b.additive,
+                refract: b.refract,
+                frames: b.frames,
+                fw: b.fw,
+                fh: b.fh,
+                refractAmount: b.refractAmount,
+                trail: b.trail,
+              },
               b.tex,
+              b.normalTex,
               this.el.width,
               this.el.height,
             )
