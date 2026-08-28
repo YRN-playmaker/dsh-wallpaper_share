@@ -26,6 +26,8 @@ interface Particle {
   baseSize: number
   size: number
   alpha: number
+  /** 出生时 alpha（spawnAt 初始值；alphafade 淡入淡出的基准，不随帧变化） */
+  spawnAlpha: number
   /** 颜色 tint（0-255） */
   color: [number, number, number]
   /** 旋转（弧度） */
@@ -173,7 +175,7 @@ export class ParticleRuntime {
    * 官方 quad 语义（genericparticle.vert ComputeParticlePosition）：
    *   quad 宽度 = size，高度 = size × textureRatio（h/w），quad 居中于粒子。
    */
-  collectGl(lx: number, ly: number, px0: number, py0: number, s: number): Array<{
+  collectGl(lx: number, ly: number, px0: number, py0: number, s: number, angle = 0): Array<{
     particles: GlParticle[]
     tex: ImageBitmap | HTMLCanvasElement
     normalTex: ImageBitmap | HTMLCanvasElement | null
@@ -207,19 +209,24 @@ export class ParticleRuntime {
         // 官方 textureRatio = h/w（非 sprite：g_Texture0Resolution.y/x；sprite：frameH/frameW）
         const texRatio = sprite ? (fh > 0 ? fh / fw : 1) : (tex.height > 0 ? tex.height / tex.width : 1)
         const list: GlParticle[] = []
+        const ca = Math.cos(angle)
+        const sa = Math.sin(angle)
         for (const p of rt.particles) {
           // perspective rendering：按粒子深度 z（发射区）近大远小——
           // 位置（相对层中心收缩）、尺寸、速度统一 × depthFactor（z 负 = 深处）
           const df = rt.desc.perspective ? rt.depthFactor(p) : 1
-          const x = px0 + p.x * lx * s * df
-          const y = py0 - p.y * ly * s * df
+          // 图层角度旋转（模型空间 y-up）：先旋转局部坐标，再缩放/翻转/平移
+          const rx = p.x * ca - p.y * sa
+          const ry = p.x * sa + p.y * ca
+          const x = px0 + rx * lx * s * df
+          const y = py0 - ry * ly * s * df
           // 官方 quad 顶点经 g_ModelViewProjectionMatrix → 尺寸乘 layer scale（lx/ly）。
           // 宽度（沿屏幕 x/quad right 轴）× lx，高度（沿屏幕 y/quad up 轴）× ly。
           const pwBase = Math.max(2, p.size * s * df) // 局部 quad 宽度 = size × 透视
           const pw = pwBase * lx                     // 屏幕宽度 = size × lx
           let size = pw
           let aspect = texRatio * (ly / lx)          // 屏幕高度 = size × lx × (texRatio × ly/lx) = size × texRatio × ly
-          let rot = p.rot
+          let rot = p.rot + angle
           let alpha = p.alpha
           let gx = x
           let gy = y
@@ -230,8 +237,11 @@ export class ParticleRuntime {
             //   屏幕拖尾长度 = size × textureRatio × stretch × |屏幕速度|/|局部速度|
             //   屏幕速度 = 局部速度 × layer scale × 透视
             const localSpd = Math.hypot(p.vx, p.vy)
-            const svx = p.vx * lx * df
-            const svy = p.vy * ly * df
+            // 屏幕速度 = 局部速度经角度旋转 × layer scale × 透视
+            const rvx = p.vx * ca - p.vy * sa
+            const rvy = p.vx * sa + p.vy * ca
+            const svx = rvx * lx * df
+            const svy = rvy * ly * df
             const spd = Math.hypot(svx, svy)
             const maxL = rt.trailMaxLength > 0 ? rt.trailMaxLength : Infinity
             const minL = rt.trailMinLength > 0 ? rt.trailMinLength : 0
@@ -398,16 +408,25 @@ export class ParticleRuntime {
         p.x += Math.sin(phase) * turb.scale * 100 * dt
         p.y += Math.cos(phase * 0.7) * turb.scale * 100 * dt
       }
-      let a = 1
+      // 每粒子不透明度 = 出生时的随机 alpha（alpharandom × instanceoverride.alpha，官方
+      // "Alpha random: Defines the opacity of the particles"）。alphafade/oscillatealpha 只在其上
+      // 做淡入淡出调制，不能把它顶成 1——否则雾/烟/雪等带 alpharandom 的粒子会以满不透明渲染，
+      // 表现为"烟雾过浓"（fog1 的 0.075-0.1 被顶成 1，浓 10 倍以上）。
+      let a = p.spawnAlpha
+      let fadeFactor = 1
       if (fade !== undefined) {
-        const fadeIn = fade.fadeIn ?? 0
-        const fadeOut = fade.fadeOut ?? 0
-        if (fadeIn > 0 && frac < fadeIn) a = Math.min(a, frac / fadeIn)
+        // alphafade 的 fadeintime/fadeouttime 单位为「秒」（WE 编辑器 + LWE 语义：与粒子年龄/剩余
+        // 寿命的秒数比较），而 frac 是 0-1 寿命比例。按每粒子 maxLife 把秒换算成比例再比较，
+        // 否则会把 0.5s 当成 50% 寿命——雾淡入被拉长数倍、早期偏薄，浓度不匹配。
+        const fadeIn = (fade.fadeIn ?? 0) / p.maxLife
+        const fadeOut = (fade.fadeOut ?? 0) / p.maxLife
+        if (fadeIn > 0 && frac < fadeIn) fadeFactor = Math.min(fadeFactor, frac / fadeIn)
         if (fadeOut > 0) {
           const tail = 1 - frac
-          if (tail < fadeOut) a = Math.min(a, tail / fadeOut)
+          if (tail < fadeOut) fadeFactor = Math.min(fadeFactor, tail / fadeOut)
         }
       }
+      a *= fadeFactor
       if (osc !== undefined) {
         const s = Math.sin(this.time * osc.frequencyMax * Math.PI * 2 + p.phase)
         a *= osc.scaleMin + (1 - osc.scaleMin) * Math.max(0, s)
@@ -433,7 +452,7 @@ export class ParticleRuntime {
    * spritesheet 序列帧（frames>1）：按粒子年龄取帧（出生随机相位），从位图中裁剪
    * 对应帧区域绘制——避免整张 8×8 帧矩阵被画出来（雾/烟 64 帧序列纹理）。
    */
-  draw(ctx: CanvasRenderingContext2D, ox: number, oy: number, s: number, t: { ox: number; oy: number; sx: number; sy: number }, bg: HTMLCanvasElement | null = null): void {
+  draw(ctx: CanvasRenderingContext2D, ox: number, oy: number, s: number, t: { ox: number; oy: number; sx: number; sy: number }, bg: HTMLCanvasElement | null = null, angle = 0): void {
     const tex = this.texture
     const frames = this.frames
     const fw = this.fw
@@ -443,9 +462,9 @@ export class ParticleRuntime {
     const px0 = ox + t.ox * s
     const py0 = oy + t.oy * s
     if (tex !== null) {
-      this.drawSelf(ctx, ox, oy, s, t, tex, frames, fw, fh, lx, ly, px0, py0, bg)
+      this.drawSelf(ctx, ox, oy, s, t, tex, frames, fw, fh, lx, ly, px0, py0, bg, angle)
     }
-    for (const c of this.children) c.rt.draw(ctx, ox, oy, s, t, bg)
+    for (const c of this.children) c.rt.draw(ctx, ox, oy, s, t, bg, angle)
   }
 
   /** 该粒子系统（含子粒子）是否使用折射材质 */
@@ -454,10 +473,12 @@ export class ParticleRuntime {
   }
 
   /** 绘制自身粒子（tex 非空时） */
-  private drawSelf(ctx: CanvasRenderingContext2D, ox: number, oy: number, s: number, t: { ox: number; oy: number; sx: number; sy: number }, tex: ImageBitmap | HTMLCanvasElement, frames: number, fw: number, fh: number, lx: number, ly: number, px0: number, py0: number, bg: HTMLCanvasElement | null): void {
+  private drawSelf(ctx: CanvasRenderingContext2D, ox: number, oy: number, s: number, t: { ox: number; oy: number; sx: number; sy: number }, tex: ImageBitmap | HTMLCanvasElement, frames: number, fw: number, fh: number, lx: number, ly: number, px0: number, py0: number, bg: HTMLCanvasElement | null, angle = 0): void {
     const additive = this.desc.blending === 'additive'
     const sprite = frames > 1 && fw > 0 && fh > 0
     const cols = sprite ? Math.max(1, Math.floor(tex.width / fw)) : 1
+    const ca = Math.cos(angle)
+    const sa = Math.sin(angle)
     ctx.save()
     if (additive) ctx.globalCompositeOperation = 'lighter'
     // rope 渲染器（官方："draws a line between each particle" + 光束纹理沿线 UV 重复）：
@@ -469,10 +490,14 @@ export class ParticleRuntime {
         for (let i = 1; i < pts.length; i++) {
           const a = pts[i - 1]
           const b = pts[i]
-          const ax = px0 + a.x * lx * s
-          const ay = py0 - a.y * ly * s
-          const bx = px0 + b.x * lx * s
-          const by = py0 - b.y * ly * s
+          const arx = a.x * ca - a.y * sa
+          const ary = a.x * sa + a.y * ca
+          const brx = b.x * ca - b.y * sa
+          const bry = b.x * sa + b.y * ca
+          const ax = px0 + arx * lx * s
+          const ay = py0 - ary * ly * s
+          const bx = px0 + brx * lx * s
+          const by = py0 - bry * ly * s
           const dx = bx - ax
           const dy = by - ay
           const segLen = Math.hypot(dx, dy)
@@ -503,10 +528,14 @@ export class ParticleRuntime {
         for (let hi = 1; hi < hist.length; hi++) {
           const a = hist[hi - 1]
           const b = hist[hi]
-          const ax = px0 + a.x * lx * s
-          const ay = py0 - a.y * ly * s
-          const bx = px0 + b.x * lx * s
-          const by = py0 - b.y * ly * s
+          const arx = a.x * ca - a.y * sa
+          const ary = a.x * sa + a.y * ca
+          const brx = b.x * ca - b.y * sa
+          const bry = b.x * sa + b.y * ca
+          const ax = px0 + arx * lx * s
+          const ay = py0 - ary * ly * s
+          const bx = px0 + brx * lx * s
+          const by = py0 - bry * ly * s
           const dx = bx - ax
           const dy = by - ay
           const segLen = Math.hypot(dx, dy)
@@ -532,8 +561,8 @@ export class ParticleRuntime {
       drawn++
       // perspective rendering：位置（相对层中心）、尺寸、速度统一 × depthFactor
       const df = this.desc.perspective ? this.depthFactor(p) : 1
-      const x = px0 + p.x * lx * s * df
-      const y = py0 - p.y * ly * s * df
+      const x = px0 + (p.x * ca - p.y * sa) * lx * s * df
+      const y = py0 - (p.x * sa + p.y * ca) * ly * s * df
       // 官方 genericparticle.vert：quad 宽度 = size，高度 = size × textureRatio（h/w），
       // quad 顶点经 g_ModelViewProjectionMatrix → 尺寸乘 layer scale（lx/ly）。
       const pwBase = Math.max(2, p.size * s * df)
@@ -598,7 +627,7 @@ export class ParticleRuntime {
       } else if (p.rot !== 0) {
         ctx.save()
         ctx.translate(x, y)
-        ctx.rotate(p.rot)
+        ctx.rotate(p.rot + angle)
         if (sprite) {
           const frac = 1 - p.life / p.maxLife
           const frame = this.pickFrame(p, frac, frames)
@@ -778,7 +807,8 @@ export class ParticleRuntime {
       // 官方 turbulentvelocityrandom（particles-initializer "Turbulent velocity random"）：
       //   方向 = normalize(forward × offset + noise(phase, time×timescale) × scale)
       //   速度 = 方向 × rand(speedMin, speedMax)
-      // scale 控制方向发散度（1=全方向 / 0=沿 forward 直线 / 2=可自我缠绕）；
+      // forward = 模型局部 +Y（2D 粒子发射主方向，随图层 angles 旋转）；offset 为正时沿
+      // 该方向喷出（"喷气"），offset 为负时反方向。scale 控制湍流发散度（1=全方向/0=直线）；
       // 噪声使相邻相位粒子的方向连续变化 → "一阵阵风"的烟流效果（非纯随机乱蹦）。
       const spd = tv.speedMin !== undefined && tv.speedMax !== undefined
         ? rand(tv.speedMin, tv.speedMax)
@@ -792,10 +822,10 @@ export class ParticleRuntime {
       const nx = Math.sin(phase * 1.7 + t * 0.7) * 0.7 + Math.sin(phase * 3.1 + t * 1.3) * 0.3
       const ny = Math.sin(phase * 2.3 + t * 1.1) * 0.7 + Math.sin(phase * 4.9 + t * 0.8) * 0.3
       const nz = Math.sin(phase * 1.3 + t * 0.5) * 0.7 + Math.sin(phase * 3.7 + t * 1.7) * 0.3
-      // forward = 屏幕法线 +z（2D 场景）；可见湍流 = scale × noise 的 xy 分量
+      // forward = 模型局部 +Y（up）；方向 = normalize(forward*offset + noise*scale)
       let dx = tv.scale * nx
-      let dy = tv.scale * ny
-      const dz = tv.offset + tv.scale * nz
+      let dy = tv.offset + tv.scale * ny
+      const dz = tv.scale * nz
       const len = Math.hypot(dx, dy, dz)
       if (len > 0.0001) { dx /= len; dy /= len }
       vx += dx * spd
@@ -834,6 +864,7 @@ export class ParticleRuntime {
       baseSize: size,
       size,
       alpha,
+      spawnAlpha: alpha,
       color: [cr, cg, cb],
       rot,
       angVel,

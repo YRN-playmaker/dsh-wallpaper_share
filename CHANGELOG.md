@@ -1,5 +1,31 @@
 # Changelog
 
+## v26.08.29 — 2026-08-29
+
+Wallpaper Engine scene 真实渲染适配的又一轮打磨：新增**昼夜自动切换（auto 模式）**与 **TEXS 序列帧动画解析**，并把骨骼动画修复推广到全部格式；同时修复了 spritesheet 频闪 / 丢帧、scene 图层渲染崩塌、以及雾/烟粒子浓度过浓等一系列共性问题。
+
+### ✨ 新增功能
+
+- **昼夜自动切换（auto 模式）**：识别 scene 图层 alpha 里的 SceneScript `engine.timeOfDay` + `smoothStep(START_HOUR, END_HOUR)`，按本地真实时钟 / 日出日落小时计算昼夜 alpha——夜间夜空层 alpha=1、白天隐藏（非昼夜脚本图层保持静态 alpha）。覆盖 2164591875 / 2785951913 / 3151551777 / 3774904326 等 4 个用真实时钟驱动昼夜的壁纸，跨午夜（日出 > 日落）同样支持。
+- **TEXS 动画段解析（序列帧 / GIF 网格）**：`decodeTex` 完整解析 TEXS0001/0002/0003 帧表（每帧的纹理内像素矩形 + 时长），`DecodedTex.frames` 返回帧表；`/we-sync/scene/texture` 返回 `X-Sprite-Frames/Width/Height/Duration/Rects` 头，渲染端按时间取帧裁剪绘制。全库 8 个 spritesheet 材质纹理（2164591875 的 12/4 帧瀑布、2325500626 的 16 帧篝火、2022733184 的 32 帧星光、1438064333 的 64 帧、3774904326 的 3 帧昼夜切换等）全部验证可解析。
+
+### 🐛 修复
+
+- **烟雾 / 粒子浓度过浓（2804379697 雾等，共性问题）**：`ParticleRuntime.updateParticles` 里 `let a = hasAlpharandom ? 1 : p.spawnAlpha`——凡带 `alpharandom` 初始化器的粒子（雾 / 烟 / 雪等绝大多数），其随机不透明度（官方语义 "Alpha random: Defines the opacity of the particles"）被直接丢弃、顶成满 alpha=1。fog1 的 `alpharandom 0.15–0.2 × override.alpha 0.5 = 0.075–0.1` 被顶成 1，浓 **10 倍以上**，表现为浓白团块而非轻薄雾霭。修复：`a = p.spawnAlpha`（保留出生随机 alpha，fade / oscillate 仅在其上调制）。
+- **alphafade 淡入淡出单位错误（粒子早期偏薄 / 上升沿错）**：`fadeintime/fadeouttime` 在 WE 中单位为**秒**（与粒子年龄 / 剩余寿命秒数比较），但代码拿 0-1 的寿命比例 `frac` 直接比较，把 `0.5s` 当成"50% 寿命"——雾寿命 3–5s 时淡入被拉长到 1.5–2.5s，远慢于 WE 的 0.5s，导致粒子长期停留在低 alpha、平均浓度偏低。修复：按每粒子 `maxLife` 把秒换算成比例（`fadeIn / p.maxLife`）再比较。
+- **昼夜壁纸"白天 / 黑夜快速频闪"（2164591875 等）**：根因是**序列帧动画里混入了"空帧"**。夜空图层是 4 帧 spritesheet，其中一帧的 TEXS 矩形越界且采样区域全透明（alpha≈0）——播放到该帧时夜空图层瞬间变透明，底下的白天图层透出，于是每 0.4s（动画循环）闪一次"白天"，表现为"白天 / 黑夜快速衔接"。修复：`decodeTex` 解析 TEXS 帧表后，**通用剔除**矩形越界或不透明像素占比 < 5% 的空帧（不针对具体壁纸 ID），坏帧不再让图层闪空。
+- **多页序列帧"丢帧"（2164591875 夜空只剩两帧循环）**：剔除空帧后夜空动画仍只有前两帧循环。根因是该纹理是**多 image 页（GIF 式）结构**（`imageCount=2`：image0 1024×1024 + image1 1024×512），TEXS 帧表的 `frameNumber` 字段指明每帧所属页——夜空第 4 帧 `frameNumber=1` 指向 image1。但解码器**只解码 image0 且忽略 frameNumber**，导致该帧被错误采样回 image0 的 (0,0)，与首帧完全重复 → 视觉上"只有前两帧循环"。修复：`decodeTex` 读取**所有 image 页**的 mip0，当帧引用多页时把各 raw 页**纵向拼成一张图集**并按 `frameNumber` 重映射每帧矩形 y 偏移，使渲染端"单图裁剪"模型可用。夜空图现输出 1024×1536 图集、3 个互不相同的有效帧（像素差实测 2.4–2.8）。
+- **scene 非序列帧图层整层跳过（渲染崩塌）**：`renderScene` 里 `this.layerSprite.get(layer.id)` 对无 sprite 的普通 image 层返回 `undefined`，旧判断 `spr !== null` 未排除 `undefined`（`undefined !== null` 为 true），导致每个非 sprite 图层访问 `spr.frames` 抛 `TypeError`，被 draw() 的 try/catch 捕获后整层不绘制——表现为"背景 / 普通图层不显示，只剩先画的 puppet 层"。改为 `spr != null`（同时排除 null 与 undefined）。此 bug 影响大量无 sprite 的 scene 壁纸（2587542891、2804379697 等），是"只显示眉毛瞳孔而背景缺失"的根因。
+- **scene 纹理序列帧动画（GIF / 切分图片网格）不播放**：`decodeTex` 此前只解析第一个 image 的 mip0，完全忽略 TEXS 动画段——切分图片动画壁纸只显示第一帧（静态）。现完整解析 TEXS 帧表并驱动渲染端按时间取帧裁剪（见"新增功能"）。
+- **spritesheet 静态缓存排除**：带序列帧动画的图层不再进入静态背景离屏缓存（否则永远只画第一帧）。
+- **骨骼旋转统一为欧拉角（全部格式）**：扫描 52 个 scene 壁纸中全部 47 个带 puppet 的壁纸，确认 MDLA0001（0013 格式）与 MDLA0006（0021/0023 格式）动画帧的旋转分量均可能 > 1（0023 最高 98.855，0021 有 28.199）——四元数 z 分量被限制在 [-1,1]，>1 证明**所有格式都是欧拉角**。老格式（0013）逐骨骼蒙皮已改为 `mat4TRSEuler`（T×R×S，R=Rz·Ry·Rx），睫毛弯曲等骨骼动画不再出现 180° 翻转与人物上下抖动。
+- **动画检测覆盖所有骨骼（0013 老格式）**：此前只检查骨骼 0 的帧跨度，而骨骼 0 常为静态绑定姿势（跨度=0），导致整个动画被跳过；现遍历全部骨骼的关键帧，任一骨骼有变化即播放（瞳孔收缩 / 眼睑旋转等依赖骨骼 1+ 的动画恢复正常）。
+
+### 📦 发布说明
+
+- 包：`dsh-wallpaper_share-v26.08.29.tgz`（`pnpm pack` 生成，含 `lib/index.js`、`lib/client.js`、`lib/client.js.map`、`cordis.patch.yml`、`README*.md`、`LICENSE`、`tools/scene-renderer/`）。
+- 生效方式：**前端改动**（`lib/client.js`：粒子浓度、昼夜 alpha、序列帧裁剪）硬刷新浏览器即可；**后端改动**（`lib/index.js`：TEXS 多页拼接 / 空帧剔除、昼夜脚本解析）需重启 DSH 进程。
+
 ## v26.0822T (0.2.0) — 2026-08-22
 
 Wallpaper Engine 场景真实渲染适配（test 分支发布版）。本版聚焦 puppet 部件网格渲染的正确性，并修复粒子纹理、图层效果与骨骼动画的系列共性问题。

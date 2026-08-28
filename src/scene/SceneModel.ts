@@ -40,6 +40,9 @@ export interface ParticleSystemDesc {
   /** 材质 textures（如 ["particle/fog/fog1"]，相对 assets/materials/ 的 .tex） */
   textureNames: string[]
   maxCount: number
+  /** 预设是否有 alpharandom 初始器（有 alpharandom 的粒子：alpha 覆盖为 1 保持可见；
+   * 无 alpharandom 的烟雾/火花：用真实 alpha 实现 instanceoverride 淡效果） */
+  hasAlpharandom: boolean
   /** starttime：创建时预模拟秒数（官方语义，见 particles-general "Start Time"） */
   startTime: number
   /** 预设 flags bit0：worldspace（粒子忽略粒子系统自身的位移/旋转，仅用自身坐标） */
@@ -143,6 +146,10 @@ export interface SceneModelLayer {
   size: [number, number] | null
   /** 图层 alpha（0-1，缺省 1）；0 = 只作变换锚点不绘制（如 puppet 根） */
   alpha: number
+  /** 昼夜自动切换（SceneScript 用 engine.timeOfDay + smoothStep(START_HOUR,END_HOUR) 控 alpha）。
+   *  渲染时按本地时长的日出/日落小时计算该层的昼夜 alpha 因子（夜间 1 / 白天 0）。
+   *  缺省 undefined = 无昼夜脚本，用静态 alpha。 */
+  dayNight?: { dayStartH: number; dayEndH: number; nightWhenStart: boolean; nightWhenEnd: boolean }
   origin: [number, number, number]
   angles: [number, number, number]
   scale: [number, number, number]
@@ -171,6 +178,7 @@ export type LayerEffect =
   | { type: 'shake'; bounds: [number, number]; friction: [number, number]; speed: number; strength: number; mask: string | null }
   | { type: 'opacity'; alpha: number }
   | { type: 'bloom'; gamma: number; opacity: number; radius: number; strength: number; threshold: number }
+  | { type: 'nitro'; colorStart: [number, number, number]; colorEnd: [number, number, number]; multiply: number; ranges: [number, number]; scales: [number, number]; speeds: [number, number, number, number]; smoothness: number; mask: string | null; noise: string | null }
   | { type: 'unknown' }
 
 export interface SceneTextureInfo {
@@ -259,6 +267,7 @@ export function buildSceneModel(pkgBuf: Uint8Array, opts?: { particleRateScale?:
       parent: typeof o.parent === 'number' ? o.parent : null,
       size: parseSize(o.size),
       alpha: numOr(o.alpha, 1),
+      dayNight: parseDayNightAlpha(o.alpha),
       origin: parseVec3(o.origin, [0, 0, 0]),
       angles: parseVec3(o.angles, [0, 0, 0]),
       scale: parseVec3(o.scale, [1, 1, 1]),
@@ -457,6 +466,37 @@ function parseLayerEffects(o: Record<string, unknown>): LayerEffect[] {
         strength: n(csv.strength, 0.3),
         threshold: n(csv.threshold, 0),
       })
+    } else if (file.includes('nitro')) {
+      // nitro 效果：流动彩色烟雾（带 mask 遮罩 + 噪声纹理）——底图颜色混合
+      // 纹理布局：textures[0]=null(底图), textures[1]=噪声(clouds_256), textures[2]=mask
+      const noise = textures.length > 1 && typeof textures[1] === 'string' && textures[1] !== '' ? textures[1] : null
+      const mask = textures.length > 2 && typeof textures[2] === 'string' && textures[2] !== '' ? textures[2] : null
+      const v2 = (v: unknown, d: [number, number]): [number, number] => {
+        if (typeof v === 'string') {
+          const p = v.trim().split(/\s+/).map(Number)
+          if (p.length >= 2 && p.every((x) => Number.isFinite(x))) return [p[0], p[1]]
+        }
+        return d
+      }
+      const v4 = (v: unknown, d: [number, number, number, number]): [number, number, number, number] => {
+        if (typeof v === 'string') {
+          const p = v.trim().split(/\s+/).map(Number)
+          if (p.length >= 4 && p.every((x) => Number.isFinite(x))) return [p[0], p[1], p[2], p[3]]
+        }
+        return d
+      }
+      out.push({
+        type: 'nitro',
+        colorStart: parseColor3(typeof csv.colorstart === 'string' ? csv.colorstart : '0 0.5 1'),
+        colorEnd: parseColor3(typeof csv.colorend === 'string' ? csv.colorend : '1 1 1'),
+        multiply: n(csv.multiply, 1),
+        ranges: v2(csv.bounds, [0.3, 0.25]),
+        scales: v2(csv.scale, [1, 2]),
+        speeds: v4(csv.speed, [-0.1, 0.7, 0.1, -0.5]),
+        smoothness: n(csv.smoothness, 1),
+        mask,
+        noise,
+      })
     } else {
       out.push({ type: 'unknown' })
     }
@@ -477,6 +517,7 @@ function resolveParticleSystem(pkg: ParsedPkg, ref: string, obj: Record<string, 
     let overbright = 1
     let refract = false
     let refractAmount = 0
+    let hasAlpharandom = false
     if (matRef !== '') {
       try {
         const mat = parseJsonLike(pkg.read(matRef) as Uint8Array) as { passes?: Array<{ textures?: unknown; blending?: string; constantshadervalues?: Record<string, unknown>; combos?: Record<string, unknown> }> }
@@ -542,7 +583,7 @@ function resolveParticleSystem(pkg: ParsedPkg, ref: string, obj: Record<string, 
       const mx = numOr(init.max, 0)
       if (name === 'lifetimerandom') initializers.lifetime = [mn, mx]
       else if (name === 'sizerandom') { initializers.size = [mn, mx]; initializers.sizeExponent = numOr(init.exponent, 1) }
-      else if (name === 'alpharandom') { initializers.alphaMin = mn; initializers.alphaMax = mx }
+      else if (name === 'alpharandom') { initializers.alphaMin = mn; initializers.alphaMax = mx; hasAlpharandom = true }
       else if (name === 'velocityrandom') { initializers.velocityMin = parseVec3(init.min, [0, 0, 0]); initializers.velocityMax = parseVec3(init.max, [0, 0, 0]) }
       else if (name === 'colorrandom') {
         // max 缺失（官方只给 min）= 固定颜色（如 fog2 "255 255 255" 白色雾）
@@ -557,7 +598,9 @@ function resolveParticleSystem(pkg: ParsedPkg, ref: string, obj: Record<string, 
         const smin = init.speedmin !== undefined ? numOr(init.speedmin, 0) : undefined
         const smax = init.speedmax !== undefined ? numOr(init.speedmax, 0) : undefined
         initializers.turbulentVelocity = {
-          offset: init.offset !== undefined ? numOr(init.offset, -0.5) : -0.5,
+          // offset 沿模型 +Y（发射主方向）的定向偏移；正 = 沿 +Y（图层角度旋转后成喷流方向），
+          // 负 = 反方向。默认 0.5（WE 默认偏移使 smoke 类粒子沿自身方向喷出）。
+          offset: init.offset !== undefined ? numOr(init.offset, 0.5) : 0.5,
           scale: init.scale !== undefined ? numOr(init.scale, 0.1) : 0.1,
           speedMin: smin,
           speedMax: smax,
@@ -720,6 +763,7 @@ function resolveParticleSystem(pkg: ParsedPkg, ref: string, obj: Record<string, 
       overbright,
       textureNames,
       maxCount: maxcount,
+      hasAlpharandom,
       startTime: numOr(preset.starttime, 0),
       worldSpace: (numOr(preset.flags, 0) & 1) !== 0,
       // flags bit2 = perspective rendering（2D 场景深度，近大远小）
@@ -744,6 +788,44 @@ function numOr(v: unknown, def: number | undefined): number {
   if (v === undefined) return def as number
   const n = Number(v)
   return Number.isFinite(n) ? n : (def as number)
+}
+
+/**
+ * 检测图层 alpha 的 SceneScript：若依赖 engine.timeOfDay 且含 START_HOUR/END_HOUR，
+ * 提取日出/日落小时作为昼夜自动切换（auto 模式）依据。
+ *
+ * 模式（WE 常见 day/night 脚本）：
+ *   Math.max(WEMath.smoothStep(START_HOUR/24, (START_HOUR-ε)/24, engine.timeOfDay),
+ *            WEMath.smoothStep((END_HOUR-ε)/24,  END_HOUR/24,  engine.timeOfDay))
+ *   语义：夜间（<START 或 >END）→ 1（夜空层显示），白天（START..END）→ 0（夜空层隐藏）。
+ *
+ * 返回 null = 无昼夜脚本（用静态 alpha）；否则给出日出/日落小时与两端是夜还是昼。
+ */
+function parseDayNightAlpha(v: unknown): { dayStartH: number; dayEndH: number; nightWhenStart: boolean; nightWhenEnd: boolean } | undefined {
+  if (typeof v !== 'object' || v === null) return undefined
+  const script = (v as { script?: unknown }).script
+  if (typeof script !== 'string') return undefined
+  // 必须依赖 engine.timeOfDay（真实时钟驱动）
+  if (!script.includes('engine') || !script.includes('timeOfDay')) return undefined
+  let startH = 7
+  let endH = 18
+  let hasStart = false
+  let hasEnd = false
+  const sh = /START_HOUR\s*=\s*([0-9.]+)/.exec(script)
+  if (sh !== null) { startH = Number(sh[1]); hasStart = true }
+  const eh = /END_HOUR\s*=\s*([0-9.]+)/.exec(script)
+  if (eh !== null) { endH = Number(eh[1]); hasEnd = true }
+  if (!hasStart || !hasEnd) return undefined
+  if (startH < 0 || startH > 24 || endH < 0 || endH > 24) return undefined
+  // 判断两端是"夜(1)"还是"昼(0)"：按脚本里 smoothStep 的相位。默认 START 前为夜、END 后为夜。
+  // 若脚本含 `1 - smoothStep(...)` 或起始项相位反向，则两端为昼、中间为夜。
+  const negated = /1\s*-\s*WEMath\.smoothStep/.test(script)
+  return {
+    dayStartH: startH,
+    dayEndH: endH,
+    nightWhenStart: !negated, // 默认 START 前夜晚、END 后夜晚
+    nightWhenEnd: !negated,
+  }
 }
 
 function toInt(v: unknown, def: number): number {

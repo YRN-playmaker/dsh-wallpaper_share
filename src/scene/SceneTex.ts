@@ -53,6 +53,15 @@ export interface TexMipData {
   rgba: Uint8ClampedArray | null
 }
 
+/** TEXS 动画帧：在纹理中的像素矩形（x/y/w/h）与持续时长（秒） */
+export interface TexFrameData {
+  x: number
+  y: number
+  w: number
+  h: number
+  t: number
+}
+
 export interface DecodedTex {
   format: number
   flags: number
@@ -64,6 +73,8 @@ export interface DecodedTex {
   imageFormat: number
   mipCount: number
   mip0: TexMipData | null
+  /** TEXS 动画段帧表（GIF/序列帧/切分图片动画）；无则 null（静态纹理） */
+  frames: TexFrameData[] | null
 }
 
 /** 解析 .tex 容器；返回 null 表示无法解析 */
@@ -107,26 +118,31 @@ export function decodeTex(bytes: Uint8Array): DecodedTex | null {
     else if (containerMagic === 'TEXB0004') { imageFormat = readI32(); readI32() /* isVideoMp4 */ }
     if (imageCount <= 0 || imageCount > 100) return null
 
-    // 只取第一个 image 的 mip0（渲染只需最高清 mip）
+    // 读取所有 image 页的 mip0（GIF/多页序列帧纹理：每页是一帧或一组帧的位图）。
+    // 每页布局：[mipCount i32] + 每级 [W][H][IsLZ4][DecBC][BC][bytes]。
+    interface PageMip { w: number; h: number; isLz4: number; dec: number; data: Uint8Array }
+    const readMip = (): PageMip | null => {
+      if (pos + 20 > bytes.length) return null
+      const mw = readI32(); const mh = readI32(); const lz = readI32(); const dc = readI32(); const bc = readI32()
+      if (mw <= 0 || mh <= 0 || mw > 16384 || mh > 16384 || bc < 0 || pos + bc > bytes.length) return null
+      const d = bytes.subarray(pos, pos + bc)
+      pos += bc
+      return { w: mw, h: mh, isLz4: lz, dec: dc, data: d }
+    }
     const mipCount = readI32()
     if (mipCount <= 0 || mipCount > 32) return null
-
-    const w = readI32()
-    const h = readI32()
-    const isLz4 = readI32()
-    const decompressed = readI32()
-    const byteCount = readI32()
-    if (w <= 0 || h <= 0 || w > 16384 || h > 16384 || byteCount < 0 || pos + byteCount > bytes.length) return null
-    const dataOffset = pos
-    let data = bytes.subarray(pos, pos + byteCount)
-    pos += byteCount
-
-    // LZ4 解压（raw 纹理）
-    let rgba: Uint8ClampedArray | null = null
-    if (isLz4 === 1) {
-      const raw = lz4Decompress(data, decompressed)
-      if (raw === null) return null
-      data = raw
+    const page0 = readMip()
+    if (page0 === null) return null
+    const dataOffset = pos - page0.data.length
+    const pages: PageMip[] = [page0]
+    for (let mm = 1; mm < mipCount; mm++) { if (readMip() === null) return null }
+    for (let img = 1; img < imageCount; img++) {
+      const mc = readI32()
+      if (mc <= 0 || mc > 32) return null
+      const pm = readMip()
+      if (pm === null) return null
+      pages.push(pm)
+      for (let mm = 1; mm < mc; mm++) { if (readMip() === null) return null }
     }
 
     let kind: TexMipData['kind']
@@ -134,10 +150,118 @@ export function decodeTex(bytes: Uint8Array): DecodedTex | null {
     else if (imageFormat === FIF.JPEG) kind = 'image-jpeg'
     else kind = 'raw'
 
-    // raw：LZ4 解压后为 Header.Format 像素数据 → 解码为 RGBA
-    if (kind === 'raw') {
-      rgba = decodeRawPixels(format, w, h, data)
-      if (rgba === null) return null
+    // 解析 TEXS 帧表（保留 frameNumber = 所属 image 页索引，供多页重映射）。
+    // 布局（参考 LWE TextureParser.parseAnimations）：
+    //   "TEXS0001/2/3\0" + frameCount u32；TEXS0003 额外 gifWidth/gifHeight u32
+    //   每帧：TEXS0001 = [frameNumber u32][frametime f32][x u32][y u32][w u32][?][?][h u32]
+    //          TEXS0002/3 = [frameNumber u32][frametime f32][x f32][y f32][w1 f32][w2 f32][h2 f32][h1 f32]
+    const parsedFrames: Array<{ x: number; y: number; w: number; h: number; t: number; page: number }> | null = (() => {
+      if (pos + 9 > bytes.length) return null
+      // 9 字节含结尾 null（如 "TEXS0003\0"）
+      const magic3 = String.fromCharCode(bytes[pos], bytes[pos + 1], bytes[pos + 2], bytes[pos + 3], bytes[pos + 4], bytes[pos + 5], bytes[pos + 6], bytes[pos + 7], bytes[pos + 8])
+      if (magic3 !== 'TEXS0001\u0000' && magic3 !== 'TEXS0002\u0000' && magic3 !== 'TEXS0003\u0000') return null
+      let fp = pos + 9
+      const readU32 = (): number => {
+        const v = (bytes[fp] | (bytes[fp + 1] << 8) | (bytes[fp + 2] << 16) | (bytes[fp + 3] << 24)) >>> 0
+        fp += 4
+        return v
+      }
+      const readF32 = (): number => {
+        // 按位重解释 int32 → float32（new Float32Array([v]) 是数值转换，会失真）
+        const v = (bytes[fp] | (bytes[fp + 1] << 8) | (bytes[fp + 2] << 16) | (bytes[fp + 3] << 24))
+        fp += 4
+        return new Float32Array(new Int32Array([v]).buffer)[0]
+      }
+      const frameCount = readU32()
+      if (frameCount <= 1 || frameCount > 4096) return null
+      if (magic3 === 'TEXS0003\u0000') { readU32(); readU32() /* gifWidth/gifHeight */ }
+      const out: Array<{ x: number; y: number; w: number; h: number; t: number; page: number }> = []
+      for (let f = 0; f < frameCount && fp + 32 <= bytes.length; f++) {
+        const page = readU32()
+        const t = readF32()
+        if (magic3 === 'TEXS0001\u0000') {
+          const fx = readU32(); const fy = readU32(); const fw = readU32()
+          readU32(); readU32()
+          const fh = readU32()
+          out.push({ x: fx, y: fy, w: fw, h: fh, t, page })
+        } else {
+          const fx = readF32(); const fy = readF32()
+          const w1 = readF32(); const w2 = readF32(); const h2 = readF32(); const h1 = readF32()
+          // w1/h1 为主尺寸（w2/h2 为镜像/偏移场景，取绝对值最大值）
+          const fw = Math.max(Math.abs(w1), Math.abs(w2))
+          const fh = Math.max(Math.abs(h1), Math.abs(h2))
+          if (fw <= 0 || fh <= 0) return null
+          out.push({ x: fx, y: fy, w: fw, h: fh, t, page })
+        }
+      }
+      return out.length > 1 ? out : null
+    })()
+
+    // 解码一页 raw → RGBA（PNG/JPEG 页不在此解码，按原字节伺服）。
+    const decodePageRgba = (p: PageMip): Uint8ClampedArray | null => {
+      let d = p.data
+      if (p.isLz4 === 1) { const raw = lz4Decompress(d, p.dec); if (raw === null) return null; d = raw }
+      return kind === 'raw' ? decodeRawPixels(format, p.w, p.h, d) : null
+    }
+
+    // 多页序列帧：帧引用不同 image 页（page>0）→ 把所有 raw 页纵向拼成一张图集，
+    // 每帧矩形按其所属页的 y 偏移重映射，使渲染端"单图裁剪"模型可用。
+    const multiPage = kind === 'raw' && pages.length > 1 && parsedFrames !== null && parsedFrames.some((f) => f.page > 0)
+    let w: number
+    let h: number
+    let rgba: Uint8ClampedArray | null
+    let data: Uint8Array
+    let frames: TexFrameData[] | null = null
+    if (multiPage && parsedFrames !== null) {
+      const pageRgba = pages.map(decodePageRgba)
+      if (pageRgba.some((r) => r === null)) return null
+      w = Math.max(...pages.map((p) => p.w))
+      const yOff: number[] = []
+      let acc = 0
+      for (const p of pages) { yOff.push(acc); acc += p.h }
+      h = acc
+      rgba = new Uint8ClampedArray(w * h * 4)
+      for (let i = 0; i < pages.length; i++) {
+        const pr = pageRgba[i] as Uint8ClampedArray
+        const pw = pages[i].w
+        const ph = pages[i].h
+        for (let y = 0; y < ph; y++) rgba.set(pr.subarray(y * pw * 4, (y + 1) * pw * 4), (yOff[i] + y) * w * 4)
+      }
+      data = page0.data
+      frames = parsedFrames.map((f) => ({ x: f.x, y: f.y + (f.page < yOff.length ? yOff[f.page] : 0), w: f.w, h: f.h, t: f.t }))
+    } else {
+      const p0 = pages[0]
+      w = p0.w
+      h = p0.h
+      let d = p0.data
+      if (p0.isLz4 === 1) { const raw = lz4Decompress(d, p0.dec); if (raw === null) return null; d = raw }
+      data = d
+      rgba = kind === 'raw' ? decodeRawPixels(format, w, h, d) : null
+      if (kind === 'raw' && rgba === null) return null
+      frames = parsedFrames === null ? null : parsedFrames.map((f) => ({ x: f.x, y: f.y, w: f.w, h: f.h, t: f.t }))
+    }
+
+    // 丢弃"空帧"：矩形越界、或采样区域几乎全透明（alpha≈0）的帧。
+    // WE 的 TEXS 偶有越界/占位垃圾帧（如昼夜壁纸夜空序列里混入的透明帧），
+    // 若照常播放会让图层在该帧瞬间变透明 → 下层画面闪出（表现为"白天/黑夜快速衔接"）。
+    // 通用判定（不针对具体壁纸）：按步长采样帧矩形内像素 alpha，不透明占比 < 5% 即视为空帧剔除。
+    if (frames !== null) {
+      const isBlankFrame = (fr: TexFrameData): boolean => {
+        if (rgba === null) return false
+        if (fr.x < 0 || fr.y < 0 || fr.x + fr.w > w || fr.y + fr.h > h) return true
+        let opaque = 0
+        let total = 0
+        for (let y = 0; y < fr.h; y += 3) {
+          for (let x = 0; x < fr.w; x += 3) {
+            const s = ((fr.y + y) * w + (fr.x + x)) * 4
+            if (rgba[s + 3] > 16) opaque++
+            total++
+          }
+        }
+        return total === 0 || opaque / total < 0.05
+      }
+      const kept = frames.filter((fr) => !isBlankFrame(fr))
+      frames = kept.length > 1 ? kept : null
     }
 
     return {
@@ -151,6 +275,7 @@ export function decodeTex(bytes: Uint8Array): DecodedTex | null {
       imageFormat,
       mipCount,
       mip0: { width: w, height: h, kind, data, dataOffset, rgba },
+      frames,
     }
   } catch {
     return null

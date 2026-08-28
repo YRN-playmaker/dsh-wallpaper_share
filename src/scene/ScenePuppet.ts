@@ -26,6 +26,8 @@ export interface PuppetVertex {
   pos: [number, number, number]
   /** 4 个骨骼权重（f32 @56..68，对应骨骼 0..3） */
   weights: number[]
+  /** 4 个骨骼索引（u16 LE @48,50,52,54），对应 4 组权重 */
+  boneIndices: number[]
   uv: [number, number]
 }
 
@@ -63,6 +65,13 @@ export interface PuppetAnimation {
   /** 动画时长（秒，目录项 f32 字段；>0 时播放周期用此值） */
   duration: number
   keyframes: PuppetKeyframe[]
+  /** 老格式（0013 魔数）：帧 = 9 f32 = [pos.x pos.y pos.z][quat.x quat.y quat.z][sx sy sz]，
+   * duration 字段是帧率(fps)而非秒；位移轴 pos.x→dx, pos.y→dy */
+  old13?: boolean
+  /** 老格式逐骨骼关键帧：boneKeyframes[b] = 骨骼 b 的关键帧（各自数据块）。
+   * 每帧 9 f32 = [pos3][quat3][scale3]，骨骼 0 的块直接用条目 dataLen，后续骨骼带
+   * [u32 0][u32 dataLen] 头。骨骼 1+ 承载瞳孔缩放/眼睑旋转等独立动画。 */
+  boneKeyframes?: PuppetKeyframe[][]
 }
 
 export interface PuppetModel {
@@ -116,7 +125,7 @@ export function parsePuppetMdl(bytes: Uint8Array): PuppetModel | null {
       p++
       return s
     })()
-    if (!magic1.startsWith('0023') && !magic1.startsWith('0021') && !magic1.startsWith('0020')) return null
+    if (!magic1.startsWith('0023') && !magic1.startsWith('0021') && !magic1.startsWith('0020') && !magic1.startsWith('0013')) return null
     p += 12 // 跳过魔数后 3 个 DWORD
     if (p < len) {
       // 材质 json（string 至 null）
@@ -129,18 +138,27 @@ export function parsePuppetMdl(bytes: Uint8Array): PuppetModel | null {
 
     const mdls4 = find('MDLS0004', 0)
     const mdls3 = find('MDLS0003', 0)
-    const mdls = mdls4 >= 0 ? mdls4 : mdls3
+    const mdls1 = find('MDLS0001', 0)
+    const mdls = mdls4 >= 0 ? mdls4 : mdls3 >= 0 ? mdls3 : mdls1
+    // 0001（老格式 0013 魔数）：布局同 0003（定义表 @+17，头 13B/骨骼）
     const mdlsIs3 = mdls >= 0 && mdls4 < 0
     const mdat = find('MDAT0001', 0)
-    const mdla = find('MDLA0006', 0)
+    const mdla6 = find('MDLA0006', 0)
+    const mdla1 = find('MDLA0001', 0)
+    const mdla = mdla6 >= 0 ? mdla6 : mdla1
     const mdle = find('MDLE0002', 0)
 
-    // --- MDLV 顶点网格（仿 linux-wallpaperengine findPuppetMeshBlock：stride=80）---
+    // --- MDLV 顶点网格（仿 linux-wallpaperengine findPuppetMeshBlock）---
+    // 0020/0021/0023 格式：stride=80，自 offset 9 起扫描
+    // 0013 老格式：stride=52，布局 [pos3 @0][boneIdx 4×u32 @12][weights 4×f32 @28][uv2 @44]
+    const isOld13 = magic1.startsWith('0013')
     let mesh: PuppetMesh | null = null
     {
-      const stride = 80
       const mdlsOffset = mdls >= 0 ? mdls : len
-      for (let offset = 9; offset + 12 < mdlsOffset; offset++) {
+      const strides = isOld13 ? [52] : [80, 64]
+      for (const stride of strides) {
+        if (mesh !== null) break
+        for (let offset = 9; offset + 12 < mdlsOffset; offset++) {
         const candidateVertexBytes = u32At(bytes, offset + 4)
         const verticesOffset = offset + 8
         const indexLengthOffset = verticesOffset + candidateVertexBytes
@@ -169,13 +187,30 @@ export function parsePuppetMdl(bytes: Uint8Array): PuppetModel | null {
         const vertices: PuppetVertex[] = []
         for (let i = 0; i < vc; i++) {
           const vp = verticesOffset + i * stride
-          const weights: number[] = []
-          for (let w = 0; w < 4; w++) weights.push(f32At(bytes, vp + 56 + w * 4))
-          vertices.push({
-            pos: [f32At(bytes, vp), f32At(bytes, vp + 4), f32At(bytes, vp + 8)],
-            weights,
-            uv: [f32At(bytes, vp + 72), f32At(bytes, vp + 76)],
-          })
+          if (isOld13) {
+            // 0013: [pos3 f32 @0][boneIdx 4×u32 @12][weights 4×f32 @28][uv2 f32 @44]
+            const weights: number[] = []
+            for (let w = 0; w < 4; w++) weights.push(f32At(bytes, vp + 28 + w * 4))
+            const boneIndices: number[] = []
+            for (let b = 0; b < 4; b++) boneIndices.push(u32At(bytes, vp + 12 + b * 4))
+            vertices.push({
+              pos: [f32At(bytes, vp), f32At(bytes, vp + 4), f32At(bytes, vp + 8)],
+              weights,
+              boneIndices,
+              uv: [f32At(bytes, vp + 44), f32At(bytes, vp + 48)],
+            })
+          } else {
+            const weights: number[] = []
+            for (let w = 0; w < 4; w++) weights.push(f32At(bytes, vp + 56 + w * 4))
+            const boneIndices: number[] = []
+            for (let b = 0; b < 4; b++) boneIndices.push(u16At(bytes, vp + 48 + b * 2))
+            vertices.push({
+              pos: [f32At(bytes, vp), f32At(bytes, vp + 4), f32At(bytes, vp + 8)],
+              weights,
+              boneIndices,
+              uv: [f32At(bytes, vp + 72), f32At(bytes, vp + 76)],
+            })
+          }
         }
         const indices: number[] = []
         for (let i = 0; i < idxCount; i++) indices.push(u16At(bytes, indicesOffset + i * 2))
@@ -195,6 +230,7 @@ export function parsePuppetMdl(bytes: Uint8Array): PuppetModel | null {
         const r = (vn * syv - sy * sv) / denom
         mesh = { vertices, indices, flipV: r > 0 }
         break
+        }
       }
     }
 
@@ -221,6 +257,9 @@ export function parsePuppetMdl(bytes: Uint8Array): PuppetModel | null {
           q = j + 1
         }
       } else {
+        // 0004：骨骼布局 = [pad:1][u0:4 parent:4 f0:4 矩阵64B=76B][变长 json 属性块\0]
+        // （bone0 的 pad 是 MDLS 头 @+17；后续骨骼 pad 紧跟上一 json 的 \0 之后）
+        // 实测 61 骨骼 json 起点间距恒定 78B = pad1 + def76 + json 首字节偏移
         let q = mdls + 18
         for (let i = 0; i < boneCount && q + 76 <= len; i++) {
           const parent = i32At(bytes, q + 4)
@@ -228,7 +267,10 @@ export function parsePuppetMdl(bytes: Uint8Array): PuppetModel | null {
           const bind: number[] = []
           for (let k = 0; k < 16; k++) bind.push(f32At(bytes, mp + k * 4))
           mdlsBones.push({ parent, bind })
-          q += 76
+          // 跳过 json 属性块（矩阵后到 \0）+ 下一骨骼的 pad 字节
+          let j = mp + 64
+          while (j < len && bytes[j] !== 0 && j < q + 4096) j++
+          q = j + 2
         }
       }
     }
@@ -308,6 +350,10 @@ export function parsePuppetMdl(bytes: Uint8Array): PuppetModel | null {
     }
 
     // --- MDLA 动画 ---
+    // 0006（新格式）：数据起点 dataLen 后 +1B extra，帧 = [t:3B][8×f32][1B] = 36B
+    // 0001（老格式 0013 魔数）：数据起点 dataLen 后无 extra，帧 = 9×f32 = 36B（无 t 字段，
+    //   时间用帧序号）
+    const mdlaIs1 = mdla >= 0 && mdla6 < 0
     const animations: PuppetAnimation[] = []
     if (mdla >= 0 && mdla + 17 <= len) {
       const animCount = Math.max(0, Math.min(64, u32At(bytes, mdla + 13)))
@@ -322,17 +368,72 @@ export function parsePuppetMdl(bytes: Uint8Array): PuppetModel | null {
         while (q < len && bytes[q] !== 0 && lp.length < 128) { lp += String.fromCharCode(bytes[q]); q++ }
         q++
         if (nm === '' || q + 20 > len) break
-        const duration = f32At(bytes, q); q += 4 // f32（动画时长秒）
-        const bc = u32At(bytes, q); q += 4
+        const duration = f32At(bytes, q); q += 4 // f32（动画时长秒 / 0013 帧率）
+        const bc = u32At(bytes, q); q += 4 // u32（0013：帧计数字段 = 帧数-1?）
         q += 4 // u32
-        q += 4 // u32
+        const bc2 = u32At(bytes, q); q += 4 // 0013：真实骨骼数
         q += 4 // u32
         const dataLen = u32At(bytes, q); q += 4
         if (dataLen <= 0 || dataLen > len - q) break
-        q++ // extra (1B)
-        const kf = parseKeyframes(bytes, q, dataLen)
-        q += kf.offset + dataLen
-        animations.push({ id, name: nm, loop: lp === 'loop', boneCount: bc, duration, keyframes: kf.keyframes })
+        if (!mdlaIs1) q++ // 0006：extra (1B)
+        let kf: { keyframes: PuppetKeyframe[]; offset: number }
+        if (mdlaIs1) {
+          // 0001：帧 = 9×f32 = 36B，无时间戳；按帧序号作为 t。
+          // 0013 动画数据按骨骼分块：骨骼 0 直接用条目 dataLen（无头），
+          // 骨骼 1..N 各带 [u32 0][u32 dataLen] 头 + dataLen 字节。
+          const frames = Math.floor(dataLen / 36)
+          const kfs: PuppetKeyframe[] = []
+          if (frames > 0 && q + 36 <= len) {
+            for (let f = 0; f < frames && q + (f + 1) * 36 <= len; f++) {
+              const fp = q + f * 36
+              const values: number[] = []
+              let bad = false
+              for (let k = 0; k < 9; k++) {
+                const v = f32At(bytes, fp + k * 4)
+                if (!Number.isFinite(v)) { bad = true; break }
+                values.push(v)
+              }
+              if (bad) break
+              kfs.push({ t: f, values })
+            }
+          }
+          // 逐骨骼数据块：骨骼 0 无头；骨骼 1+ 有 [u32 0][u32 dataLen] 头
+          const boneKeyframes: PuppetKeyframe[][] = [kfs]
+          let bq = q + kfs.length * 36
+          const realBoneCount = Math.min(bc2 > 0 ? bc2 : bc, 64)
+          for (let b = 1; b < realBoneCount && bq + 8 <= len; b++) {
+            const h0 = u32At(bytes, bq)
+            const h1 = u32At(bytes, bq + 4)
+            if (h0 !== 0 || h1 !== dataLen) break
+            const bData = bq + 8
+            const bk: PuppetKeyframe[] = []
+            for (let f = 0; f < frames && bData + (f + 1) * 36 <= len; f++) {
+              const fp = bData + f * 36
+              const values: number[] = []
+              let bad = false
+              for (let k = 0; k < 9; k++) {
+                const v = f32At(bytes, fp + k * 4)
+                if (!Number.isFinite(v)) { bad = true; break }
+                values.push(v)
+              }
+              if (bad) break
+              bk.push({ t: f, values })
+            }
+            boneKeyframes.push(bk)
+            bq = bData + bk.length * 36
+          }
+          kf = { keyframes: kfs, offset: bq - q }
+          animations.push({
+            id, name: nm, loop: lp === 'loop', boneCount: realBoneCount, duration,
+            keyframes: kfs, old13: mdlaIs1, boneKeyframes,
+          })
+          q += kf.offset
+          continue
+        } else {
+          kf = parseKeyframes(bytes, q, dataLen)
+        }
+        q += kf.offset
+        animations.push({ id, name: nm, loop: lp === 'loop', boneCount: bc, duration, keyframes: kf.keyframes, old13: mdlaIs1 })
       }
     }
 

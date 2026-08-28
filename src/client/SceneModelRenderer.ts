@@ -17,9 +17,11 @@
  */
 import type { SceneModel, SceneModelLayer, LayerEffect } from '../scene/SceneModel.ts'
 import { sampleAnimation as samplePuppet, type PuppetAnimation } from '../scene/ScenePuppet.ts'
+import { skinVertex, mat4Mul, mat4TRS, mat4TRSEuler, mat4Identity, computeSkinMatrices, type Mat4 } from '../scene/PuppetSkin.ts'
 import { ParticleRuntime } from './ParticleRuntime.ts'
 import { ParticleGL } from './ParticleGL.ts'
 import { WaterwavesGL, type WaterwavesParams } from './WaterwavesGL.ts'
+import { NitroGL, type NitroParams } from './NitroGL.ts'
 
 export interface SceneModelRendererHandlers {
   onLiveChange?: (live: boolean) => void
@@ -33,22 +35,39 @@ const PLACEHOLDER_SIZE = 100 // 场景单位
  *   x_c = x_m, y_c = -y_m（绘制时经场景变换把图片中心对齐图层锚点）。
  * UV v 翻转（模型 v-up → 纹理 v-down）。
  * 每三角形：clip 路径 + 仿射变换（UV 三角 → 位置三角）+ drawImage 纹理。
- * anim 可选：{rot, bx, by} = root 骨骼旋转（绕骨骼 0 bind 位置旋转的蒙皮）——
- * 顶点 skinPos = w0 × Rz(rot; bx,by) × pos + (1-w0) × pos（骨骼 1-3 权重静态 = raw）。
+ * 骨骼蒙皮（规范）：M_inv_bind_i = inverse(bind_i)；
+ *   M_skin_i = M_global_i × M_inv_bind_i，静止骨骼 M_global = bind → M_skin = I；
+ *   动画骨骼（骨骼 0）M_global_0 = T(bx,by) × Rz(rot) × T(-bx,-by) × bind_0；
+ *   skinPos = Σ w_k × M_skin_{boneIdx[k]} × pos（4 权重 + 4 骨骼索引）。
+ * anim 可选：{rot, bx, by} = 动画骨骼（骨骼 0）绕其 bind 位置的旋转。
  */
-function buildMeshCanvas(mesh: { vertices: { pos: [number, number, number]; uv: [number, number]; weights?: number[] }[]; indices: number[]; flipV?: boolean }, tex: HTMLCanvasElement | ImageBitmap, anim?: { rot: number; bx: number; by: number } | null): { canvas: HTMLCanvasElement; originX: number; originY: number } {
+function buildMeshCanvas(mesh: { vertices: { pos: [number, number, number]; uv: [number, number]; weights?: number[]; boneIndices?: number[] }[]; indices: number[]; flipV?: boolean }, tex: HTMLCanvasElement | ImageBitmap, anim?: { rot: number; bx: number; by: number } | null, binds?: Array<number[] | null> | null, boneMats?: Array<Mat4 | null> | null): { canvas: HTMLCanvasElement; originX: number; originY: number } {
   // 蒙皮预计算：顶点位置数组（raw 或蒙皮后）
   const posArr: Array<[number, number]> = []
-  if (anim !== undefined && anim !== null) {
-    const c = Math.cos(anim.rot)
-    const sn = Math.sin(anim.rot)
-    const bx = anim.bx
-    const by = anim.by
+  if (boneMats !== undefined && boneMats !== null && boneMats.length > 0) {
+    // 0013 老格式：逐骨骼动画全局矩阵（绝对姿态）→ M_skin_i = M_anim_i × M_inv_bind_i
+    const skin = computeSkinMatrices(binds ?? [], boneMats)
     for (const v of mesh.vertices) {
-      const w0 = v.weights !== undefined ? v.weights[0] ?? 0 : 0
-      const rx = bx + c * (v.pos[0] - bx) - sn * (v.pos[1] - by)
-      const ry = by + sn * (v.pos[0] - bx) + c * (v.pos[1] - by)
-      posArr.push([w0 * rx + (1 - w0) * v.pos[0], w0 * ry + (1 - w0) * v.pos[1]])
+      const sp = skinVertex(v.pos, v.weights ?? [], v.boneIndices ?? [], skin)
+      posArr.push([sp[0], sp[1]])
+    }
+  } else if (anim !== undefined && anim !== null) {
+    // 动画骨骼（骨骼 0）全局矩阵：绕 bind 位置旋转（WE 语义）
+    const toB = mat4TRS(anim.bx, anim.by, 0, 0, 1, 1, 1)
+    const rotM = mat4TRS(0, 0, 0, anim.rot, 1, 1, 1)
+    const fromB = mat4TRS(-anim.bx, -anim.by, 0, 0, 1, 1, 1)
+    const anim0 = mat4Mul(toB, mat4Mul(rotM, fromB))
+    // M_global_i：动画骨骼 = anim0 × bind_0；其余 = bind_i（→ M_skin = I）
+    const n = binds !== null && binds !== undefined ? binds.length : 1
+    const animMats: Array<Mat4 | null> = []
+    for (let i = 0; i < n; i++) {
+      const bind = binds !== null && binds !== undefined ? binds[i] : null
+      animMats.push(i === 0 ? mat4Mul(anim0, bind ?? mat4Identity()) : bind ?? null)
+    }
+    const skin = computeSkinMatrices(binds ?? [], animMats)
+    for (const v of mesh.vertices) {
+      const sp = skinVertex(v.pos, v.weights ?? [], v.boneIndices ?? [], skin)
+      posArr.push([sp[0], sp[1]])
     }
   } else {
     for (const v of mesh.vertices) posArr.push([v.pos[0], v.pos[1]])
@@ -247,8 +266,17 @@ export class SceneModelRenderer {
   private effectMasks = new Map<number, { bmp: ImageBitmap; useA: boolean; flowDir: [number, number] }>()
   /** WebGL waterwaves 渲染器（惰性创建） */
   private wwGL: WaterwavesGL | null = null
+  /** WebGL nitro 渲染器（惰性创建） */
+  private nitroGL: NitroGL | null = null
+  /** nitro 效果纹理：图层 id → { 噪声, 各 nitro mask } */
+  private nitroTex = new Map<number, { noise: ImageBitmap | null; masks: Array<ImageBitmap | null> }>()
   /** 图层纹理的 Image 内容区域尺寸（tex 画布内左上角）；无则用位图原生尺寸 */
   private layerTexImage = new Map<number, [number, number]>()
+  /** 图层 spritesheet 序列帧动画元数据：图层 id → { 帧数, 帧宽, 帧高, 单帧时长（秒）, 帧矩形 }。
+   *  (GIF/切分图片动画：纹理含 TEXS 动画段，渲染按时间取帧裁剪) */
+  private layerSprite = new Map<number, { frames: number; fw: number; fh: number; per: number; rects: Array<[number, number, number, number]> | null }>()
+  /** spritesheet 当前帧裁剪缓存：图层 id → { 帧号, 裁剪矩形, canvas }（帧切换时重建） */
+  private spriteFrameCache = new Map<number, { frame: number; sx: number; sy: number; sw: number; sh: number; canvas: HTMLCanvasElement }>()
   /** 图层世界变换（递归 parent 合并；局部 y-up 翻转） */
   private worldTransform = new Map<number, { ox: number; oy: number; sx: number; sy: number }>()
   /** 图层 id → 图层（链式查找 puppet 祖先用） */
@@ -272,6 +300,8 @@ export class SceneModelRenderer {
   private puppetAnims = new Map<number, { anim: PuppetAnimation; time: number }>()
   /** 每帧计算的动画变换：puppet 图层 id → 平移/旋转 */
   private animXform = new Map<number, { dx: number; dy: number; rot: number }>()
+  /** 0013 老格式逐骨骼动画全局矩阵：puppet 图层 id → 每骨骼动画矩阵（TRS，绝对姿态） */
+  private boneAnimMats = new Map<number, Array<Mat4 | null>>()
   /** puppet 网格离屏渲染缓存：图层 id → { canvas, 模型原点 } */
   private meshCanvases = new Map<number, { canvas: HTMLCanvasElement; originX: number; originY: number; animKey: string }>()
   private dpr = 1
@@ -357,10 +387,13 @@ export class SceneModelRenderer {
     for (const bmp of this.layerTextures.values()) { try { bmp.close() } catch { /* 忽略 */ } }
     this.layerTextures.clear()
     this.layerTexImage.clear()
+    this.layerSprite.clear()
+    this.spriteFrameCache.clear()
     this.worldTransform.clear()
     this.byId.clear()
     this.puppetAnims.clear()
     this.animXform.clear()
+    this.boneAnimMats.clear()
     this.meshCanvases.clear()
     for (const v of this.effectMasks.values()) { try { if ('close' in v.bmp) v.bmp.close() } catch { /* 忽略 */ } }
     this.effectMasks.clear()
@@ -390,6 +423,25 @@ export class SceneModelRenderer {
     }
   }
 
+  /** 昼夜 alpha 因子（0-1）：按本地时长的日出/日落小时计算当前是夜还是昼。
+   *  - 默认夜间（<dayStart 或 >dayEnd）→ nightWhenStart/nightWhenEnd 端为 1（夜空层显示）；
+   *  - 白天（dayStart..dayEnd）→ 另一侧为 1。
+   *  这是 auto 模式（真实时钟驱动），不依赖任何用户控件。 */
+  private dayNightFactor(dn: { dayStartH: number; dayEndH: number; nightWhenStart: boolean; nightWhenEnd: boolean }): number {
+    const now = new Date()
+    const hour = now.getHours() + now.getMinutes() / 60 + now.getSeconds() / 3600
+    const { dayStartH: s, dayEndH: e, nightWhenStart, nightWhenEnd } = dn
+    // 跨午夜（日出 > 日落）时反向：如 exo 场景 START=18 END=6，夜间在 18..6 之间。
+    if (s > e) {
+      // 夜间 = (hour >= s || hour < e)；白天 = (hour >= e && hour < s)
+      const isNight = hour >= s || hour < e
+      return isNight ? (nightWhenStart ? 1 : 0) : (nightWhenStart ? 0 : 1)
+    }
+    // 常规：夜间 = (hour < s || hour >= e)；白天 = (hour >= s && hour < e)
+    const isNight = hour < s || hour >= e
+    return isNight ? (nightWhenStart ? 1 : 0) : (nightWhenStart ? 0 : 1)
+  }
+
   // ---- 数据加载 ----
   private async load(): Promise<void> {
     if (this.closed) return
@@ -408,6 +460,17 @@ export class SceneModelRenderer {
     for (const l of model.layers) this.byId.set(l.id, l)
     this.computeWorldTransforms()
     this.setLive(true)
+
+    // 开播诊断：打印该壁纸的昼夜图层与当前 factor，便于确认 dayNight 是否到达前端
+    {
+      const dnLayers = model.layers.filter((l) => l.dayNight !== undefined)
+      console.log('[scene:dayNight] 壁纸 ' + this.monitor + ' 共 ' + model.layers.length +
+        ' 层，' + dnLayers.length + ' 层带昼夜脚本: ' +
+        (dnLayers.length === 0
+          ? '(无)'
+          : dnLayers.map((l) => l.name + '#' + l.id + ' DN=' + JSON.stringify(l.dayNight) +
+            ' factor=' + (l.alpha * this.dayNightFactor(l.dayNight as NonNullable<SceneModelLayer['dayNight']>)).toFixed(3)).join(' | ')))
+    }
 
     // 预览图打底（异步，不阻塞图层渲染）
     void this.loadBase(model)
@@ -440,21 +503,42 @@ export class SceneModelRenderer {
         ? layer.puppet.animations.find((a) => layer.animationIds.includes(a.id)) ?? layer.puppet.animations[0]
         : layer.puppet.animations[0]
       if (anim.keyframes.length < 2) continue
-      // 静态姿势表检测：所有分量跨度 < 0.01 → 不播放
-      const kf = anim.keyframes
-      let maxSpan = 0
-      for (let vi = 0; vi < 8; vi++) {
-        let mn = Infinity
-        let mx = -Infinity
-        for (const k of kf) {
-          const v = k.values[vi]
-          if (!Number.isFinite(v)) continue
-          if (v < mn) mn = v
-          if (v > mx) mx = v
+      // 0013 老格式逐骨骼：骨骼 0 可能静态而其他骨骼有动画（如瞳孔收缩/眼睑旋转），
+      // 需检查所有骨骼的关键帧，任一骨骼有变化即播放
+      if (anim.old13 && anim.boneKeyframes !== undefined && anim.boneKeyframes.length > 1) {
+        let anyAnim = false
+        for (const bk of anim.boneKeyframes) {
+          if (bk.length < 2) continue
+          for (let vi = 0; vi < 9; vi++) {
+            let mn = Infinity, mx = -Infinity
+            for (const k of bk) {
+              const v = k.values[vi]
+              if (!Number.isFinite(v)) continue
+              if (v < mn) mn = v
+              if (v > mx) mx = v
+            }
+            if (Number.isFinite(mn) && mx - mn > 0.01) { anyAnim = true; break }
+          }
+          if (anyAnim) break
         }
-        if (Number.isFinite(mn) && mx - mn > maxSpan) maxSpan = mx - mn
+        if (!anyAnim) continue
+      } else {
+        // 静态姿势表检测：所有分量跨度 < 0.01 → 不播放
+        const kf = anim.keyframes
+        let maxSpan = 0
+        for (let vi = 0; vi < 8; vi++) {
+          let mn = Infinity
+          let mx = -Infinity
+          for (const k of kf) {
+            const v = k.values[vi]
+            if (!Number.isFinite(v)) continue
+            if (v < mn) mn = v
+            if (v > mx) mx = v
+          }
+          if (Number.isFinite(mn) && mx - mn > maxSpan) maxSpan = mx - mn
+        }
+        if (maxSpan < 0.01) continue
       }
-      if (maxSpan < 0.01) continue
       this.puppetAnims.set(layer.id, { anim, time: 0 })
     }
     if (jobs.length > 0) await Promise.all(jobs)
@@ -568,6 +652,7 @@ export class SceneModelRenderer {
       if (this.closed) { got.bmp.close(); return }
       this.layerTextures.set(layer.id, got.bmp)
       if (got.imgW > 0 && got.imgH > 0) this.layerTexImage.set(layer.id, [got.imgW, got.imgH])
+      if (got.sprite !== null) this.layerSprite.set(layer.id, got.sprite)
       this.startAnimation()
       return
     }
@@ -618,9 +703,47 @@ export class SceneModelRenderer {
         this.startAnimation()
       } catch { /* mask 加载失败：无 mask 全图扰动 */ }
     }
+    // nitro 效果纹理：噪声（WE 资产 clouds_256）+ 各 mask（pkg 内）
+    const nitros = layer.effects.filter((e): e is Extract<LayerEffect, { type: 'nitro' }> => e.type === 'nitro')
+    if (nitros.length > 0 && !this.nitroTex.has(layer.id)) {
+      const jobs: Promise<void>[] = []
+      let noiseBmp: ImageBitmap | null = null
+      const masks: Array<ImageBitmap | null> = new Array(nitros.length).fill(null)
+      // 噪声纹理（所有 nitro 共用 util/clouds_256）
+      const noiseName = nitros[0].noise
+      if (noiseName !== null && noiseName !== '') {
+        jobs.push((async () => {
+          try {
+            const res = await fetch('/we-sync/asset/texture?name=' + encodeURIComponent(noiseName), { cache: 'no-store' })
+            if (res.ok) noiseBmp = await createImageBitmap(await res.blob())
+          } catch { /* 噪声加载失败 */ }
+        })())
+      }
+      // 各 nitro 的 mask 纹理
+      for (let i = 0; i < nitros.length; i++) {
+        const m = nitros[i].mask
+        if (m === null || m === '') continue
+        const maskName = m.startsWith('materials/') ? m : 'materials/' + m + '.tex'
+        const idx = i
+        jobs.push((async () => {
+          try {
+            const res = await fetch('/we-sync/scene/texture?monitor=' + encodeURIComponent(this.monitor) + '&name=' + encodeURIComponent(maskName), { cache: 'no-store' })
+            if (res.ok) masks[idx] = await createImageBitmap(await res.blob())
+          } catch { /* mask 加载失败 */ }
+        })())
+      }
+      await Promise.all(jobs)
+      if (this.closed) {
+        const allBmps: Array<ImageBitmap | null> = [noiseBmp, ...masks]
+        for (const bb of allBmps) { if (bb !== null) (bb as ImageBitmap).close() }
+        return
+      }
+      this.nitroTex.set(layer.id, { noise: noiseBmp, masks })
+      this.startAnimation()
+    }
   }
 
-  private async fetchTexture(name: string): Promise<{ bmp: ImageBitmap; imgW: number; imgH: number } | null> {
+  private async fetchTexture(name: string): Promise<{ bmp: ImageBitmap; imgW: number; imgH: number; sprite: { frames: number; fw: number; fh: number; per: number; rects: Array<[number, number, number, number]> | null } | null } | null> {
     try {
       const res = await fetch('/we-sync/scene/texture?monitor=' + encodeURIComponent(this.monitor) + '&name=' + encodeURIComponent(name), { cache: 'no-store' })
       if (!res.ok) return null
@@ -628,10 +751,33 @@ export class SceneModelRenderer {
       const bmp = await createImageBitmap(blob)
       const imgW = Number(res.headers.get('X-WE-Image-W'))
       const imgH = Number(res.headers.get('X-WE-Image-H'))
+      // spritesheet 序列帧动画（GIF/切分图片）：后端从 TEXS 动画段解析
+      const frames = Number(res.headers.get('X-Sprite-Frames'))
+      const fw = Number(res.headers.get('X-Sprite-Width'))
+      const fh = Number(res.headers.get('X-Sprite-Height'))
+      const dur = Number(res.headers.get('X-Sprite-Duration'))
+      let sprite: { frames: number; fw: number; fh: number; per: number; rects: Array<[number, number, number, number]> | null } | null = null
+      if (Number.isFinite(frames) && frames > 1 && Number.isFinite(fw) && fw > 0 && Number.isFinite(fh) && fh > 0) {
+        // 单帧时长：总时长/帧数；无总时长时按 10fps 兜底
+        const total = Number.isFinite(dur) && dur > 0 ? dur : frames / 10
+        let rects: Array<[number, number, number, number]> | null = null
+        const rectsRaw = res.headers.get('X-Sprite-Rects')
+        if (rectsRaw !== null) {
+          const parts = rectsRaw.split(';')
+          const arr: Array<[number, number, number, number]> = []
+          for (const p of parts) {
+            const n = p.split(',').map((x) => Number(x))
+            if (n.length === 4 && n.every((x) => Number.isFinite(x))) arr.push([n[0], n[1], n[2], n[3]])
+          }
+          if (arr.length === frames) rects = arr
+        }
+        sprite = { frames, fw, fh, per: total / frames, rects }
+      }
       return {
         bmp,
         imgW: Number.isFinite(imgW) && imgW > 0 ? imgW : bmp.width,
         imgH: Number.isFinite(imgH) && imgH > 0 ? imgH : bmp.height,
+        sprite,
       }
     } catch {
       return null
@@ -678,7 +824,11 @@ export class SceneModelRenderer {
     // 更新粒子（动画）
     for (const rt of this.runtimes.values()) rt.update(dt)
     this.updatePuppetAnims(dt)
-    this.renderScene()
+    try {
+      this.renderScene()
+    } catch (e) {
+      console.error('[scene:render] renderScene 异常:', e)
+    }
     // 持续动画循环
     this.rafId = requestAnimationFrame(this.draw)
   }
@@ -690,6 +840,7 @@ export class SceneModelRenderer {
    */
   private updatePuppetAnims(dt: number): void {
     this.animXform.clear()
+    this.boneAnimMats.clear()
     for (const [layerId, st] of this.puppetAnims) {
       st.time += dt
       const kf = st.anim.keyframes
@@ -700,8 +851,28 @@ export class SceneModelRenderer {
       for (let i = 1; i < kf.length; i++) if (kf[i].t > kf[peak].t) peak = i
       const period = kf[peak].t - kf[0].t
       if (period > 5_000_000) continue
-      const dur = st.anim.duration > 0 ? st.anim.duration : 3
+      // old13：duration 是帧率(fps)，播放周期 = 帧数/帧率（秒）；
+      // 其余格式：duration 即秒（官方时长）
+      const dur = st.anim.old13 && st.anim.duration > 0
+        ? kf.length / st.anim.duration
+        : st.anim.duration > 0 ? st.anim.duration : 3
       const t = period > 0 ? (st.time * period) / dur : st.time * (kf.length - 1) / dur
+      // 0013 老格式逐骨骼动画：每骨骼独立数据块 → 计算各骨骼动画全局矩阵
+      if (st.anim.old13 && st.anim.boneKeyframes !== undefined && st.anim.boneKeyframes.length > 1) {
+        const mats: Array<Mat4 | null> = []
+        for (let b = 0; b < st.anim.boneKeyframes.length; b++) {
+          const bk = st.anim.boneKeyframes[b]
+          if (bk.length === 0) { mats.push(null); continue }
+          const sub: PuppetAnimation = { ...st.anim, keyframes: bk }
+          const s = samplePuppet(sub, t)
+          if (s === null) { mats.push(null); continue }
+          const v = s.values
+          // 9 f32 = [pos.x pos.y pos.z][euler.x euler.y euler.z(弧度)][scale.x scale.y scale.z]
+          mats.push(mat4TRSEuler(v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7], v[8]))
+        }
+        this.boneAnimMats.set(layerId, mats)
+        continue
+      }
       const s = samplePuppet(st.anim, t)
       if (s === null) continue
       const v = s.values
@@ -731,23 +902,32 @@ export class SceneModelRenderer {
       } else {
         rot = v[4]
       }
-      // 位置位移：v0 = y（模型 y-up，bind 验证）；v6/v7（petal 类）→ dx/dy
+      // 位置位移：
+      // old13：帧值 = 根骨骼 bind 变换，v0=x v1=y（模型 y-up）→ dx=v0, dy=v1
+      // 其余：v0 = y（bind 验证）；v6/v7（petal 类）→ dx/dy
       let dx = 0
       let dy = 0
-      if (spans[0] > 0.5) dy += v[0] - base[0]
-      if (spans[6] > 0.5) dx += v[6] - base[6]
-      if (spans[7] > 0.5) dy += v[7] - base[7]
+      if (st.anim.old13) {
+        if (spans[0] > 0.5) dx += v[0] - base[0]
+        if (spans[1] > 0.5) dy += v[1] - base[1]
+      } else {
+        if (spans[0] > 0.5) dy += v[0] - base[0]
+        if (spans[6] > 0.5) dx += v[6] - base[6]
+        if (spans[7] > 0.5) dy += v[7] - base[7]
+      }
       this.animXform.set(layerId, { dx, dy, rot })
     }
   }
 
-  /** 静态图像层：无粒子、无效果、无动画（自身及祖先），可离屏缓存只渲染一次 */
+  /** 静态图像层：无粒子、无效果、无动画（自身及祖先）、非序列帧动画，可离屏缓存只渲染一次 */
   private isStaticImageLayer(layer: SceneModelLayer): boolean {
     if (layer.image === undefined || layer.particle !== null) return false
     if (layer.effects.length > 0 || layer.copybackground === true) return false
+    if (layer.dayNight !== undefined) return false
+    if (this.layerSprite.has(layer.id)) return false
     let p: number | null = layer.id
     while (p !== null && this.byId.has(p)) {
-      if (this.animXform.has(p)) return false
+      if (this.animXform.has(p) || this.boneAnimMats.has(p)) return false
       p = this.byId.get(p)?.parent ?? null
     }
     return true
@@ -882,7 +1062,9 @@ export class SceneModelRenderer {
           // 上下文被浏览器逐出时 ParticleGL 内部 preventDefault + restoreContext 原地恢复
           // （不在这里新建 canvas/上下文——每次新建都会再次触发逐出，形成死循环）
           if (!this.particleGL.available) continue
-          const batches = rt.collectGl(wt.sx, wt.sy, ox + wt.ox * s, oy + wt.oy * s, s)
+          // 粒子层角度：angles.z 为弧度（WE 局部 y-up 绕 z 旋转，粒子局部坐标须随图层旋转）
+          const layerAngle = layer.angles[2] ?? 0
+          const batches = rt.collectGl(wt.sx, wt.sy, ox + wt.ox * s, oy + wt.oy * s, s, layerAngle)
           const now = performance.now()
           if (batches.length === 0) {
             // 无粒子/纹理仍在加载（低速率层如火花 0.75/s 多数帧本就无粒子）——
@@ -943,7 +1125,7 @@ export class SceneModelRenderer {
           }
           bg = this.bgCache
         }
-        rt.draw(ctx, ox, oy, s, wt, bg)
+        rt.draw(ctx, ox, oy, s, wt, bg, layer.angles[2] ?? 0)
         continue
       }
       // image 层：先 flush GL 段，粒子才不会被盖在错误层级
@@ -966,20 +1148,28 @@ export class SceneModelRenderer {
         ctx.rotate(rotAngle)
       }
       ctx.scale((t !== undefined ? t.sx : layer.scale[0] ?? 1) * s, (t !== undefined ? t.sy : layer.scale[1] ?? 1) * s)
-      if (layer.alpha < 1) ctx.globalAlpha = Math.max(0, Math.min(1, layer.alpha))
-      const bmp = this.layerTextures.get(layer.id) ?? null
+      // 昼夜自动切换（auto 模式）：SceneScript engine.timeOfDay → 按本地时长/日出日落算 alpha 因子。
+      // 夜晚夜空层 alpha=1、白天隐藏；白昼层反之。与静态 alpha 相乘。默认为 1（无昼夜脚本时）。
+      let layerAlpha = layer.alpha
+      if (layer.dayNight !== undefined) layerAlpha = layer.alpha * this.dayNightFactor(layer.dayNight)
+      if (layerAlpha < 1) ctx.globalAlpha = Math.max(0, Math.min(1, layerAlpha))
+      let bmp = this.layerTextures.get(layer.id) ?? null
       // puppet 网格蒙皮渲染（实验开关；模型空间顶点 → 离屏 canvas → 场景变换）
       if (model.puppetMeshRender && layer.puppet !== null && layer.puppet.mesh !== null && bmp !== null) {
+        // 0013 老格式：逐骨骼动画矩阵（骨骼 0 静态根 + 骨骼 1+ 瞳孔/眼睑）→ 全骨骼蒙皮
+        const old13Mats = this.boneAnimMats.get(layer.id)
         // 动画部件：每帧按当前 root 骨骼旋转重建（蒙皮：绕骨骼 0 bind 位置旋转）
         const selfXf2 = this.animXform.get(layer.id)
         const b0 = layer.puppet.bones[0]?.bind ?? null
         const animSkin = selfXf2 !== undefined && b0 !== null && b0.length >= 15
           ? { rot: selfXf2.rot, bx: b0[12], by: b0[13] } as const
           : null
-        const key = layer.id + ':' + (animSkin !== null ? animSkin.rot.toFixed(4) : 'static')
+        const key = layer.id + ':' + (old13Mats !== undefined ? 'old13' + Math.floor(this.animTime * 60).toString(36) : (animSkin !== null ? animSkin.rot.toFixed(4) : 'static'))
         let mc = this.meshCanvases.get(layer.id)
         if (mc === undefined || mc.animKey !== key) {
-          const built = buildMeshCanvas(layer.puppet.mesh, bmp, animSkin)
+          // 各骨骼全局 bind 矩阵（MDLS bind；缺省回退 MDLE pose）→ 求 M_inv_bind
+          const binds = layer.puppet.bones.map((b) => b.bind ?? b.pose ?? null)
+          const built = buildMeshCanvas(layer.puppet.mesh, bmp, animSkin, binds, old13Mats)
           mc = { canvas: built.canvas, originX: built.originX, originY: built.originY, animKey: key }
           this.meshCanvases.set(layer.id, mc)
         }
@@ -987,16 +1177,60 @@ export class SceneModelRenderer {
       } else if (bmp !== null) {
         // 源 = 纹理 Image 内容区域（画布左上角）；目标 = 图层 size（缺省用 Image 尺寸）
         const ti = this.layerTexImage.get(layer.id)
-        const sw = ti !== undefined ? ti[0] : bmp.width
-        const sh = ti !== undefined ? ti[1] : bmp.height
+        let sw = ti !== undefined ? ti[0] : bmp.width
+        let sh = ti !== undefined ? ti[1] : bmp.height
         const dw = layer.size !== null ? layer.size[0] : sw
         const dh = layer.size !== null ? layer.size[1] : sh
-        // 图层效果：waterwaves（逐像素 UV 场扰动，多个 ww 叠加）/ shake（整体平移）
+        // spritesheet 序列帧动画（GIF/切分图片网格）：按时间取帧，把源位图裁剪为当前帧。
+        // 帧矩形（纹理内像素坐标）来自后端 TEXS 动画段；无矩形时按网格（帧宽×帧高）推断。
+        const spr = this.layerSprite.get(layer.id)
+        if (spr != null && bmp.width >= 1 && bmp.height >= 1) {
+          const total = spr.frames * spr.per
+          let frameIdx = Math.floor((this.animTime % total) / spr.per)
+          if (frameIdx < 0) frameIdx = 0
+          if (frameIdx >= spr.frames) frameIdx = spr.frames - 1
+          const rect = spr.rects !== null && spr.rects[frameIdx] !== undefined
+            ? spr.rects[frameIdx]
+            : (() => {
+              // 网格布局：cols = 位图宽/帧宽（取整），帧按行主序排列
+              const cols = Math.max(1, Math.floor(bmp.width / spr.fw))
+              const col = frameIdx % cols
+              const row = Math.floor(frameIdx / cols)
+              return [col * spr.fw, row * spr.fh, spr.fw, spr.fh] as [number, number, number, number]
+            })()
+          // 裁剪矩形取整并限制在位图范围内（TEXS 帧坐标可能有小数/越界）
+          const rx = Math.max(0, Math.min(bmp.width - 1, Math.round(rect[0])))
+          const ry = Math.max(0, Math.min(bmp.height - 1, Math.round(rect[1])))
+          const rw = Math.max(1, Math.min(bmp.width - rx, Math.round(rect[2])))
+          const rh = Math.max(1, Math.min(bmp.height - ry, Math.round(rect[3])))
+          // 帧裁剪缓存：帧号变化时重建（避免每帧创建 canvas）
+          const cached = this.spriteFrameCache.get(layer.id)
+          let frameBmp: HTMLCanvasElement
+          if (cached !== undefined && cached.frame === frameIdx && cached.sx === rx && cached.sy === ry && cached.sw === rw && cached.sh === rh) {
+            frameBmp = cached.canvas
+          } else {
+            frameBmp = document.createElement('canvas')
+            frameBmp.width = rw
+            frameBmp.height = rh
+            const fctx = frameBmp.getContext('2d')
+            if (fctx !== null) {
+              fctx.imageSmoothingEnabled = false
+              fctx.drawImage(bmp, rx, ry, rw, rh, 0, 0, rw, rh)
+            }
+            this.spriteFrameCache.set(layer.id, { frame: frameIdx, sx: rx, sy: ry, sw: rw, sh: rh, canvas: frameBmp })
+          }
+          bmp = frameBmp
+          sw = rw
+          sh = rh
+        }
+        // 图层效果：waterwaves（逐像素 UV 场扰动）/ nitro（流动彩色烟雾）/ shake
         const effScale = model.effectStrengthScale ?? 1
         const wws = layer.effects
           .filter((e): e is Extract<LayerEffect, { type: 'waterwaves' }> => e.type === 'waterwaves')
           .map((e) => ({ ...e, strength: e.strength * effScale }))
         const shk = layer.effects.find((e) => e.type === 'shake')
+        const nitros = layer.effects
+          .filter((e): e is Extract<LayerEffect, { type: 'nitro' }> => e.type === 'nitro')
         if (wws.length > 0) {
           const maskInfo = this.effectMasks.get(layer.id)
           let eff: HTMLCanvasElement | null = null
@@ -1009,6 +1243,30 @@ export class SceneModelRenderer {
             eff = applyWaterwaves(bmp, sw, sh, wws, this.animTime, maskInfo !== undefined ? maskInfo.bmp : null)
           }
           ctx.drawImage(eff, 0, 0, sw, sh, -dw / 2, -dh / 2, dw, dh)
+        } else if (nitros.length > 0) {
+          // nitro：底图叠加流动彩色烟雾（双噪声采样 + 渐变 + mask 门控 + Glow 混合）
+          const nt = this.nitroTex.get(layer.id)
+          let eff: HTMLCanvasElement | null = null
+          if (nt !== undefined && (this.nitroGL !== null || NitroGL.available)) {
+            if (this.nitroGL === null) this.nitroGL = new NitroGL()
+            const params: NitroParams[] = nitros.map((e) => ({
+              colorStart: e.colorStart,
+              colorEnd: e.colorEnd,
+              multiply: e.multiply,
+              ranges: e.ranges,
+              scales: e.scales,
+              speeds: e.speeds,
+              smoothness: e.smoothness,
+              useMask: e.mask !== null && e.mask !== '',
+            }))
+            eff = this.nitroGL.render(bmp, sw, sh, nt.noise, nt.masks, params, this.animTime, String(layer.id))
+          }
+          if (eff === null) {
+            // WebGL 不可用或无 nitro 纹理：直接绘制底图（无烟雾近似）
+            ctx.drawImage(bmp, 0, 0, sw, sh, -dw / 2, -dh / 2, dw, dh)
+          } else {
+            ctx.drawImage(eff, 0, 0, sw, sh, -dw / 2, -dh / 2, dw, dh)
+          }
         } else if (shk !== undefined && shk.type === 'shake') {
           // 官方 shake：offset = sin(speed×t)（标量波形），位移 = offset × strength² × flow 方向
           // （direction map 平均；无 flow 默认垂直）——单向位移，非圆周

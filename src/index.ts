@@ -16,7 +16,7 @@ import type { Writable } from 'node:stream'
 import { SceneAdapter, type SceneTarget } from './scene/SceneAdapter.ts'
 import { sceneFingerprint } from './scene/SceneCapabilities.ts'
 import { buildSceneModel, type SceneModel } from './scene/SceneModel.ts'
-import { parseScenePkg } from './scene/ScenePkg.ts'
+import { parseScenePkg, type ParsedPkg } from './scene/ScenePkg.ts'
 import { decodeTex, texMimeOf, texMipToPng } from './scene/SceneTex.ts'
 
 /** 最小化的 Cordis 上下文结构（独立构建不依赖 @deepseek-ai/cordis 的类型包） */
@@ -244,6 +244,35 @@ export function apply(ctx: CordisCtx): void {
     if (lower.endsWith('.gif')) return { kind: 'image', mime: 'image/gif' }
     if (lower.endsWith('.webp')) return { kind: 'image', mime: 'image/webp' }
     return { kind: 'other', mime: '' }
+  }
+
+  /** 判断某 .tex 条目是否被「声明 spritesheet combo 的材质」引用。
+   *  只有这类材质的纹理才按 spritesheet 动画裁剪；其余（含 TEXS 帧表的
+   *  GIF/场景动画纹理）保持整图显示，避免误判导致显示异常。 */
+  function isSpritesheetTex(pkg: ParsedPkg, texEntryName: string): boolean {
+    // 目标纹理基名（去掉 "materials/" 前缀与 .tex/.png 后缀）
+    let base = texEntryName.replace(/^materials\//, '').replace(/\.(tex|png|jpe?g)$/i, '')
+    if (base === texEntryName) base = texEntryName
+    // 遍历所有材质 json，找 textures 数组含 base 且声明 spritesheet 的
+    for (const e of pkg.entries) {
+      if (!e.name.startsWith('materials/') || !e.name.endsWith('.json')) continue
+      try {
+        const buf = pkg.read(e.name)
+        if (buf === null) continue
+        let text: string
+        try { text = Buffer.from(buf).toString('utf8') } catch { continue }
+        if (!/"spritesheet"\s*:\s*[1-9]/.test(text)) continue
+        // 收集该材质的 textures 基名
+        const texBase = new Set<string>()
+        for (const m of text.matchAll(/"textures"\s*:\s*\[\s*([^\]]*)\]/g)) {
+          for (const tm of m[1].matchAll(/"([^"]+)"/g)) {
+            texBase.add(tm[1].replace(/\.(tex|png|jpe?g)$/i, ''))
+          }
+        }
+        if (texBase.has(base)) return true
+      } catch { /* 单个材质解析失败：跳过 */ }
+    }
+    return false
   }
 
   /** 从 scene.pkg（Wallpaper Engine 私有 PKGV 容器）中扫描最大的一张 JPEG/PNG 纹理。
@@ -1066,6 +1095,25 @@ export function apply(ctx: CordisCtx): void {
           if (tex.imageWidth > 0 && tex.imageHeight > 0) {
             res.setHeader('X-WE-Image-W', String(tex.imageWidth))
             res.setHeader('X-WE-Image-H', String(tex.imageHeight))
+          }
+          // spritesheet 序列帧动画（GIF/切分图片网格，TEXS 动画段）：
+          // 帧数/帧宽/帧高/帧时长写入响应头，浏览器侧按时间取帧裁剪绘制。
+          // 仅当该纹理被「声明 spritesheet combo 的材质」引用时才启用，
+          // 避免把仅含 TEXS 帧表但非 spritesheet 的静态/动画纹理误判裁剪。
+          const spr = tex.frames
+          if (spr !== null && spr.length > 1 && isSpritesheetTex(pkg, name)) {
+            const fw = Math.round(spr[0].w)
+            const fh = Math.round(spr[0].h)
+            if (fw > 0 && fh > 0) {
+              res.setHeader('X-Sprite-Frames', String(spr.length))
+              res.setHeader('X-Sprite-Width', String(fw))
+              res.setHeader('X-Sprite-Height', String(fh))
+              res.setHeader('X-Sprite-Duration', String(spr.reduce((a, f) => a + f.t, 0) || 0))
+              // 精确帧矩形（纹理内像素坐标）——客户端按此裁剪；帧数过多时省略（按网格兜底）
+              if (spr.length <= 256) {
+                res.setHeader('X-Sprite-Rects', spr.map((f) => `${f.x},${f.y},${Math.round(f.w)},${Math.round(f.h)}`).join(';'))
+              }
+            }
           }
           const mime = texMimeOf(tex) ?? 'image/png'
           const isImage = tex.mip0.kind === 'image-png' || tex.mip0.kind === 'image-jpeg'
