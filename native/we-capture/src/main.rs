@@ -53,7 +53,7 @@ const FMT_JPEG: u8 = 0;
 /// 来自 stdin 的控制命令
 #[derive(Debug, Clone)]
 enum Cmd {
-    Load { fps: u32, quality: u32 },
+    Load { fps: u32, quality: u32, width: u32, height: u32 },
     Pause,
     Resume,
     Resize { width: u32, height: u32 },
@@ -89,8 +89,10 @@ fn main() {
                 .get(3)
                 .cloned()
                 .unwrap_or_else(|| "selftest-frames.bin".to_string());
-            let hwnd: Option<isize> = args.get(4).and_then(|s| s.parse().ok());
-            selftest(secs, &out, hwnd);
+            let hwnd: Option<isize> = args.get(4).and_then(|s| s.parse().ok()).filter(|h| *h != 0);
+            let sw: u32 = args.get(5).and_then(|s| s.parse().ok()).unwrap_or(0);
+            let sh: u32 = args.get(6).and_then(|s| s.parse().ok()).unwrap_or(0);
+            selftest(secs, &out, hwnd, sw, sh);
             return;
         }
     }
@@ -108,10 +110,10 @@ fn main() {
     // 等待第一条 load
     loop {
         match ctrl_rx.recv() {
-            Ok(Cmd::Load { fps, quality }) => {
+            Ok(Cmd::Load { fps, quality, width, height }) => {
                 let stdout = io::stdout();
                 let mut sink = stdout.lock();
-                run_capture(fps, quality, &ctrl_rx, &mut sink, None, None);
+                run_capture(fps, quality, width, height, &ctrl_rx, &mut sink, None, None);
                 // run_capture 返回即该 scene 结束；回到等待下一条 load
             }
             Ok(Cmd::Stop) => break,
@@ -123,7 +125,7 @@ fn main() {
 }
 
 /// 诊断模式：抓 secs 秒帧写入 out 文件（协议帧格式），然后退出。hwnd 给定则强制捕获该窗口。
-fn selftest(secs: u64, out: &str, hwnd: Option<isize>) {
+fn selftest(secs: u64, out: &str, hwnd: Option<isize>, out_w: u32, out_h: u32) {
     unsafe {
         let _ = CoIncrementMTAUsage();
     }
@@ -142,6 +144,8 @@ fn selftest(secs: u64, out: &str, hwnd: Option<isize>) {
     run_capture(
         30,
         85,
+        out_w,
+        out_h,
         &ctrl_rx,
         &mut sink,
         Some(deadline),
@@ -181,6 +185,8 @@ fn parse_cmd(line: &str) -> Option<Cmd> {
         "load" => Cmd::Load {
             fps: if v.fps == 0 { 30 } else { v.fps },
             quality: if v.quality == 0 { 80 } else { v.quality },
+            width: v.width,
+            height: v.height,
         },
         "pause" => Cmd::Pause,
         "resume" => Cmd::Resume,
@@ -198,6 +204,8 @@ fn parse_cmd(line: &str) -> Option<Cmd> {
 fn run_capture(
     fps: u32,
     quality: u32,
+    out_w: u32,
+    out_h: u32,
     ctrl_rx: &Receiver<Cmd>,
     sink: &mut dyn Write,
     deadline: Option<Instant>,
@@ -303,6 +311,7 @@ fn run_capture(
     let mut last_beat = Instant::now();
     let mut last_emit = Instant::now() - frame_interval;
     let mut running = true;
+    let mut perf = Perf::default();
 
     while running {
         // 控制命令（非阻塞）
@@ -347,7 +356,7 @@ fn run_capture(
                     drop(frame);
                     continue;
                 }
-                match process_frame(&frame, &device, &context, quality) {
+                match process_frame(&frame, &device, &context, quality, out_w, out_h, &mut perf) {
                     Ok((w, h, jpeg)) => {
                         write_frame(w, h, &jpeg, sink);
                         frame_no += 1;
@@ -366,12 +375,22 @@ fn run_capture(
         // 心跳
         if last_beat.elapsed() >= Duration::from_secs(1) {
             let secs = last_beat.elapsed().as_secs_f64().max(0.001);
+            let (m, c, e) = if perf.n > 0 {
+                let k = perf.n as f64;
+                (perf.map / k, perf.conv / k, perf.enc / k)
+            } else {
+                (0.0, 0.0, 0.0)
+            };
             eprintln!(
-                "[STATUS]{{\"fps\":{:.1},\"frame\":{}}}",
+                "[STATUS]{{\"fps\":{:.1},\"frame\":{},\"map_ms\":{:.1},\"conv_ms\":{:.1},\"enc_ms\":{:.1}}}",
                 fps_count as f64 / secs,
-                frame_no
+                frame_no,
+                m,
+                c,
+                e
             );
             fps_count = 0;
+            perf = Perf::default();
             last_beat = Instant::now();
         }
     }
@@ -382,21 +401,41 @@ fn run_capture(
     eprintln!("[we-capture] 捕获结束，共 {frame_no} 帧");
 }
 
-/// 取一帧 → 回读 BGRA → 转 RGB → JPEG 编码
+/// 每帧各阶段耗时累计（毫秒），用于心跳里输出性能画像
+#[derive(Default)]
+struct Perf {
+    map: f64,
+    conv: f64,
+    enc: f64,
+    n: u32,
+}
+
+/// 取一帧 → 回读 BGRA →（可选盒式降采样）转 RGB → JPEG 编码
 fn process_frame(
     frame: &windows::Graphics::Capture::Direct3D11CaptureFrame,
     device: &ID3D11Device,
     context: &ID3D11DeviceContext,
     quality: u32,
+    out_w: u32,
+    out_h: u32,
+    perf: &mut Perf,
 ) -> Result<(u32, u32, Vec<u8>), String> {
+    let t0 = Instant::now();
     let surface = frame.Surface().map_err(|e| e.to_string())?;
     let access: IDirect3DDxgiInterfaceAccess = surface.cast().map_err(|e| e.to_string())?;
     let texture: ID3D11Texture2D = unsafe { access.GetInterface().map_err(|e| e.to_string())? };
 
     let mut desc = D3D11_TEXTURE2D_DESC::default();
     unsafe { texture.GetDesc(&mut desc) };
-    let w = desc.Width;
-    let h = desc.Height;
+    let nw = desc.Width;
+    let nh = desc.Height;
+
+    // 目标尺寸：请求小于原生则降采样（编码耗时≈像素数，降分辨率是最大杠杆），否则 1:1
+    let (ow, oh) = if out_w > 0 && out_h > 0 && (out_w < nw || out_h < nh) {
+        (out_w.min(nw), out_h.min(nh))
+    } else {
+        (nw, nh)
+    };
 
     // staging（CPU 可读）
     let mut sdesc = desc;
@@ -412,35 +451,75 @@ fn process_frame(
     };
     let staging = staging.ok_or_else(|| "CreateTexture2D 未返回纹理".to_string())?;
 
+    let mut mapped = D3D11_MAPPED_SUBRESOURCE::default();
     unsafe {
         context.CopyResource(&staging, &texture);
-        let mut mapped = D3D11_MAPPED_SUBRESOURCE::default();
         context
             .Map(&staging, 0, D3D11_MAP_READ, 0, Some(&mut mapped))
             .map_err(|e| e.to_string())?;
-        let src = mapped.pData as *const u8;
-        let pitch = mapped.RowPitch as usize;
-        // BGRA → RGB
-        let mut rgb = vec![0u8; (w as usize) * (h as usize) * 3];
-        for y in 0..h as usize {
-            let row = src.add(y * pitch);
-            let drow = (y * w as usize) * 3;
-            for x in 0..w as usize {
-                let s = row.add(x * 4);
-                let d = drow + x * 3;
-                rgb[d] = *s.add(2); // R
-                rgb[d + 1] = *s.add(1); // G
-                rgb[d + 2] = *s; // B
+    }
+    perf.map += t0.elapsed().as_secs_f64() * 1000.0;
+
+    let t1 = Instant::now();
+    let src = mapped.pData as *const u8;
+    let pitch = mapped.RowPitch as usize;
+    let (nwz, nhz, owz, ohz) = (nw as usize, nh as usize, ow as usize, oh as usize);
+    let mut rgb = vec![0u8; owz * ohz * 3];
+    unsafe {
+        if owz == nwz && ohz == nhz {
+            // 1:1 BGRA → RGB
+            for y in 0..nhz {
+                let row = src.add(y * pitch);
+                let drow = y * nwz * 3;
+                for x in 0..nwz {
+                    let s = row.add(x * 4);
+                    let d = drow + x * 3;
+                    rgb[d] = *s.add(2); // R
+                    rgb[d + 1] = *s.add(1); // G
+                    rgb[d + 2] = *s; // B
+                }
+            }
+        } else {
+            // 盒式降采样：每个目标像素取对应源区域均值（画质优于最近邻，开销与 1:1 相当）
+            for oy in 0..ohz {
+                let y0 = oy * nhz / ohz;
+                let y1 = ((oy + 1) * nhz / ohz).max(y0 + 1).min(nhz);
+                let drow = oy * owz * 3;
+                for ox in 0..owz {
+                    let x0 = ox * nwz / owz;
+                    let x1 = ((ox + 1) * nwz / owz).max(x0 + 1).min(nwz);
+                    let (mut sr, mut sg, mut sb, mut cnt) = (0u32, 0u32, 0u32, 0u32);
+                    for sy in y0..y1 {
+                        let row = src.add(sy * pitch);
+                        for sx in x0..x1 {
+                            let s = row.add(sx * 4);
+                            sb += *s as u32;
+                            sg += *s.add(1) as u32;
+                            sr += *s.add(2) as u32;
+                            cnt += 1;
+                        }
+                    }
+                    let d = drow + ox * 3;
+                    rgb[d] = (sr / cnt) as u8;
+                    rgb[d + 1] = (sg / cnt) as u8;
+                    rgb[d + 2] = (sb / cnt) as u8;
+                }
             }
         }
         context.Unmap(&staging, 0);
-
-        let mut out = Vec::new();
-        let mut enc = JpegEncoder::new_with_quality(&mut out, quality.clamp(1, 100) as u8);
-        enc.encode(&rgb, w, h, ExtendedColorType::Rgb8)
-            .map_err(|e| e.to_string())?;
-        Ok((w, h, out))
     }
+    perf.conv += t1.elapsed().as_secs_f64() * 1000.0;
+
+    let t2 = Instant::now();
+    let mut out = Vec::new();
+    {
+        let mut enc = JpegEncoder::new_with_quality(&mut out, quality.clamp(1, 100) as u8);
+        enc.encode(&rgb, ow, oh, ExtendedColorType::Rgb8)
+            .map_err(|e| e.to_string())?;
+    }
+    perf.enc += t2.elapsed().as_secs_f64() * 1000.0;
+    perf.n += 1;
+    Ok((ow, oh, out))
 }
 
 /// 写一帧到输出目标（协议帧格式）

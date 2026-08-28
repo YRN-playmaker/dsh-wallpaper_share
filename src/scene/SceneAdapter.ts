@@ -187,7 +187,7 @@ export class SceneAdapter {
     proc.on('status', (s) => this.onStatus(s))
     proc.on('version', (v) => { this.log('[SceneRenderer] Renderer version: ' + v) })
     proc.on('log', (line) => this.log(line))
-    proc.on('exit', (code, signal) => this.onExit(code, signal))
+    proc.on('exit', (code, signal) => this.onExit(proc, code, signal))
     this.process = proc
 
     proc.start({
@@ -206,8 +206,12 @@ export class SceneAdapter {
     this.status = { state: 'running', pid: this.process?.pid ?? undefined, fps, frameIndex, resolution: this.status.resolution, restarts: this.restarts }
   }
 
-  private onExit(code: number | null, signal: string | null): void {
-    if (this.process === null) return
+  private onExit(proc: SceneRendererProcess, code: number | null, signal: string | null): void {
+    // 关键：只有「退出的正是当前跟踪的进程」时才处理。切换壁纸时 stopProcess() 先 kill 旧
+    // 进程并置 this.process=null，随后 start() 立即把 this.process 指向新进程；而旧进程的
+    // 'exit' 事件是异步稍后才触发的——若不校验身份，就会把新进程的引用误清空，导致新进程
+    // 变成无人跟踪的孤儿（仍在后台编码 1080p），每次切换壁纸泄漏一个 → 累积拖垮 CPU。
+    if (this.process !== proc) return
     this.process = null
     if (this.disposed || this.hub.clientCount === 0 || this.target === null) {
       this.status = { state: 'idle', restarts: this.restarts }
@@ -219,7 +223,7 @@ export class SceneAdapter {
       this.log('[SceneRenderer] Auto-restarting renderer (attempt ' + this.restarts + '/' + MAX_RESTARTS + ')')
       this.status = { state: 'starting', restarts: this.restarts }
       setTimeout(() => {
-        if (!this.disposed && this.hub.clientCount > 0 && this.target !== null) this.start(this.target)
+        if (!this.disposed && this.hub.clientCount > 0 && this.target !== null && this.process === null) this.start(this.target)
       }, RESTART_DELAY_MS)
     } else {
       this.status = { state: 'crashed', restarts: this.restarts, lastError: 'Renderer crashed after ' + this.restarts + ' restart(s)' }

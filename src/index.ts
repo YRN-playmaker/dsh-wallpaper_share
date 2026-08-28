@@ -40,9 +40,11 @@ const CONFIG = {
   sceneRendererPath: '',
   /** Wallpaper Engine engine assets 目录；留空自动推导为 <weDir>/assets */
   wallpaperEngineAssetsDir: '',
-  /** scene renderer 输出分辨率（真实 renderer 建议 1920x1080；参考 renderer 会自行 clamp） */
-  sceneRenderWidth: 1920,
-  sceneRenderHeight: 1080,
+  /** scene 原生捕获器（we-capture）的输出分辨率：小于壁纸原生分辨率时按盒式降采样。
+   *  JPEG 编码耗时≈像素数，1280x720 相比 1920x1080 编码减半、帧体积减半，显著降低卡顿；
+   *  追求清晰度可上调到 1920x1080（代价是帧率下降）。参考 renderer 会自行 clamp。 */
+  sceneRenderWidth: 1280,
+  sceneRenderHeight: 720,
   /** scene renderer 目标帧率 */
   sceneRenderFps: 30,
   /** JPEG/WebP 帧质量（0..100） */

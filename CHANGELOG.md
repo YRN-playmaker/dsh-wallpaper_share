@@ -12,10 +12,15 @@
   - 打包：`bin/we-capture.exe`（约 470KB，Windows-only）已加入 npm `files`；Rust 源码在 `native/we-capture/`（`cargo build --release` 可重建，含 `--selftest <秒> <输出文件>` 诊断模式）。
   - 边界：捕获会把**桌面图标**一并抓入（若显示图标，建议隐藏以获得干净背景）；WE 在全屏应用时默认暂停渲染→画面随之定格；镜像的是**当前激活显示器的壁纸**（正符合协议 `sceneTargetFor` 语义），浏览库内其它 scene 仍走 browser 预览；WE 未运行 / 找不到窗口时自动回退 browser。
 
+### ⚡ 性能
+
+- **原生捕获器默认降采样到 1280×720**：实测 1920×1080 下 JPEG 编码占单帧耗时约 90%（`image` crate 纯软编 ≈47ms/帧 → 仅 ~6fps 且单核打满）。`we-capture` 现按 `load` 请求的目标分辨率对回读的 BGRA 做**盒式降采样**再编码：1280×720 下编码 47→23ms、帧体积 322→168KB（同时减轻 WS 传输与浏览器解码）。分辨率可经 `CONFIG.sceneRenderWidth/Height` 调节（上调求清晰、下调求流畅）。`[STATUS]` 心跳新增 `map_ms/conv_ms/enc_ms` 分阶段耗时画像，便于诊断。
+
 ### 🐛 修复
 
 - **原生捕获器 stdin 关闭后单核 100% 空转**：控制命令内层循环的 `Disconnected` 分支只置 `running=false` 而未 `break`，`stdin_reader` 线程结束丢弃发送端后 `try_recv` 会永远返回 `Disconnected`，导致主循环死转、协议路径卡死。补 `break`（生产环境父进程关管道 / 发完 `stop` 时同样受益）。
 - **静态 / 暂停壁纸被误判 stalled 反复重启**：`SceneAdapter.checkHealth` 原以「最近一帧」计时，静态或暂停的壁纸只发 `[STATUS]` 心跳、长时间无新帧，会被 4s 超时反复重启。改为取「最近帧 or 最近心跳」较大者判活（新增 `SceneRendererProcess.lastBeatAt`）。
+- **切换壁纸泄漏 renderer 进程（卡顿主因）**：`setTarget` 先 `stopProcess()` kill 旧进程并置 `this.process=null`，紧接着 `start()` 把 `this.process` 指向新进程；但旧进程的 `'exit'` 事件是**异步稍后**才触发的，`onExit` 里无条件 `this.process = null` 会把**新进程**的引用清空，使新进程沦为无人跟踪的孤儿（仍在后台满负荷编码）。每切换一次壁纸泄漏一个 → 实测累积 11 个 `we-capture.exe` 同时跑、单核全被占满 → 整个壁纸与浏览器一起卡。修复：`onExit` 绑定退出的进程实例，仅当 `this.process === proc` 时才清理 / 重启；重启 `setTimeout` 亦加 `this.process === null` 守卫。
 
 ## v26.08.29 — 2026-08-29
 
