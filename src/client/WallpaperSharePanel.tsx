@@ -55,15 +55,26 @@ const DICT = {
     blur: '背景模糊',
     shadow: '阴影深度',
 
-    // 应用启动器
-    appsTitle: '应用启动器 · 新版 WE 不再支持的应用类壁纸',
+    // 壁纸库（原"应用启动器"，现读取全部类型并支持筛选）
+    appsTitle: '壁纸库 · 场景 / 视频 / 图片 / 应用 / 网页',
     collapse: '收起',
-    listApps: '列出应用壁纸',
-    appsEmpty: '未找到 application 类型壁纸（扫描 workshop + projects 目录）。点击卡片在资源管理器中打开所在文件夹。',
+    listApps: '浏览壁纸',
+    appsEmpty: '未找到壁纸（扫描 workshop + projects + 自定义目录）。点击卡片在资源管理器中打开所在文件夹。',
+    appsNoMatch: '没有匹配当前筛选 / 搜索的壁纸',
     openFolder: '打开文件夹：',
     noPreview: '无预览',
     loadFailed: '列表加载失败',
     openFolderFailed: '打开文件夹失败',
+    typeAll: '全部',
+    typeScene: '场景',
+    typeVideo: '视频',
+    typeImage: '图片',
+    typeApplication: '应用',
+    typeWeb: '网页',
+    typeOther: '其他',
+    searchPlaceholder: '搜索标题…',
+    showMore: '显示更多',
+    appsCount: (total: number, matched: number) => (total === matched ? `共 ${String(total)} 个` : `共 ${String(total)} 个 · 匹配 ${String(matched)} 个`),
 
     // 壁纸读取位置（自定义目录）
     dirsTitle: '壁纸读取位置',
@@ -122,15 +133,26 @@ const DICT = {
     blur: 'Background Blur',
     shadow: 'Shadow Depth',
 
-    // App Launcher
-    appsTitle: 'App Launcher · Application wallpapers no longer supported in newer WE',
+    // Wallpaper library (was "App Launcher"; now all types with filtering)
+    appsTitle: 'Wallpaper Library · Scene / Video / Image / App / Web',
     collapse: 'Collapse',
-    listApps: 'List App Wallpapers',
-    appsEmpty: 'No application-type wallpapers found (scanned workshop + projects). Click card to open folder in File Explorer.',
+    listApps: 'Browse Wallpapers',
+    appsEmpty: 'No wallpapers found (scanned workshop + projects + custom dirs). Click a card to open its folder in File Explorer.',
+    appsNoMatch: 'No wallpapers match the current filter / search',
     openFolder: 'Open folder: ',
     noPreview: 'No Preview',
     loadFailed: 'Failed to load list',
     openFolderFailed: 'Failed to open folder',
+    typeAll: 'All',
+    typeScene: 'Scene',
+    typeVideo: 'Video',
+    typeImage: 'Image',
+    typeApplication: 'App',
+    typeWeb: 'Web',
+    typeOther: 'Other',
+    searchPlaceholder: 'Search titles…',
+    showMore: 'Show more',
+    appsCount: (total: number, matched: number) => (total === matched ? `Total ${String(total)}` : `Total ${String(total)} · Matched ${String(matched)}`),
 
     // Wallpaper read locations (custom dirs)
     dirsTitle: 'Wallpaper Read Locations',
@@ -212,7 +234,11 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
   const [focus, setFocus] = useState(store.settings.focus)
   const [renderMode, setRenderMode] = useState(store.settings.renderMode)
   const [appsOpen, setAppsOpen] = useState(false)
-  const [apps, setApps] = useState<Array<{ id: string; title: string; file: string; hasPreview: boolean }>>([])
+  const [apps, setApps] = useState<Array<{ id: string; title: string; file: string; type: string; hasPreview: boolean }>>([])
+  const [appsCounts, setAppsCounts] = useState<Record<string, number>>({})
+  const [typeFilter, setTypeFilter] = useState('all')
+  const [search, setSearch] = useState('')
+  const [visible, setVisible] = useState(60)
   const [appsError, setAppsError] = useState('')
   const [dirs, setDirs] = useState<string[]>([])
   const [dirInput, setDirInput] = useState('')
@@ -288,7 +314,7 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
     }
   }
 
-  // 应用启动器：列出 type=application 壁纸；点击缩略图在资源管理器中打开所在文件夹
+  // 壁纸库：列出全部类型壁纸（场景/视频/图片/应用/网页）；点击缩略图卡片在资源管理器中打开所在文件夹
   const onAppsToggle = async (): Promise<void> => {
     const next = !appsOpen
     setAppsOpen(next)
@@ -313,9 +339,12 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
   const loadApps = async (): Promise<void> => {
     try {
       const res = await fetch('/we-sync/apps', { cache: 'no-store' })
-      const body = (await res.json()) as { apps?: Array<{ id: string; title: string; file: string; hasPreview: boolean }>; error?: string }
+      const body = (await res.json()) as { apps?: Array<{ id: string; title: string; file: string; type: string; hasPreview: boolean }>; counts?: Record<string, number>; error?: string }
       if (body.error !== undefined) setAppsError(body.error)
-      else setApps(body.apps ?? [])
+      else {
+        setApps(body.apps ?? [])
+        setAppsCounts(body.counts ?? {})
+      }
     } catch {
       setAppsError(t.loadFailed)
     }
@@ -355,6 +384,22 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
       if (appsOpen) void loadApps()
     } catch { /* 忽略 */ }
   }
+
+  // 壁纸库：类型 + 标题搜索的前端筛选（数据一次性来自 /we-sync/apps 缓存）
+  const typeLabel = (tp: string): string =>
+    tp === 'scene' ? t.typeScene
+      : tp === 'video' ? t.typeVideo
+        : tp === 'image' ? t.typeImage
+          : tp === 'application' ? t.typeApplication
+            : tp === 'web' ? t.typeWeb
+              : t.typeOther
+  // 全部 / 场景 / 视频 / 图片 / 应用 恒显示（用户要求的四类筛选）；网页 / 其他 仅在有内容时出现
+  const filterTypes = ['all', 'scene', 'video', 'image', 'application']
+    .concat((appsCounts.web ?? 0) > 0 ? ['web'] : [])
+    .concat((appsCounts.other ?? 0) > 0 ? ['other'] : [])
+  const kw = search.trim().toLowerCase()
+  const filteredApps = apps.filter((a) => (typeFilter === 'all' || a.type === typeFilter) && (kw === '' || a.title.toLowerCase().includes(kw)))
+  const shownApps = filteredApps.slice(0, visible)
 
   const wallpaper = info !== null && info.wallpaper !== null ? info.wallpaper : null
   const title = wallpaper === null
@@ -460,16 +505,48 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
                   : apps.length === 0
                     ? <div className="wesync-app-empty">{t.appsEmpty}</div>
                     : (
-                        <div className="wesync-apps-grid">
-                          {apps.map((app) => (
-                            <div key={app.id} className="wesync-app-card" title={t.openFolder + app.title} onClick={() => onAppOpen(app.id)}>
-                              {app.hasPreview
-                                ? <img className="wesync-app-thumb" src={'/we-sync/apps/preview?id=' + encodeURIComponent(app.id)} alt={app.title} loading="lazy" />
-                                : <div className="wesync-app-thumb" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{t.noPreview}</div>}
-                              <div className="wesync-app-title">{app.title}</div>
-                            </div>
-                          ))}
-                        </div>
+                        <>
+                          <div className="wesync-apps-filters">
+                            {filterTypes.map((tp) => (
+                              <button
+                                key={tp}
+                                className={['wesync-chip', typeFilter === tp ? 'wesync-chip-on' : ''].join(' ')}
+                                onClick={() => { setTypeFilter(tp); setVisible(60) }}
+                              >
+                                {(tp === 'all' ? t.typeAll : typeLabel(tp)) + ' ' + String(tp === 'all' ? (appsCounts.all ?? apps.length) : (appsCounts[tp] ?? 0))}
+                              </button>
+                            ))}
+                            <input
+                              className="wesync-app-search"
+                              placeholder={t.searchPlaceholder}
+                              value={search}
+                              onChange={(e) => { setSearch(e.target.value); setVisible(60) }}
+                            />
+                          </div>
+                          <div className="wesync-apps-count">{t.appsCount(apps.length, filteredApps.length)}</div>
+                          {filteredApps.length === 0
+                            ? <div className="wesync-app-empty">{t.appsNoMatch}</div>
+                            : (
+                                <>
+                                  <div className="wesync-apps-grid">
+                                    {shownApps.map((app) => (
+                                      <div key={app.id} className="wesync-app-card" title={t.openFolder + app.title} onClick={() => onAppOpen(app.id)}>
+                                        <div className="wesync-app-thumbwrap">
+                                          {app.hasPreview
+                                            ? <img className="wesync-app-thumb" src={'/we-sync/apps/preview?id=' + encodeURIComponent(app.id)} alt={app.title} loading="lazy" />
+                                            : <div className="wesync-app-thumb" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{t.noPreview}</div>}
+                                          <span className={'wesync-app-badge wesync-badge-' + app.type}>{typeLabel(app.type)}</span>
+                                        </div>
+                                        <div className="wesync-app-title">{app.title}</div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                  {filteredApps.length > shownApps.length
+                                    ? <button className="wesync-btn wesync-show-more" onClick={() => setVisible((v) => v + 60)}>{t.showMore + ' (+60)'}</button>
+                                    : null}
+                                </>
+                              )}
+                        </>
                       )
             )
             : null}

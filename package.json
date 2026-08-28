@@ -49,6 +49,7 @@
     "lib/index.js",
     "lib/client.js",
     "lib/client.js.map",
+    "bin/we-capture.exe",
     "cordis.patch.yml",
     "README.md",
     "README.zh-CN.md",

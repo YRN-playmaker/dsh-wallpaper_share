@@ -230,8 +230,11 @@ export class SceneAdapter {
   private checkHealth(): void {
     const proc = this.process
     if (proc === null || !proc.running || this.disposed) return
-    if (proc.lastFrameAt > 0 && Date.now() - proc.lastFrameAt > STALL_MS) {
-      this.log('[SceneRenderer] No frame for ' + STALL_MS + 'ms — restarting renderer')
+    // 存活判据取「最近帧」与「最近心跳」的较大者：静态/暂停壁纸无新帧但持续心跳，
+    // 不应被误判为 stalled 而反复重启（原生捕获器在 WE 暂停时正是这种情况）。
+    const lastAlive = Math.max(proc.lastFrameAt, proc.lastBeatAt)
+    if (lastAlive > 0 && Date.now() - lastAlive > STALL_MS) {
+      this.log('[SceneRenderer] No frame or heartbeat for ' + STALL_MS + 'ms — restarting renderer')
       proc.kill()
     }
   }

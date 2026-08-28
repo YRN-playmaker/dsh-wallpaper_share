@@ -1,0 +1,40 @@
+[package]
+name = "we-capture"
+version = "0.1.0"
+edition = "2021"
+description = "Wallpaper Engine 实时画面捕获器：用 Windows Graphics Capture 抓 WE 壁纸窗口，按 SceneAdapter 协议输出 JPEG 帧流"
+license = "MIT"
+
+[[bin]]
+name = "we-capture"
+path = "src/main.rs"
+
+[dependencies]
+windows = { version = "0.58", features = [
+  "Win32_Foundation",
+  "Win32_Graphics_Dxgi",
+  "Win32_Graphics_Dxgi_Common",
+  "Win32_Graphics_Direct3D",
+  "Win32_Graphics_Direct3D11",
+  "Win32_System_Com",
+  "Win32_System_WinRT",
+  "Win32_System_WinRT_Direct3D11",
+  "Win32_System_WinRT_Graphics_Capture",
+  "Win32_System_Threading",
+  "Win32_UI_WindowsAndMessaging",
+  "Graphics_DirectX",
+  "Graphics_DirectX_Direct3D11",
+  "Graphics_Capture",
+  "Foundation",
+  "Foundation_Collections",
+] }
+image = { version = "0.25", default-features = false, features = ["jpeg"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[profile.release]
+opt-level = 2
+lto = "thin"
+strip = true
+codegen-units = 1
+panic = "abort"

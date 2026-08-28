@@ -53,6 +53,8 @@ export class SceneRendererProcess extends EventEmitter {
   readonly logPrefix: string
   pid: number | null = null
   lastFrameAt = 0
+  /** 最近一次 [STATUS] 心跳时间：静态/暂停壁纸可能长时间无新帧，但心跳证明 renderer 存活 */
+  lastBeatAt = 0
   lastFrame: SceneFrame | null = null
   version = ''
 
@@ -189,6 +191,7 @@ export class SceneRendererProcess extends EventEmitter {
     if (statusIdx >= 0) {
       try {
         const json = JSON.parse(line.slice(statusIdx + '[STATUS]'.length).trim()) as Record<string, unknown>
+        this.lastBeatAt = Date.now()
         this.emit('status', json)
         return
       } catch { /* 非法心跳，按日志处理 */ }

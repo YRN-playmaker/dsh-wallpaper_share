@@ -14,7 +14,7 @@ import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import type { Writable } from 'node:stream'
 import { SceneAdapter, type SceneTarget } from './scene/SceneAdapter.ts'
-import { sceneFingerprint } from './scene/SceneCapabilities.ts'
+import { sceneFingerprint, isNativeRenderer } from './scene/SceneCapabilities.ts'
 import { buildSceneModel, type SceneModel } from './scene/SceneModel.ts'
 import { parseScenePkg, type ParsedPkg } from './scene/ScenePkg.ts'
 import { decodeTex, texMimeOf, texMipToPng } from './scene/SceneTex.ts'
@@ -637,11 +637,12 @@ export function apply(ctx: CordisCtx): void {
 
   /** 解析当前 scene 渲染模式：
    *  'external' → 外部 renderer；'browser' → 浏览器子集渲染器；
-   *  'auto' → 显式配置了 sceneRendererPath 则 external，否则 browser（浏览器子集渲染器为主路线） */
+   *  'auto' → 显式配置 sceneRendererPath 或探测到真·原生 renderer（we-capture）则 external，否则 browser */
   function resolveSceneMode(): 'browser' | 'external' {
     if (CONFIG.sceneRenderMode === 'external') return 'external'
     if (CONFIG.sceneRenderMode === 'browser') return 'browser'
-    return CONFIG.sceneRendererPath.trim() !== '' ? 'external' : 'browser'
+    if (CONFIG.sceneRendererPath.trim() !== '') return 'external'
+    return isNativeRenderer(sceneAdapter?.getCapabilities() ?? null) ? 'external' : 'browser'
   }
 
   /** 构建（并缓存）某显示器的 SceneModel；非 scene 或解析失败返回 null */
@@ -792,9 +793,21 @@ export function apply(ctx: CordisCtx): void {
     },
   }))
 
-  // —— 应用启动器：列出 WE 里 type=application 的壁纸（新版 WE 不再支持"应用"壁纸，
-  //   文件仍留在 workshop/projects 目录；这里只读列出 + 打开所在文件夹，不执行任何程序）。
-  interface AppEntry { id: string; title: string; dir: string; file: string; preview: string | null }
+  // —— 壁纸库：列出 WE 里所有类型的壁纸（scene 场景 / video 视频 / slideshow 图片 / application 应用 / web 网页）。
+  //   新版 WE 不再支持"应用"壁纸，文件仍留在 workshop/projects 目录；
+  //   这里统一只读列出 + 类型筛选 + 打开所在文件夹，不执行任何程序。
+  interface AppEntry { id: string; title: string; dir: string; file: string; preview: string | null; type: string }
+
+  /** project.json 的 type 归一化为筛选分类：scene / video / image / application / web / other */
+  function normalizeWallpaperType(raw: string): string {
+    const t = raw.trim().toLowerCase()
+    if (t === 'scene') return 'scene'
+    if (t === 'video') return 'video'
+    if (t === 'slideshow' || t === 'image' || t === 'picture' || t === 'pictures') return 'image'
+    if (t === 'application' || t === 'app') return 'application'
+    if (t === 'web') return 'web'
+    return 'other'
+  }
   let appsCache: AppEntry[] | null = null
   let appsCacheMtime = 0
 
@@ -863,12 +876,12 @@ export function apply(ctx: CordisCtx): void {
           }
         }
       } catch { return }
-      if (type.toLowerCase() !== 'application') return
+      type = normalizeWallpaperType(type)
       if (preview === null) {
         const probed = probePreview(dir)
         preview = probed !== null ? probed.path : null
       }
-      out.push({ id: dir, title, dir, file, preview })
+      out.push({ id: dir, title, dir, file, preview, type })
     }
     /** 遍历集合目录下的每个子目录（每个子目录当壁纸扫） */
     const visitCollectionDir = (root: string): void => {
@@ -884,6 +897,8 @@ export function apply(ctx: CordisCtx): void {
       if (exists(root + '/project.json')) visitWallpaperDir(root)
       else visitCollectionDir(root)
     }
+    // 标题排序，浏览时更稳定（workshop 目录名是数字 id，原始顺序无意义）
+    out.sort((a, b) => a.title.localeCompare(b.title, undefined, { numeric: true, sensitivity: 'base' }))
     return out
   }
 
@@ -955,8 +970,12 @@ export function apply(ctx: CordisCtx): void {
       }
       const workshopDir = resolveWorkshopDir(state.weDir)
       const apps = getCachedApps(state.weDir, workshopDir)
+      // 各分类计数，供前端筛选 chips 显示（all 恒有；其余仅 >0 时前端展示）
+      const counts: Record<string, number> = { all: apps.length, scene: 0, video: 0, image: 0, application: 0, web: 0, other: 0 }
+      for (const a of apps) counts[a.type] = (counts[a.type] ?? 0) + 1
       sendJson(res, {
-        apps: apps.map((a) => ({ id: a.id, title: a.title, file: a.file, hasPreview: a.preview !== null })),
+        apps: apps.map((a) => ({ id: a.id, title: a.title, file: a.file, type: a.type, hasPreview: a.preview !== null })),
+        counts,
       })
     },
   }))

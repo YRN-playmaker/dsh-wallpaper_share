@@ -1,0 +1,8 @@
+# Rust 构建产物（体积大，不入库；发布时把 we-capture.exe 拷到包根 bin/）
+/target
+
+# 诊断/临时输出
+*.bin
+*.log
+build_err.txt
+v.txt

@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+### ✨ 新增功能
+
+- **"应用启动器"扩展为"壁纸库"**：原来只列出 `type=application` 的壁纸（新版 WE 不再支持应用类壁纸），现改为读取**全部类型**——场景（scene）/ 视频（video）/ 图片（slideshow）/ 应用（application）/ 网页（web），来源仍为 workshop + myprojects + defaultprojects + 自定义壁纸目录。
+  - 后端：`/we-sync/apps` 每条记录新增 `type` 字段（归一化分类），响应新增 `counts`（各分类计数）；列表按标题排序。
+  - 前端：新增类型筛选 chips（全部 / 场景 / 视频 / 图片 / 应用 恒显示，网页 / 其他 有内容时出现）、标题搜索框、缩略图左上角类型徽标、"共 N 个 · 匹配 M 个"计数与"显示更多 (+60)"分页；点击卡片仍在资源管理器中打开所在文件夹（保持只读，不执行任何程序）。
+  - 生效方式：后端（`lib/index.js`）需重启 DSH；前端（`lib/client.js`）硬刷新页面即可。
+- **原生 scene 渲染器 `we-capture.exe`（真·GPU 捕获，效果 100% 覆盖）**：新增 Rust 编写的原生捕获器，通过 Windows Graphics Capture 抓取 Wallpaper Engine 正在渲染的桌面窗口（WE 的 DX11 渲染窗口是 Progman 子窗口、WGC 不接受子窗口，故捕获其顶层根 Progman/WorkerW），BGRA→JPEG 按外部渲染器协议输出到 stdout。因为镜像的是 **WE 自身的渲染结果**，GLSL / SceneScript / 关键帧 / 粒子等**所有 WE 效果天然全覆盖**，无需在 JS 端复刻对面那套 ~500KB 软渲染引擎。DSH 侧 `probeRenderer` 自动发现随包 `bin/we-capture.exe`（或本地 `native/we-capture/target/release/`），`resolveSceneMode('auto')` 检测到原生渲染器即走 external、否则回退 browser。
+  - 打包：`bin/we-capture.exe`（约 470KB，Windows-only）已加入 npm `files`；Rust 源码在 `native/we-capture/`（`cargo build --release` 可重建，含 `--selftest <秒> <输出文件>` 诊断模式）。
+  - 边界：捕获会把**桌面图标**一并抓入（若显示图标，建议隐藏以获得干净背景）；WE 在全屏应用时默认暂停渲染→画面随之定格；镜像的是**当前激活显示器的壁纸**（正符合协议 `sceneTargetFor` 语义），浏览库内其它 scene 仍走 browser 预览；WE 未运行 / 找不到窗口时自动回退 browser。
+
+### 🐛 修复
+
+- **原生捕获器 stdin 关闭后单核 100% 空转**：控制命令内层循环的 `Disconnected` 分支只置 `running=false` 而未 `break`，`stdin_reader` 线程结束丢弃发送端后 `try_recv` 会永远返回 `Disconnected`，导致主循环死转、协议路径卡死。补 `break`（生产环境父进程关管道 / 发完 `stop` 时同样受益）。
+- **静态 / 暂停壁纸被误判 stalled 反复重启**：`SceneAdapter.checkHealth` 原以「最近一帧」计时，静态或暂停的壁纸只发 `[STATUS]` 心跳、长时间无新帧，会被 4s 超时反复重启。改为取「最近帧 or 最近心跳」较大者判活（新增 `SceneRendererProcess.lastBeatAt`）。
+
 ## v26.08.29 — 2026-08-29
 
 Wallpaper Engine scene 真实渲染适配的又一轮打磨：新增**昼夜自动切换（auto 模式）**与 **TEXS 序列帧动画解析**，并把骨骼动画修复推广到全部格式；同时修复了 spritesheet 频闪 / 丢帧、scene 图层渲染崩塌、以及雾/烟粒子浓度过浓等一系列共性问题。

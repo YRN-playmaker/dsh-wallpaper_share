@@ -144,7 +144,7 @@ export const PANEL_CSS = `
   font-variant-numeric: tabular-nums;
 }
 
-/* 应用启动器：右侧 3×2 可滚动缩略图栏 */
+/* 壁纸库：可滚动缩略图栏（全部类型 + 筛选） */
 .wesync-apps {
   display: flex;
   flex-direction: column;
@@ -167,7 +167,7 @@ export const PANEL_CSS = `
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 8px;
-  max-height: 300px;
+  max-height: 420px;
   overflow-y: auto;
   padding: 2px;
 }
@@ -211,6 +211,83 @@ export const PANEL_CSS = `
   font-size: 12px;
   color: var(--dsw-alias-label-secondary);
   padding: 10px 2px;
+}
+
+/* 壁纸库：类型筛选 chips + 标题搜索 */
+.wesync-apps-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.wesync-chip {
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.wesync-chip:hover {
+  background: var(--dsw-alias-bg-overlay);
+}
+
+.wesync-chip-on {
+  border-color: rgba(59, 130, 246, 0.6);
+  background: rgba(59, 130, 246, 0.18);
+  color: #93c5fd;
+}
+
+.wesync-app-search {
+  flex: 1;
+  min-width: 140px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+  font-family: inherit;
+}
+
+.wesync-app-search::placeholder {
+  color: var(--dsw-alias-label-secondary);
+  opacity: 0.7;
+}
+
+/* 壁纸库：缩略图左上角类型徽标 */
+.wesync-app-thumbwrap {
+  position: relative;
+}
+
+.wesync-app-badge {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  line-height: 1.6;
+  color: #fff;
+  background: rgba(107, 114, 128, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  pointer-events: none;
+}
+
+.wesync-badge-scene { background: rgba(59, 130, 246, 0.82); border-color: transparent; }
+.wesync-badge-video { background: rgba(168, 85, 247, 0.82); border-color: transparent; }
+.wesync-badge-image { background: rgba(34, 197, 94, 0.82); border-color: transparent; }
+.wesync-badge-application { background: rgba(239, 68, 68, 0.82); border-color: transparent; }
+.wesync-badge-web { background: rgba(245, 158, 11, 0.82); border-color: transparent; }
+.wesync-badge-other { background: rgba(107, 114, 128, 0.82); border-color: transparent; }
+
+.wesync-show-more {
+  align-self: center;
 }
 
 /* 壁纸读取位置：自定义壁纸目录管理（App Launcher 与视觉效果之间） */

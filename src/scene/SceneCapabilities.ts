@@ -31,12 +31,34 @@ function probeRenderer(config: SceneRendererConfig, weDir: string): { path: stri
     if (existsSync(path)) return { path, args: [], version: probeVersion(path) }
     return null
   }
-  // 2. 内置参考 renderer（用宿主 node 进程执行 .mjs，无需额外 exe）
+  // 2. 原生捕获器 we-capture.exe（随包 bin/ 或本地构建 target/release/）——真·原生渲染，优先于参考 renderer
+  const cap = resolveBundledCapture()
+  if (cap !== null) {
+    return { path: cap, args: [], version: probeVersion(cap) }
+  }
+  // 3. 内置参考 renderer（用宿主 node 进程执行 .mjs，无需额外 exe）
   const ref = resolveReferenceRenderer()
   if (ref !== null && existsSync(ref)) {
     return { path: process.execPath, args: [ref], version: REFERENCE_VERSION }
   }
   return null
+}
+
+/** 定位原生捕获器 we-capture.exe：随包 bin/ 或本地构建 native/we-capture/target/release/ */
+function resolveBundledCapture(): string | null {
+  try {
+    const here = fileURLToPath(import.meta.url)
+    const pkgRoot = resolve(dirname(here), '..')
+    const name = process.platform === 'win32' ? 'we-capture.exe' : 'we-capture'
+    const cands = [
+      resolve(pkgRoot, 'bin', name),
+      resolve(pkgRoot, 'native', 'we-capture', 'target', 'release', name),
+    ]
+    for (const c of cands) if (existsSync(c)) return c
+    return null
+  } catch {
+    return null
+  }
 }
 
 /** 定位随包发布的内置参考 renderer（<包根>/tools/scene-renderer/scene-renderer.mjs，与 lib/ 同级） */
@@ -96,6 +118,11 @@ export function detectSceneRenderer(config: SceneRendererConfig, weDir: string):
     assetsFound,
     formats: isReference ? REFERENCE_FORMATS : ['jpeg', 'webp', 'rgba', 'bgra'],
   }
+}
+
+/** 是否为真·原生 renderer（非内置参考 renderer）：参考 renderer 仅支持 rgba，原生捕获器支持 jpeg */
+export function isNativeRenderer(cap: SceneCapabilities | null): boolean {
+  return cap !== null && cap.available && cap.version !== REFERENCE_VERSION && cap.formats.includes('jpeg')
 }
 
 /** 计算 scene 指纹：绝对路径 + size + mtime，避免旧 scene 缓存串台 */
