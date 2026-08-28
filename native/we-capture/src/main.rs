@@ -17,8 +17,7 @@ use std::sync::mpsc::{self, Receiver, TryRecvError};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use image::codecs::jpeg::JpegEncoder;
-use image::ExtendedColorType;
+use jpeg_encoder::{ColorType, Encoder as JpegEncoder};
 use serde::Deserialize;
 
 use windows::core::{factory, w, Interface, PCWSTR};
@@ -513,8 +512,8 @@ fn process_frame(
     let t2 = Instant::now();
     let mut out = Vec::new();
     {
-        let mut enc = JpegEncoder::new_with_quality(&mut out, quality.clamp(1, 100) as u8);
-        enc.encode(&rgb, ow, oh, ExtendedColorType::Rgb8)
+        let enc = JpegEncoder::new(&mut out, quality.clamp(1, 100) as u8);
+        enc.encode(&rgb, ow as u16, oh as u16, ColorType::Rgb)
             .map_err(|e| e.to_string())?;
     }
     perf.enc += t2.elapsed().as_secs_f64() * 1000.0;

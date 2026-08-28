@@ -14,13 +14,14 @@
 
 ### ⚡ 性能
 
-- **原生捕获器默认降采样到 1280×720**：实测 1920×1080 下 JPEG 编码占单帧耗时约 90%（`image` crate 纯软编 ≈47ms/帧 → 仅 ~6fps 且单核打满）。`we-capture` 现按 `load` 请求的目标分辨率对回读的 BGRA 做**盒式降采样**再编码：1280×720 下编码 47→23ms、帧体积 322→168KB（同时减轻 WS 传输与浏览器解码）。分辨率可经 `CONFIG.sceneRenderWidth/Height` 调节（上调求清晰、下调求流畅）。`[STATUS]` 心跳新增 `map_ms/conv_ms/enc_ms` 分阶段耗时画像，便于诊断。
+- **原生捕获器编码器换成 SIMD 的 `jpeg-encoder`（1080p 编码 47→11ms）**：原先 `image` crate 纯软编 JPEG 在 1920×1080 下 ≈47ms/帧（占单帧耗时 ~90%，仅 ~6fps 且单核打满）。改用 `jpeg-encoder`（启用 `simd` / AVX2）后 1080p 编码降到 **11ms**、帧体积 322→164KB，整帧约 15ms（含回读 + 转换），默认恢复**原生 1920×1080 全清晰度**输出。同时保留按 `load` 请求分辨率的**盒式降采样**能力（4K 等高刷屏可下调省 CPU，经 `CONFIG.sceneRenderWidth/Height` 调节）。`[STATUS]` 心跳新增 `map_ms/conv_ms/enc_ms` 分阶段耗时画像，便于诊断。
 
 ### 🐛 修复
 
 - **原生捕获器 stdin 关闭后单核 100% 空转**：控制命令内层循环的 `Disconnected` 分支只置 `running=false` 而未 `break`，`stdin_reader` 线程结束丢弃发送端后 `try_recv` 会永远返回 `Disconnected`，导致主循环死转、协议路径卡死。补 `break`（生产环境父进程关管道 / 发完 `stop` 时同样受益）。
 - **静态 / 暂停壁纸被误判 stalled 反复重启**：`SceneAdapter.checkHealth` 原以「最近一帧」计时，静态或暂停的壁纸只发 `[STATUS]` 心跳、长时间无新帧，会被 4s 超时反复重启。改为取「最近帧 or 最近心跳」较大者判活（新增 `SceneRendererProcess.lastBeatAt`）。
 - **切换壁纸泄漏 renderer 进程（卡顿主因）**：`setTarget` 先 `stopProcess()` kill 旧进程并置 `this.process=null`，紧接着 `start()` 把 `this.process` 指向新进程；但旧进程的 `'exit'` 事件是**异步稍后**才触发的，`onExit` 里无条件 `this.process = null` 会把**新进程**的引用清空，使新进程沦为无人跟踪的孤儿（仍在后台满负荷编码）。每切换一次壁纸泄漏一个 → 实测累积 11 个 `we-capture.exe` 同时跑、单核全被占满 → 整个壁纸与浏览器一起卡。修复：`onExit` 绑定退出的进程实例，仅当 `this.process === proc` 时才清理 / 重启；重启 `setTimeout` 亦加 `this.process === null` 守卫。
+- **面板语言切换异常（首次打开 / 切换对话或轨迹后弹回英语）**：`useDshLocale` 读的 `ctx?.locale?.current` 不是 DSH locale 服务的真实 API（正确入口是 `ctx.get('locale').getLocale().active`），永远 undefined；兜底探测又只认 `<html lang>` 的 `en` 前缀，`zh-CN` 直接漏到 `navigator.language`（浏览器为 en-US 时）→ 每次挂载判成英语。而 `conversation.view` 是 session 作用域插槽，切会话 / 轨迹会重挂载面板，语言状态存在组件内部，于是"弹回英语"，只有在设置里切换语言触发 `<html lang>` mutation 才恢复。修复：apply 阶段软依赖 `ctx.get('locale')`，把 `getLocale().active` 同步进模块级 `store.locale` 并订阅变化（`store.notify()` 驱动已挂载面板即时重渲染）；面板改为渲染期 `resolveLang()` 直读 `store.locale`——重挂载读的是模块级权威值，不再重新探测。locale 服务不可用时兜底识别 `<html lang>` 的 zh / en 双向前缀。
 
 ## v26.08.29 — 2026-08-29
 

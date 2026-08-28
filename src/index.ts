@@ -41,10 +41,10 @@ const CONFIG = {
   /** Wallpaper Engine engine assets 目录；留空自动推导为 <weDir>/assets */
   wallpaperEngineAssetsDir: '',
   /** scene 原生捕获器（we-capture）的输出分辨率：小于壁纸原生分辨率时按盒式降采样。
-   *  JPEG 编码耗时≈像素数，1280x720 相比 1920x1080 编码减半、帧体积减半，显著降低卡顿；
-   *  追求清晰度可上调到 1920x1080（代价是帧率下降）。参考 renderer 会自行 clamp。 */
-  sceneRenderWidth: 1280,
-  sceneRenderHeight: 720,
+   *  编码器已换成 SIMD 的 jpeg-encoder（1080p 编码仅 ~11ms），默认按原生 1920x1080 全清晰度输出；
+   *  若在 4K 等高刷屏想省 CPU 可下调（会把高分辨率桌面降采样到该尺寸）。参考 renderer 会自行 clamp。 */
+  sceneRenderWidth: 1920,
+  sceneRenderHeight: 1080,
   /** scene renderer 目标帧率 */
   sceneRenderFps: 30,
   /** JPEG/WebP 帧质量（0..100） */
