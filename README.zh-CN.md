@@ -42,7 +42,7 @@ https://github.com/user-attachments/assets/4461d385-de62-42be-8420-7edce5606f44
 
 ## 安装（官方 `dsh plugin` 通道，零手工配置）
 
-> 前置：DSH 已用 `dsh --profile web` 启动过至少一次。
+> 前置：兼容 DSH Web `0.1.0-rc.6` 及以上（已在 0.1.0-rc.6 实机验证），以 `dsh --profile web` 启动过至少一次。
 
 ```bash
 # 任选其一：

@@ -1,2 +1,5 @@
-﻿node_modules/
+node_modules/
 *.log
+# 对比分析用的克隆与独立插件仓库（各自有自己的 git）
+_compare/
+dsh-wallpaper_edit/
