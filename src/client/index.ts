@@ -58,18 +58,20 @@ export interface WeSyncSettings {
   focus: boolean
   /** 当前会话是否有任务在进行（由 sessions 列表快照推导） */
   taskActive: boolean
-  /** 渲染模式：'preview' 性能（预览图）| 'source' 增强（壁纸源文件） */
-  renderMode: 'preview' | 'source'
+  /** 渲染模式（三档）：'eco' 节能（静态预览图）| 'perf' 性能（捕获 WE 桌面背景，WE 未开则回退增强）| 'enhanced' 增强（浏览器解 pkg 渲染，不依赖 WE） */
+  renderMode: 'eco' | 'perf' | 'enhanced'
   /** 沉浸模式：隐藏对话 chrome（上边栏 + 输入框），并把 web 壁纸 iframe 置顶解锁鼠标交互 */
   immersive: boolean
   /** 是否有待用户授权的请求（黄色状态信号） */
   approvalPending: boolean
 }
 
-/** 专注模式：任务进行中 */
-export const FOCUS_WORK = { panelAlpha: 30, blur: 15, shadow: 90 }
+/** 专注模式：任务进行中（本版下调的全局值；鼠标圆内另按 FOCUS_LENS 加浓） */
+export const FOCUS_WORK = { panelAlpha: 20, blur: 9, shadow: 75 }
 /** 专注模式：任务全部完成 */
 export const FOCUS_IDLE = { panelAlpha: 9, blur: 6, shadow: 40 }
+/** 专注模式 · 注视点透镜：鼠标圆形范围内背景采用的参数（比全局更浓的磨砂） */
+export const FOCUS_LENS = { panelAlpha: 30, blur: 15, shadow: 90 }
 
 /** 当前生效的视觉参数（专注模式覆盖用户滑块值） */
 export function effectiveVisuals(): { panelAlpha: number; blur: number; shadow: number } {
@@ -80,7 +82,11 @@ export function effectiveVisuals(): { panelAlpha: number; blur: number; shadow: 
 /** 包内单例 store：apply 循环更新，面板组件订阅渲染。 */
 export const store = {
   info: null as WeSyncInfo | null,
-  settings: { enabled: true, panelAlpha: 72, blur: 6, shadow: 30, monitor: '', focus: false, taskActive: false, renderMode: 'preview', immersive: false, approvalPending: false } as WeSyncSettings,
+  /** DSH locale 服务同步下来的界面语言（'zh' | 'en'）；null = locale 服务不可用，面板走 DOM 兜底探测。
+   *  模块级持久：conversation.view 是 session 作用域插槽，切会话/轨迹会重挂载面板，
+   *  重挂载时直接读这里而不是重新探测，语言才不会"弹回英语"。 */
+  locale: null as 'zh' | 'en' | null,
+  settings: { enabled: true, panelAlpha: 72, blur: 6, shadow: 30, monitor: '', focus: false, taskActive: false, renderMode: 'perf', immersive: false, approvalPending: false } as WeSyncSettings,
   listeners: new Set<() => void>(),
   actions: {
     applyTheme: (): void => {},
@@ -117,6 +123,12 @@ interface WorkspacesService {
   startSession(workspaceId?: string): void
 }
 
+/** DSH locale 服务（packages/client/locale 的 LocaleRuntime）最小面：只读当前语言 + 订阅变化 */
+interface LocaleService {
+  getLocale(): { active: string }
+  subscribe(fn: () => void): () => void
+}
+
 /** 最小化的 Cordis 上下文结构（独立构建不依赖 @deepseek-ai/cordis 的类型包） */
 interface CordisCtx {
   get(name: string): unknown
@@ -130,6 +142,22 @@ export function apply(ctx: CordisCtx): void {
 
   const sessions = ctx.get('sessions') as unknown as SessionsService | undefined
   const workspaces = ctx.get('workspaces') as unknown as WorkspacesService | undefined
+
+  // 界面语言：从 DSH locale 服务同步到模块级 store.locale（权威源，含持久化的用户偏好）。
+  // 不注入 'locale'（ctx.get 软依赖）：老宿主没有该服务时保持 null，面板回退 DOM 探测。
+  const localeService = ctx.get('locale') as unknown as LocaleService | undefined
+  if (localeService !== undefined) {
+    const syncLocale = (): void => {
+      const active = localeService.getLocale().active
+      const next: 'zh' | 'en' | null = active === 'en' ? 'en' : active === 'zh' ? 'zh' : null
+      if (next !== null && next !== store.locale) {
+        store.locale = next
+        store.notify()
+      }
+    }
+    ctx.effect(() => localeService.subscribe(syncLocale))
+    syncLocale()
+  }
 
   const themeService = theme
   const slotsService = slots
@@ -247,6 +275,65 @@ export function apply(ctx: CordisCtx): void {
       mediaEl.style.width = on ? 'calc(100% - 56px)' : '100%'
     }
   }
+
+  // —— 专注模式 · 注视点透镜：focus 开启且任务进行中时捕捉鼠标位置，圆形范围内的背景按 FOCUS_LENS 加浓
+  //   （圆外 = 当前专注全局值；空闲无任务时不显示圆圈）。实现：一张盖在壁纸层之上、UI 之下的 fixed 层，
+  //   backdrop-filter 补差值模糊 + 圆形暗纱补面板透明度/阴影差值，mask 把两者裁进大柔边圆。
+  const FOCUS_LENS_RADIUS = 240
+  let focusLens: HTMLDivElement | null = null
+  let lensX = 0
+  let lensY = 0
+  let lensRaf: number | null = null
+  function onLensMove(ev: MouseEvent): void {
+    lensX = ev.clientX
+    lensY = ev.clientY
+    if (lensRaf !== null) return
+    lensRaf = requestAnimationFrame(() => {
+      lensRaf = null
+      if (focusLens !== null) {
+        focusLens.style.setProperty('--wesync-lens-x', lensX + 'px')
+        focusLens.style.setProperty('--wesync-lens-y', lensY + 'px')
+      }
+    })
+  }
+  function destroyFocusLens(): void {
+    if (focusLens === null) return
+    focusLens.remove()
+    focusLens = null
+    document.removeEventListener('mousemove', onLensMove, true)
+    if (lensRaf !== null) { cancelAnimationFrame(lensRaf); lensRaf = null }
+  }
+  function applyFocusLens(): void {
+    // 仅「专注开启 + 任务进行中」显示透镜；空闲（无任务运行）时圆圈不出现
+    if (!store.settings.focus || !store.settings.taskActive) { destroyFocusLens(); return }
+    if (focusLens === null) {
+      // 初始放在视口中心，等鼠标移动再接管
+      lensX = window.innerWidth / 2
+      lensY = window.innerHeight / 2
+      focusLens = document.createElement('div')
+      focusLens.dataset.plugin = 'dsh-wallpaper_share'
+      focusLens.style.cssText = 'position:fixed;inset:0;z-index:-1;pointer-events:none;'
+      focusLens.style.setProperty('--wesync-lens-x', lensX + 'px')
+      focusLens.style.setProperty('--wesync-lens-y', lensY + 'px')
+      document.addEventListener('mousemove', onLensMove, true)
+      document.body.appendChild(focusLens)
+    }
+    const v = effectiveVisuals()
+    // 圆内目标 = FOCUS_LENS；与全局差值折算为附加模糊 + 暗纱
+    //（面板透明度 a = 0.30 + α/100×0.60、阴影 a = shadow/100×0.60，与 applyTheme/applyBackground 同式）
+    const blurDelta = Math.max(0, FOCUS_LENS.blur - v.blur)
+    const scrimDelta = Math.max(0, ((FOCUS_LENS.panelAlpha - v.panelAlpha) / 100) * 0.60)
+      + Math.max(0, ((FOCUS_LENS.shadow - v.shadow) / 100) * 0.60)
+    // 大柔边：15% 内实心，随后多段平滑衰减到透明（近似高斯边缘），避免可见的圆形轮廓
+    const grad = 'radial-gradient(circle ' + String(FOCUS_LENS_RADIUS) + 'px at var(--wesync-lens-x) var(--wesync-lens-y), #000 0%, #000 15%, rgba(0,0,0,0.62) 42%, rgba(0,0,0,0.3) 68%, rgba(0,0,0,0.1) 86%, transparent 100%)'
+    const bf = blurDelta > 0 ? 'blur(' + blurDelta.toFixed(1) + 'px)' : 'none'
+    focusLens.style.backdropFilter = bf
+    focusLens.style.setProperty('-webkit-backdrop-filter', bf)
+    focusLens.style.background = scrimDelta > 0.002 ? 'rgba(15,16,20,' + scrimDelta.toFixed(3) + ')' : 'transparent'
+    focusLens.style.maskImage = grad
+    focusLens.style.webkitMaskImage = grad
+  }
+
   orbBtn.addEventListener('click', () => {
     if (!store.settings.immersive) {
       // 进入沉浸前：若当前不是新会话页面，先切到新会话
@@ -303,7 +390,8 @@ export function apply(ctx: CordisCtx): void {
     const shadowAlpha = (visuals.shadow / 100) * 0.60
     const monitorKey = info !== null && info.monitor !== '' ? info.monitor : ''
     const monitorQuery = store.settings.monitor !== '' ? '&monitor=' + encodeURIComponent(store.settings.monitor) : ''
-    const rawSourceKind = enabled && info !== null && store.settings.renderMode === 'source' ? info.source.kind : ''
+    const wantLive = store.settings.renderMode !== 'eco'
+    const rawSourceKind = enabled && info !== null && wantLive ? info.source.kind : ''
     // scene：renderer 可用 或 已提取纹理 → 走 scene 增强；两者皆无 → 回退预览
     const sceneEnhance = rawSourceKind === 'scene' && info !== null && (info.scene?.available === true || info.source.scene === true)
     const sourceKind = rawSourceKind === 'video' || rawSourceKind === 'web' || rawSourceKind === 'image' || sceneEnhance ? rawSourceKind : ''
@@ -334,15 +422,19 @@ export function apply(ctx: CordisCtx): void {
       'background: linear-gradient(rgba(6,8,12,' + shadowAlpha.toFixed(3) + '), rgba(6,8,12,' + (shadowAlpha * 0.85).toFixed(3) + ')); }'
 
     if (sourceKind === 'scene' && info !== null) {
-      const sceneMode = info.scene?.mode === 'external' ? 'external' : 'browser'
-      if (sceneMode === 'external' && info.scene?.available === true) {
-        // 外部 renderer：live canvas（WS 帧流），出帧覆盖在纹理垫底之上；连接失败自动回退
+      // 三档：性能=捕获 WE（external，需 available）；增强=浏览器解 pkg（browser）；
+      // 性能但 WE/捕获不可用时自动回退到浏览器渲染，再不行回退静态预览（imgUrl 垫底）。
+      const canExternal = info.scene?.available === true
+      const canBrowser = info.scene?.model === true || info.scene?.texture === true || info.source.scene === true
+      const useExternal = store.settings.renderMode === 'perf' && canExternal
+      if (useExternal) {
+        // 性能：live canvas（WS 帧流），出帧覆盖在纹理垫底之上；连接失败自动回退
         if (sceneCanvas === null) sceneCanvas = new SceneCanvas()
         sceneCanvas.applyVisuals(blurPx, scale)
         sceneCanvas.start(monitorKey, info.version)
         stopSceneModelRenderer()
-      } else if (sceneMode === 'browser') {
-        // 浏览器子集渲染器：真实 scene.json 图层树 + transform 合成（Phase 1 最小切片）
+      } else if (canBrowser) {
+        // 增强（或性能回退）：浏览器子集渲染器，真实 scene.json 图层树 + transform 合成
         if (sceneModelRenderer === null) sceneModelRenderer = new SceneModelRenderer()
         sceneModelRenderer.applyVisuals(blurPx, scale)
         sceneModelRenderer.start(monitorKey, info.version)
@@ -387,6 +479,7 @@ export function apply(ctx: CordisCtx): void {
       setMedia(null)
     }
     applyImmersive()
+    applyFocusLens()
   }
 
   let polling = false
@@ -423,6 +516,7 @@ export function apply(ctx: CordisCtx): void {
     panelStyleTag.remove()
     immersiveStyleTag.remove()
     orbBtn.remove()
+    destroyFocusLens()
     statusObserver.disconnect()
     document.removeEventListener('keydown', onImmersiveKey)
     document.removeEventListener('click', onDocClick, true)

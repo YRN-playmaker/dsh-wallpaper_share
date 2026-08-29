@@ -66,44 +66,67 @@ export const PANEL_CSS = `
   cursor: default;
 }
 
+/* 专注模式按钮：未开启 = 透明背景白字；开启 = 白背景蓝字（不再区分任务状态） */
 .wesync-focusOff {
-  background: rgba(139, 92, 246, 0.18);
-  border-color: rgba(139, 92, 246, 0.55);
-  color: #c4b5fd;
+  background: transparent;
+  border-color: rgba(255, 255, 255, 0.5);
+  color: #ffffff;
 }
 
 .wesync-focusOff:hover:not(:disabled) {
-  background: rgba(139, 92, 246, 0.32);
+  background: rgba(255, 255, 255, 0.14);
 }
 
 .wesync-focusOn {
-  background: rgba(46, 160, 67, 0.20);
-  border-color: rgba(46, 160, 67, 0.55);
-  color: #7ee2a8;
+  background: #ffffff;
+  border-color: #ffffff;
+  color: #2563eb;
+  font-weight: 600;
 }
 
 .wesync-focusOn:hover:not(:disabled) {
-  background: rgba(46, 160, 67, 0.32);
+  background: rgba(255, 255, 255, 0.86);
 }
 
-.wesync-sourceOff {
-  background: rgba(249, 115, 22, 0.15);
-  border-color: rgba(249, 115, 22, 0.5);
-  color: #fdba74;
+/* 渲染模式三档滑块：选中 = 白底黄字；未选 = 透明底白字 */
+.wesync-seg {
+  display: flex;
+  gap: 2px;
+  margin-top: 12px;
+  padding: 3px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.06);
 }
 
-.wesync-sourceOff:hover:not(:disabled) {
-  background: rgba(249, 115, 22, 0.28);
+.wesync-seg-item {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: #ffffff;
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  text-align: center;
+  white-space: nowrap;
+  transition: background 0.15s ease, color 0.15s ease;
 }
 
-.wesync-sourceOn {
-  background: rgba(46, 160, 67, 0.20);
-  border-color: rgba(46, 160, 67, 0.55);
-  color: #7ee2a8;
+.wesync-seg-item:hover:not(.wesync-seg-active) {
+  background: rgba(255, 255, 255, 0.12);
 }
 
-.wesync-sourceOn:hover:not(:disabled) {
-  background: rgba(46, 160, 67, 0.32);
+.wesync-seg-active {
+  background: #ffffff;
+  color: #ca8a04;
+  font-weight: 600;
+}
+
+.wesync-seg-active:hover {
+  background: #ffffff;
 }
 
 .wesync-row {

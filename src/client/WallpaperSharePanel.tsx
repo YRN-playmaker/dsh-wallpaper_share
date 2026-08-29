@@ -4,7 +4,7 @@
  * 样式类名由 PANEL_CSS 在 apply 阶段注入，不依赖 CSS Modules。
  */
 import { useEffect, useState } from 'react'
-import { store, type WeSyncInfo, FOCUS_WORK, FOCUS_IDLE } from './index'
+import { store, type WeSyncInfo } from './index'
 
 /* =========================================================================
  * 1. 国际化字典 (i18n Dictionary)
@@ -34,21 +34,22 @@ const DICT = {
 
     // 视觉效果与专注模式
     visualTitle: '视觉效果 · 即时生效',
-    focusOnTask: '专注模式 · 任务进行中',
-    focusOnDone: '专注模式 · 已完成',
-    enableFocus: '开启专注模式',
-    flashFocusOn: '专注模式已开启：任务中 30%/15px/90%，空闲 9%/6px/40%',
+    focusMode: '专注模式',
+    flashFocusOn: '专注模式已开启：任务中 20%/9px/75% · 空闲 9%/6px/40% · 任务进行中鼠标注视点 30%/15px/90%',
     flashFocusOff: '专注模式已关闭，恢复手动滑块',
 
-    // 渲染模式
-    renderSource: '渲染：增强（源文件）',
-    renderPreview: '渲染：性能（预览）',
-    flashVideo: '增强模式：播放壁纸源视频',
-    flashWeb: '增强模式：加载 Web 壁纸页面',
-    flashSceneLive: '增强模式：Scene 实时渲染中',
-    flashSceneFallback: '增强模式：Scene（renderer 未出帧，回退纹理/预览）',
-    flashPreviewOnly: (kind: string) => `当前壁纸（${kind === '' ? '无' : kind}）仅支持预览，增强模式自动回退`,
-    flashPerf: '性能模式：使用静态预览图',
+    // 渲染模式（三档滑块：节能 / 性能 / 增强）
+    renderModeTitle: '渲染模式',
+    modeEco: '节能',
+    modePerf: '性能',
+    modeEnhanced: '增强',
+    flashEco: '节能模式：静态预览图（最省电）',
+    flashPerfScene: '性能模式：捕获 WE 桌面背景',
+    flashPerfFallback: '性能模式：WE 未运行 / 捕获不可用 → 回退浏览器渲染',
+    flashEnhancedScene: '增强模式：浏览器解 pkg 渲染（不依赖 WE，效果覆盖不全）',
+    flashVideo: '使用壁纸源视频实时渲染',
+    flashWeb: '加载 Web 壁纸页面',
+    flashSource: '使用壁纸源文件实时渲染',
 
     // 滑块
     panelAlpha: '面板透明度',
@@ -112,21 +113,22 @@ const DICT = {
 
     // Visuals & Focus mode
     visualTitle: 'Visual Adjustments · Instant',
-    focusOnTask: 'Focus Mode · Task in Progress',
-    focusOnDone: 'Focus Mode · Completed',
-    enableFocus: 'Enable Focus Mode',
-    flashFocusOn: 'Focus mode on: Task 30%/15px/90%, Idle 9%/6px/40%',
+    focusMode: 'Focus Mode',
+    flashFocusOn: 'Focus mode on: task 20%/9px/75% · idle 9%/6px/40% · gaze lens 30%/15px/90% while a task runs',
     flashFocusOff: 'Focus mode off, manual sliders restored',
 
-    // Render mode
-    renderSource: 'Render: Enhanced (Source)',
-    renderPreview: 'Render: Performance (Preview)',
-    flashVideo: 'Enhanced mode: Playing source video',
-    flashWeb: 'Enhanced mode: Loading Web wallpaper',
-    flashSceneLive: 'Enhanced mode: Scene live rendering',
-    flashSceneFallback: 'Enhanced mode: Scene (renderer no frame, fallback texture/preview)',
-    flashPreviewOnly: (kind: string) => `Current wallpaper (${kind === '' ? 'none' : kind}) only supports preview, falling back`,
-    flashPerf: 'Performance mode: Using static preview',
+    // Render mode (3-segment slider: Eco / Perf / Enhanced)
+    renderModeTitle: 'Render Mode',
+    modeEco: 'Eco',
+    modePerf: 'Perf',
+    modeEnhanced: 'Enhanced',
+    flashEco: 'Eco mode: static preview (lowest power)',
+    flashPerfScene: 'Perf mode: capturing WE desktop',
+    flashPerfFallback: 'Perf mode: WE not running / capture unavailable → fallback to browser render',
+    flashEnhancedScene: 'Enhanced mode: browser .pkg render (no WE dependency, partial effects)',
+    flashVideo: 'Live rendering from source video',
+    flashWeb: 'Loading Web wallpaper page',
+    flashSource: 'Live rendering from wallpaper source file',
 
     // Sliders
     panelAlpha: 'Panel Transparency',
@@ -171,50 +173,25 @@ const DICT = {
 type Lang = 'zh' | 'en'
 
 /* =========================================================================
- * 2. 语言监听 Hook
+ * 2. 语言解析
+ * 权威源是 store.locale（apply 阶段从 DSH locale 服务同步，含用户持久化偏好）。
+ * conversation.view 是 session 作用域插槽：切换对话 / 轨迹会重挂载面板，
+ * 语言状态在模块级 store 里，重挂载直接读取、不再重新探测，所以不会"弹回英语"；
+ * 运行中切换语言由 locale 服务 → store.notify() → 面板订阅重渲染即时生效。
  * ========================================================================= */
-function useDshLocale(ctx?: any) {
-  const detectLang = (): Lang => {
-    // 优先读取 Harness 提供的 locale 服务偏好
-    const harnessLang = ctx?.locale?.current || ctx?.locale?.preference || (store as any)?.ctx?.locale?.current
-    if (typeof harnessLang === 'string') {
-      return harnessLang.toLowerCase().startsWith('en') ? 'en' : 'zh'
-    }
-    // 次级读取 document 的 lang 属性或系统语言
-    if (typeof document !== 'undefined' && document.documentElement.lang?.toLowerCase().startsWith('en')) {
-      return 'en'
-    }
-    if (typeof navigator !== 'undefined' && navigator.language?.toLowerCase().startsWith('en')) {
-      return 'en'
-    }
-    return 'zh'
+function resolveLang(): Lang {
+  if (store.locale === 'zh' || store.locale === 'en') return store.locale
+  // 兜底（locale 服务不可用的老宿主）：<html lang> 由 DSH locale 插件同步为 zh-CN / en，
+  // 两个方向都要识别——旧实现只认 en，zh-CN 会漏到 navigator 导致误判英语。
+  if (typeof document !== 'undefined') {
+    const docLang = (document.documentElement.lang ?? '').toLowerCase()
+    if (docLang.startsWith('zh')) return 'zh'
+    if (docLang.startsWith('en')) return 'en'
   }
-
-  const [lang, setLang] = useState<Lang>(detectLang)
-
-  useEffect(() => {
-    // 1. 订阅 DSH 官方 locale/change 事件
-    const targetCtx = ctx || (store as any)?.ctx
-    if (targetCtx?.on) {
-      const dispose = targetCtx.on('locale/change', (newLang: string) => {
-        setLang(newLang?.toLowerCase().startsWith('en') ? 'en' : 'zh')
-      })
-      return () => dispose?.()
-    }
-
-    // 2. 降级：监听 <html lang="..."> 属性变化
-    if (typeof MutationObserver !== 'undefined' && document?.documentElement) {
-      const observer = new MutationObserver(() => {
-        const docLang = document.documentElement.lang
-        setLang(docLang?.toLowerCase().startsWith('en') ? 'en' : 'zh')
-      })
-      observer.observe(document.documentElement, { attributes: true, attributeFilter: ['lang'] })
-      return () => observer.disconnect()
-    }
-  }, [ctx])
-
-  const t = DICT[lang]
-  return { lang, t }
+  if (typeof navigator !== 'undefined' && navigator.language?.toLowerCase().startsWith('en')) {
+    return 'en'
+  }
+  return 'zh'
 }
 
 /* =========================================================================
@@ -222,7 +199,7 @@ function useDshLocale(ctx?: any) {
  * ========================================================================= */
 export function WallpaperSharePanel(props?: { ctx?: any }) {
   const [, force] = useState(0)
-  const { t } = useDshLocale(props?.ctx)
+  const t = DICT[resolveLang()]
 
   const [info, setInfo] = useState<WeSyncInfo | null>(store.info)
   const [enabled, setEnabled] = useState(store.settings.enabled)
@@ -298,20 +275,18 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
     flash(next ? t.flashFocusOn : t.flashFocusOff)
   }
 
-  const onRenderMode = (): void => {
-    const next: 'preview' | 'source' = store.settings.renderMode === 'source' ? 'preview' : 'source'
-    store.settings.renderMode = next
-    setRenderMode(next)
+  const onRenderMode = (mode: 'eco' | 'perf' | 'enhanced'): void => {
+    store.settings.renderMode = mode
+    setRenderMode(mode)
     store.actions.applyBackground()
-    if (next === 'source') {
-      const kind = store.info !== null ? store.info.source.kind : ''
-      if (kind === 'video') flash(t.flashVideo)
-      else if (kind === 'web') flash(t.flashWeb)
-      else if (kind === 'scene') flash(store.info?.scene?.live === true ? t.flashSceneLive : t.flashSceneFallback)
-      else flash(t.flashPreviewOnly(kind))
-    } else {
-      flash(t.flashPerf)
-    }
+    const kind = store.info !== null ? store.info.source.kind : ''
+    if (mode === 'eco') flash(t.flashEco)
+    else if (kind === 'scene') {
+      if (mode === 'perf') flash(store.info?.scene?.available === true ? t.flashPerfScene : t.flashPerfFallback)
+      else flash(t.flashEnhancedScene)
+    } else if (kind === 'video') flash(t.flashVideo)
+    else if (kind === 'web') flash(t.flashWeb)
+    else flash(t.flashSource)
   }
 
   // 壁纸库：列出全部类型壁纸（场景/视频/图片/应用/网页）；点击缩略图卡片在资源管理器中打开所在文件夹
@@ -410,12 +385,11 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
     : wallpaper.type +
       (info !== null && info.kind === 'image' ? t.staticSynced : t.noStaticPreview) +
       (info !== null && info.monitor !== '' ? t.monitorPrefix + info.monitor : '') +
-      (info !== null && info.kind === 'scene' && info.scene !== null
-        ? ' · Scene[' + (info.scene.mode ?? 'browser') + '] ' + (info.scene.live ? 'live ' + String(info.scene.status?.fps ?? '?') + 'fps' : (info.scene.model === true ? t.modelRender : t.fallbackPrefix + info.scene.fallback))
+      (info !== null && info.source.kind === 'scene' && info.scene !== null
+        ? ' · Scene[' + (renderMode === 'eco' ? 'eco' : info.scene.live === true ? 'external' : 'browser') + '] ' + (info.scene.live ? 'live ' + String(info.scene.status?.fps ?? '?') + 'fps' : (info.scene.model === true ? t.modelRender : t.fallbackPrefix + info.scene.fallback))
         : '')
 
   const monitors = info !== null && Array.isArray(info.monitors) && info.monitors.length > 1 ? info.monitors : null
-  const focusVisuals = focus ? (store.settings.taskActive ? FOCUS_WORK : FOCUS_IDLE) : null
 
   return (
     <div className="wesync-panel">
@@ -451,17 +425,31 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
         <div className="wesync-sub">{t.visualTitle}</div>
         <div className="wesync-actions">
           <button className={['wesync-btn', focus ? 'wesync-focusOn' : 'wesync-focusOff'].join(' ')} onClick={onFocus}>
-            {focus
-              ? (store.settings.taskActive ? t.focusOnTask : t.focusOnDone)
-              : t.enableFocus}
-          </button>
-          <button className={['wesync-btn', renderMode === 'source' ? 'wesync-sourceOn' : 'wesync-sourceOff'].join(' ')} onClick={onRenderMode}>
-            {renderMode === 'source' ? t.renderSource : t.renderPreview}
+            {t.focusMode}
           </button>
         </div>
-        <Slider label={t.panelAlpha} min={0} max={100} value={focusVisuals !== null ? focusVisuals.panelAlpha : alpha} unit="%" disabled={focusVisuals !== null} onChange={onAlpha} />
-        <Slider label={t.blur} min={0} max={30} value={focusVisuals !== null ? focusVisuals.blur : blur} unit="px" disabled={focusVisuals !== null} onChange={onBlur} />
-        <Slider label={t.shadow} min={0} max={100} value={focusVisuals !== null ? focusVisuals.shadow : shadow} unit="%" disabled={focusVisuals !== null} onChange={onShadow} />
+        <div className="wesync-seg" role="group" aria-label={t.renderModeTitle}>
+          {(['eco', 'perf', 'enhanced'] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              className={['wesync-seg-item', renderMode === m ? 'wesync-seg-active' : ''].join(' ')}
+              onClick={() => onRenderMode(m)}
+            >
+              {m === 'eco' ? t.modeEco : m === 'perf' ? t.modePerf : t.modeEnhanced}
+            </button>
+          ))}
+        </div>
+        {/* 专注模式开启时三个滑块由 FOCUS_WORK/IDLE + 注视点透镜接管，直接隐藏 */}
+        {focus
+          ? null
+          : (
+              <>
+                <Slider label={t.panelAlpha} min={0} max={100} value={alpha} unit="%" onChange={onAlpha} />
+                <Slider label={t.blur} min={0} max={30} value={blur} unit="px" onChange={onBlur} />
+                <Slider label={t.shadow} min={0} max={100} value={shadow} unit="%" onChange={onShadow} />
+              </>
+            )}
       </div>
       <div className="wesync-card">
         <div className="wesync-apps">
