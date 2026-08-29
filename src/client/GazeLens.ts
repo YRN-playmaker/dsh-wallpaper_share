@@ -29,7 +29,9 @@ interface WebgazerLike {
   setGazeListener: (fn: (data: { x: number; y: number } | null, ts: number) => void) => unknown
   clearGazeListener: () => unknown
   setRegression: (name: string) => unknown
+  addMouseEventListeners: () => unknown
   removeMouseEventListeners: () => unknown
+  getRegression: () => unknown
   showVideoPreview: (show: boolean) => unknown
   detectCompatibility: () => boolean
 }
@@ -124,6 +126,10 @@ export async function startGaze(): Promise<void> {
       window.alert = origAlert
     }
     running = true
+    // 关键：关掉 webgazer 的鼠标采样（click + mousemove）。它的 ridge 预测每帧把「最近 1 秒鼠标移动」
+    // 当作训练样本（假设"看哪 = 鼠标在哪"，日常不成立）→ 污染拟合、定位乱跳。关掉后训练数据只来自
+    // 校准期间的显式点击（见 calibrate 临时开启监听），定位随校准稳定。
+    w.removeMouseEventListeners()
     setStatus('running')
   } catch (e) {
     running = false
@@ -153,6 +159,16 @@ export function getGaze(maxAgeMs = 1200): { x: number; y: number } | null {
   return { x: lastGaze.x, y: lastGaze.y }
 }
 
+/** 是否已有校准点击样本（ridge 预测依赖它）。false → 预测返回 null、透镜自动回落鼠标，应提示校准。 */
+export function hasCalibrationData(): boolean {
+  if (wg === null) return false
+  try {
+    const regs = wg.getRegression() as Array<{ eyeFeaturesClicks?: { length: number } }> | Record<string, { eyeFeaturesClicks?: { length: number } }>
+    const arr = Array.isArray(regs) ? regs : Object.values(regs)
+    return arr.some((r) => (r?.eyeFeaturesClicks?.length ?? 0) > 0)
+  } catch { return false }
+}
+
 // —— 校准：9 点引导序列。webgazer 在 begin() 期间自动把每次点击当作训练样本，
 //    这里只负责按序显示目标点并在点击后推进（不阻止冒泡，让 webgazer 捕获到点击）。
 
@@ -166,7 +182,7 @@ let calibState: { pts: Array<{ x: number; y: number }>; i: number; overlay: HTML
 export function calibrate(onDone?: (completed: boolean) => void): void {
   if (calibState !== null) return
   if (!running) { onDone?.(false); return }
-  if (wg !== null) wg.showVideoPreview(true) // 仅校准期间把摄像头画面投影到页面（平时不显示）
+  if (wg !== null) { wg.showVideoPreview(true); wg.addMouseEventListeners() } // 校准期间：投影摄像头 + 临时开启点击采样
   const pts: Array<{ x: number; y: number }> = []
   for (const gy of CAL_GRID) for (const gx of CAL_GRID) pts.push({ x: Math.round(window.innerWidth * gx), y: Math.round(window.innerHeight * gy) })
   const overlay = document.createElement('div')
@@ -193,7 +209,7 @@ export function calibrate(onDone?: (completed: boolean) => void): void {
     document.removeEventListener('keydown', onKey, true)
     overlay.remove()
     calibState = null
-    if (wg !== null) wg.showVideoPreview(false) // 校准结束收回摄像头画面
+    if (wg !== null) { wg.showVideoPreview(false); wg.removeMouseEventListeners() } // 收回画面 + 关掉采样，回到"只靠校准点击"
     onDone?.(completed)
   }
   const onClick = (): void => {

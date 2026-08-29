@@ -5,7 +5,7 @@
  */
 import { useEffect, useState } from 'react'
 import { store, type WeSyncInfo } from './index'
-import { startGaze, stopGaze, calibrate, onGazeStatus, type GazeStatus } from './GazeLens.ts'
+import { startGaze, stopGaze, calibrate, onGazeStatus, hasCalibrationData, type GazeStatus } from './GazeLens.ts'
 
 /* =========================================================================
  * 1. 国际化字典 (i18n Dictionary)
@@ -55,9 +55,10 @@ const DICT = {
     // 眼动追踪
     gazeMode: '眼动追踪',
     gazeCalibrate: '校准视线',
-    gazeStarting: '眼动：加载模型并请求摄像头…（无需校准，随日常鼠标使用自动学习）',
+    gazeStarting: '眼动：加载模型并请求摄像头…（首次请用「校准视线」标定一次）',
     gazeOff: '眼动追踪已关闭（摄像头已释放）',
     gazeNeedOn: '请先开启眼动追踪再校准',
+    gazeNeedCalib: '· 眼动待校准：点「校准视线」标定一次',
     gazeCalibHint: '校准：依次注视并点击 9 个黄点（Esc 取消）',
     gazeCalibDone: '校准完成，透镜将跟随视线',
     gazeCalibCancel: '校准已取消',
@@ -148,9 +149,10 @@ const DICT = {
     // Eye tracking
     gazeMode: 'Eye Tracking',
     gazeCalibrate: 'Calibrate Gaze',
-    gazeStarting: 'Eye tracking: loading model & requesting camera… (no calibration — self-learns from mouse use)',
+    gazeStarting: 'Eye tracking: loading model & requesting camera… (run Calibrate Gaze once)',
     gazeOff: 'Eye tracking off (camera released)',
     gazeNeedOn: 'Enable eye tracking before calibrating',
+    gazeNeedCalib: '· gaze needs calibration — click Calibrate Gaze once',
     gazeCalibHint: 'Calibration: look at and click each of the 9 yellow dots (Esc to cancel)',
     gazeCalibDone: 'Calibrated — lens will follow your gaze',
     gazeCalibCancel: 'Calibration cancelled',
@@ -243,6 +245,7 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
   const [gazeStatus, setGazeStatus] = useState<GazeStatus>('off')
   const [gazeError, setGazeError] = useState('')
   const [gazeSnapText, setGazeSnapText] = useState(store.settings.gazeSnapText)
+  const [needsCalib, setNeedsCalib] = useState(false)
   useEffect(() => onGazeStatus((s, err) => { setGazeStatus(s); setGazeError(err) }), [])
   const [appsOpen, setAppsOpen] = useState(false)
   const [apps, setApps] = useState<Array<{ id: string; title: string; file: string; type: string; hasPreview: boolean }>>([])
@@ -337,8 +340,12 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
     if (next) {
       flash(t.gazeStarting)
       await startGaze()
+      const noCalib = !hasCalibrationData()
+      setNeedsCalib(noCalib)
+      if (noCalib) flash(t.gazeNeedCalib)
     } else {
       stopGaze()
+      setNeedsCalib(false)
       flash(t.gazeOff)
     }
     store.notify()
@@ -347,7 +354,10 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
   const onCalibrate = (): void => {
     if (!store.settings.gazeEnabled) { flash(t.gazeNeedOn); return }
     flash(t.gazeCalibHint)
-    calibrate((completed) => { flash(completed ? t.gazeCalibDone : t.gazeCalibCancel) })
+    calibrate((completed) => {
+      if (completed) setNeedsCalib(false)
+      flash(completed ? t.gazeCalibDone : t.gazeCalibCancel)
+    })
   }
 
   const onToggleSnap = (): void => {
@@ -519,13 +529,15 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
                   <button className={['wesync-btn', gazeSnapText ? 'wesync-focusOn' : 'wesync-focusOff'].join(' ')} onClick={onToggleSnap}>
                     {t.gazeSnap}
                   </button>
-                  {gazeStatus === 'running'
-                    ? <span className="wesync-gaze-status is-running">{t.gazeStatusRunning}</span>
-                    : gazeStatus === 'error'
-                      ? <span className="wesync-gaze-status is-error">{t.gazeStatusError}{gazeError !== '' ? '：' + gazeError : ''}</span>
-                      : gazeEnabled
-                        ? <span className="wesync-gaze-status is-loading">{t.gazeStatusLoading}</span>
-                        : null}
+                  {gazeEnabled && needsCalib
+                    ? <span className="wesync-gaze-status is-error">{t.gazeNeedCalib}</span>
+                    : gazeStatus === 'running'
+                      ? <span className="wesync-gaze-status is-running">{t.gazeStatusRunning}</span>
+                      : gazeStatus === 'error'
+                        ? <span className="wesync-gaze-status is-error">{t.gazeStatusError}{gazeError !== '' ? '：' + gazeError : ''}</span>
+                        : gazeEnabled
+                          ? <span className="wesync-gaze-status is-loading">{t.gazeStatusLoading}</span>
+                          : null}
                 </>
               )
             : null}
