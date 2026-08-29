@@ -30,6 +30,7 @@ interface WebgazerLike {
   clearGazeListener: () => unknown
   setRegression: (name: string) => unknown
   removeMouseEventListeners: () => unknown
+  showVideoPreview: (show: boolean) => unknown
   detectCompatibility: () => boolean
 }
 
@@ -165,6 +166,7 @@ let calibState: { pts: Array<{ x: number; y: number }>; i: number; overlay: HTML
 export function calibrate(onDone?: (completed: boolean) => void): void {
   if (calibState !== null) return
   if (!running) { onDone?.(false); return }
+  if (wg !== null) wg.showVideoPreview(true) // 仅校准期间把摄像头画面投影到页面（平时不显示）
   const pts: Array<{ x: number; y: number }> = []
   for (const gy of CAL_GRID) for (const gx of CAL_GRID) pts.push({ x: Math.round(window.innerWidth * gx), y: Math.round(window.innerHeight * gy) })
   const overlay = document.createElement('div')
@@ -191,6 +193,7 @@ export function calibrate(onDone?: (completed: boolean) => void): void {
     document.removeEventListener('keydown', onKey, true)
     overlay.remove()
     calibState = null
+    if (wg !== null) wg.showVideoPreview(false) // 校准结束收回摄像头画面
     onDone?.(completed)
   }
   const onClick = (): void => {

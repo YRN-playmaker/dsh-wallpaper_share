@@ -61,11 +61,9 @@ export interface WeSyncSettings {
   taskActive: boolean
   /** 渲染模式（三档）：'eco' 节能（静态预览图）| 'perf' 性能（捕获 WE 桌面背景，WE 未开则回退增强）| 'enhanced' 增强（浏览器解 pkg 渲染，不依赖 WE） */
   renderMode: 'eco' | 'perf' | 'enhanced'
-  /** 眼动追踪：开启后专注透镜跟随视线（getGaze），无脸 / 陈旧自动回落鼠标 */
+  /** 眼动追踪（专注子模式）：开=透镜跟随视线（getGaze，无脸 / 陈旧回落鼠标）；关=跟随鼠标 */
   gazeEnabled: boolean
-  /** 透镜圆心模式：true=圆心清晰、圆外模糊（阅读窗）；false=圆心模糊、圆外清晰（模糊圆盘）。可切换 */
-  lensCenterClear: boolean
-  /** 文字吸附：眼动时把注视点磁吸到最近文字块中心，抑制消费级眼动的抖动 */
+  /** 文字行锁定：眼动时把注视点 Y 锁到最近文字行中心（X 跟随），消除上下抖动 */
   gazeSnapText: boolean
   /** 沉浸模式：隐藏对话 chrome（上边栏 + 输入框），并把 web 壁纸 iframe 置顶解锁鼠标交互 */
   immersive: boolean
@@ -93,7 +91,7 @@ export const store = {
    *  模块级持久：conversation.view 是 session 作用域插槽，切会话/轨迹会重挂载面板，
    *  重挂载时直接读这里而不是重新探测，语言才不会"弹回英语"。 */
   locale: null as 'zh' | 'en' | null,
-  settings: { enabled: true, panelAlpha: 72, blur: 6, shadow: 30, monitor: '', focus: false, taskActive: false, renderMode: 'perf', gazeEnabled: false, lensCenterClear: false, gazeSnapText: true, immersive: false, approvalPending: false } as WeSyncSettings,
+  settings: { enabled: true, panelAlpha: 72, blur: 6, shadow: 30, monitor: '', focus: false, taskActive: false, renderMode: 'perf', gazeEnabled: false, gazeSnapText: true, immersive: false, approvalPending: false } as WeSyncSettings,
   listeners: new Set<() => void>(),
   actions: {
     applyTheme: (): void => {},
@@ -283,14 +281,12 @@ export function apply(ctx: CordisCtx): void {
     }
   }
 
-  // —— 专注 / 眼动 · 注视点透镜：眼动模式（gazeEnabled）下始终显示并跟随视线；或专注+任务时跟随鼠标。
-  //   圆心可切换：清晰（阅读窗，圆外模糊）或模糊（圆盘，圆外清晰）。实现：壁纸全局模糊在透镜激活时
-  //   置 0（见 applyBackground），改由此 fixed 层用 backdrop-filter 施加模糊，mask 决定模糊落在圆心还是圆外。
-  //   入场：先全屏模糊，再"汇聚"到视线处的圆（清晰模式半径 0→R 张开；模糊模式半径 大→R 收拢）。
+  // —— 专注 · 注视点透镜：专注模式是总开关，开启即显示透镜。gazeEnabled 决定跟随视线（开）还是鼠标（关）。
+  //   圆心恒为清晰（阅读窗：圆心透明、圆外模糊）。实现：壁纸全局模糊在透镜激活时置 0（见 applyBackground），
+  //   改由此 fixed 层用 backdrop-filter 施加模糊，反向 mask 让模糊只落在清晰圆之外。入场：半径 0→R 张开（先全糊再汇聚）。
   const FOCUS_LENS_RADIUS = 260          // 目标圆渐变半径（px）
   const LENS_BLUR = 12                   // 透镜 backdrop-filter 模糊强度（px）
   const LENS_ENTER_MS = 1400             // 入场动画时长
-  const LENS_ENTER_START_MULT = 1.35     // 模糊模式入场起始半径 = 视口对角线 × 此系数（先盖满全屏）
   const LINE_HYST = 6                    // 行锁定滞回：注视 y 在当前行带内 ±此值则不切换行
   const GAZE_SMOOTH = 0.08               // 视线 EMA 平滑系数（越小越稳）
   const GAZE_DEADZONE = 12               // 死区：注视点移动 < 此值视为抖动，忽略（冻结）
@@ -384,16 +380,9 @@ export function apply(ctx: CordisCtx): void {
     const eased = 1 - Math.pow(1 - p, 3)
     let r: number
     let grad: string
-    if (store.settings.lensCenterClear) {
-      // 圆心清晰：透明核心 0→R 张开（起始全糊）
-      r = Math.max(0.5, eased * FOCUS_LENS_RADIUS)
-      grad = 'radial-gradient(circle ' + r.toFixed(1) + 'px at var(--wesync-lens-x) var(--wesync-lens-y), transparent 0%, transparent 50%, rgba(0,0,0,0.45) 70%, rgba(0,0,0,0.82) 88%, #000 100%)'
-    } else {
-      // 圆心模糊：不透明核心 大→R 收拢（起始盖满全屏 = 全糊）
-      const startR = Math.hypot(window.innerWidth, window.innerHeight) * LENS_ENTER_START_MULT
-      r = startR + (FOCUS_LENS_RADIUS - startR) * eased
-      grad = 'radial-gradient(circle ' + r.toFixed(1) + 'px at var(--wesync-lens-x) var(--wesync-lens-y), #000 0%, #000 50%, rgba(0,0,0,0.5) 72%, rgba(0,0,0,0.18) 88%, transparent 100%)'
-    }
+    // 圆心清晰（唯一模式）：透明核心 0→R 张开（起始全糊 → 汇聚出清晰圆）
+    r = Math.max(0.5, eased * FOCUS_LENS_RADIUS)
+    grad = 'radial-gradient(circle ' + r.toFixed(1) + 'px at var(--wesync-lens-x) var(--wesync-lens-y), transparent 0%, transparent 50%, rgba(0,0,0,0.45) 70%, rgba(0,0,0,0.82) 88%, #000 100%)'
     focusLens.style.setProperty('--wesync-lens-x', lensX + 'px')
     focusLens.style.setProperty('--wesync-lens-y', lensY + 'px')
     focusLens.style.maskImage = grad
@@ -408,8 +397,8 @@ export function apply(ctx: CordisCtx): void {
     if (lensRaf !== null) { cancelAnimationFrame(lensRaf); lensRaf = null }
   }
   function applyFocusLens(): void {
-    // 眼动模式（gazeEnabled）下始终显示并追踪（无需任务）；或专注+任务时显示（跟随鼠标）
-    const show = store.settings.gazeEnabled || (store.settings.focus && store.settings.taskActive)
+    // 专注模式是透镜总开关：开启即显示。gazeEnabled 只决定跟随视线还是鼠标（子模式）。
+    const show = store.settings.focus
     if (!show) { destroyFocusLens(); return }
     if (focusLens === null) {
       // 初始放在视口中心，等鼠标 / 视线接管
@@ -487,7 +476,7 @@ export function apply(ctx: CordisCtx): void {
     const visuals = effectiveVisuals()
     const enabled = store.settings.enabled
     // 专注+任务时透镜接管模糊：壁纸全局模糊置 0，由透镜在清晰圆之外施加（圆心才能真清晰）
-    const lensActive = store.settings.gazeEnabled || (store.settings.focus && store.settings.taskActive)
+    const lensActive = store.settings.focus
     const blurPx = lensActive ? 0 : Math.round(visuals.blur)
     const scale = 1 + blurPx / 400
     const shadowAlpha = (visuals.shadow / 100) * 0.60

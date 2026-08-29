@@ -36,7 +36,7 @@ const DICT = {
     // 视觉效果与专注模式
     visualTitle: '视觉效果 · 即时生效',
     focusMode: '专注模式',
-    flashFocusOn: '专注模式已开启：任务中 20%/9px/75% · 空闲 9%/6px/40% · 任务进行中鼠标注视点 30%/15px/90%',
+    flashFocusOn: '专注模式已开启：注视点透镜跟随鼠标（圆心清晰）；可再开「眼动追踪」改为跟随视线',
     flashFocusOff: '专注模式已关闭，恢复手动滑块',
 
     // 渲染模式（三档滑块：节能 / 性能 / 增强）
@@ -64,8 +64,6 @@ const DICT = {
     gazeStatusRunning: '· 视线跟随中',
     gazeStatusLoading: '· 眼动加载中…',
     gazeStatusError: '· 眼动出错',
-    lensCenterClear: '圆心清晰',
-    lensCenterBlur: '圆心模糊',
     gazeSnap: '文字吸附',
 
     // 滑块
@@ -131,7 +129,7 @@ const DICT = {
     // Visuals & Focus mode
     visualTitle: 'Visual Adjustments · Instant',
     focusMode: 'Focus Mode',
-    flashFocusOn: 'Focus mode on: task 20%/9px/75% · idle 9%/6px/40% · gaze lens 30%/15px/90% while a task runs',
+    flashFocusOn: 'Focus mode on: lens follows mouse (clear center); enable Eye Tracking to follow gaze instead',
     flashFocusOff: 'Focus mode off, manual sliders restored',
 
     // Render mode (3-segment slider: Eco / Perf / Enhanced)
@@ -159,8 +157,6 @@ const DICT = {
     gazeStatusRunning: '· gaze following',
     gazeStatusLoading: '· eye tracking loading…',
     gazeStatusError: '· eye tracking error',
-    lensCenterClear: 'Clear center',
-    lensCenterBlur: 'Blur center',
     gazeSnap: 'Text snap',
 
     // Sliders
@@ -246,7 +242,6 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
   const [gazeEnabled, setGazeEnabled] = useState(store.settings.gazeEnabled)
   const [gazeStatus, setGazeStatus] = useState<GazeStatus>('off')
   const [gazeError, setGazeError] = useState('')
-  const [lensCenterClear, setLensCenterClear] = useState(store.settings.lensCenterClear)
   const [gazeSnapText, setGazeSnapText] = useState(store.settings.gazeSnapText)
   useEffect(() => onGazeStatus((s, err) => { setGazeStatus(s); setGazeError(err) }), [])
   const [appsOpen, setAppsOpen] = useState(false)
@@ -309,6 +304,12 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
     const next = !store.settings.focus
     store.settings.focus = next
     setFocus(next)
+    // 专注是透镜总开关：关闭专注时一并关掉眼动（释放摄像头）——眼动只是专注的子模式
+    if (!next && store.settings.gazeEnabled) {
+      store.settings.gazeEnabled = false
+      setGazeEnabled(false)
+      stopGaze()
+    }
     store.actions.applyTheme()
     store.actions.applyBackground()
     flash(next ? t.flashFocusOn : t.flashFocusOff)
@@ -347,13 +348,6 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
     if (!store.settings.gazeEnabled) { flash(t.gazeNeedOn); return }
     flash(t.gazeCalibHint)
     calibrate((completed) => { flash(completed ? t.gazeCalibDone : t.gazeCalibCancel) })
-  }
-
-  const onToggleLensCenter = (): void => {
-    const next = !store.settings.lensCenterClear
-    store.settings.lensCenterClear = next
-    setLensCenterClear(next)
-    store.notify()
   }
 
   const onToggleSnap = (): void => {
@@ -497,11 +491,6 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
       </div>
       <div className="wesync-card">
         <div className="wesync-sub">{t.visualTitle}</div>
-        <div className="wesync-actions">
-          <button className={['wesync-btn', focus ? 'wesync-focusOn' : 'wesync-focusOff'].join(' ')} onClick={onFocus}>
-            {t.focusMode}
-          </button>
-        </div>
         <div className="wesync-seg" role="group" aria-label={t.renderModeTitle}>
           {(['eco', 'perf', 'enhanced'] as const).map((m) => (
             <button
@@ -515,25 +504,31 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
           ))}
         </div>
         <div className="wesync-actions">
-          <button className={['wesync-btn', gazeEnabled ? 'wesync-focusOn' : 'wesync-focusOff'].join(' ')} onClick={() => { void onGazeToggle() }}>
-            {t.gazeMode}
+          <button className={['wesync-btn', focus ? 'wesync-focusOn' : 'wesync-focusOff'].join(' ')} onClick={onFocus}>
+            {t.focusMode}
           </button>
-          <button className="wesync-btn" onClick={onCalibrate} disabled={!gazeEnabled}>
-            {t.gazeCalibrate}
-          </button>
-          <button className="wesync-btn" onClick={onToggleLensCenter}>
-            {lensCenterClear ? t.lensCenterClear : t.lensCenterBlur}
-          </button>
-          <button className={['wesync-btn', gazeSnapText ? 'wesync-focusOn' : 'wesync-focusOff'].join(' ')} onClick={onToggleSnap}>
-            {t.gazeSnap}
-          </button>
-          {gazeStatus === 'running'
-            ? <span style={{ fontSize: '11px', color: '#7ee2a8', alignSelf: 'center' }}>{t.gazeStatusRunning}</span>
-            : gazeStatus === 'error'
-              ? <span style={{ fontSize: '11px', color: '#fdba74', alignSelf: 'center' }}>{t.gazeStatusError}{gazeError !== '' ? '：' + gazeError : ''}</span>
-              : gazeEnabled
-                ? <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.6)', alignSelf: 'center' }}>{t.gazeStatusLoading}</span>
-                : null}
+          {focus
+            ? (
+                <>
+                  <button className={['wesync-btn', gazeEnabled ? 'wesync-focusOn' : 'wesync-focusOff'].join(' ')} onClick={() => { void onGazeToggle() }}>
+                    {t.gazeMode}
+                  </button>
+                  <button className="wesync-btn" onClick={onCalibrate} disabled={!gazeEnabled}>
+                    {t.gazeCalibrate}
+                  </button>
+                  <button className={['wesync-btn', gazeSnapText ? 'wesync-focusOn' : 'wesync-focusOff'].join(' ')} onClick={onToggleSnap}>
+                    {t.gazeSnap}
+                  </button>
+                  {gazeStatus === 'running'
+                    ? <span style={{ fontSize: '11px', color: '#7ee2a8', alignSelf: 'center' }}>{t.gazeStatusRunning}</span>
+                    : gazeStatus === 'error'
+                      ? <span style={{ fontSize: '11px', color: '#fdba74', alignSelf: 'center' }}>{t.gazeStatusError}{gazeError !== '' ? '：' + gazeError : ''}</span>
+                      : gazeEnabled
+                        ? <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.6)', alignSelf: 'center' }}>{t.gazeStatusLoading}</span>
+                        : null}
+                </>
+              )
+            : null}
         </div>
         {/* 专注模式开启时三个滑块由 FOCUS_WORK/IDLE + 注视点透镜接管，直接隐藏 */}
         {focus
