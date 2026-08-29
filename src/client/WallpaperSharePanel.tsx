@@ -5,6 +5,7 @@
  */
 import { useEffect, useState } from 'react'
 import { store, type WeSyncInfo } from './index'
+import { startGaze, stopGaze, calibrate, onGazeStatus, type GazeStatus } from './GazeLens.ts'
 
 /* =========================================================================
  * 1. 国际化字典 (i18n Dictionary)
@@ -50,6 +51,19 @@ const DICT = {
     flashVideo: '使用壁纸源视频实时渲染',
     flashWeb: '加载 Web 壁纸页面',
     flashSource: '使用壁纸源文件实时渲染',
+
+    // 眼动追踪
+    gazeMode: '眼动追踪',
+    gazeCalibrate: '校准视线',
+    gazeStarting: '眼动：正在加载模型并请求摄像头…（首次约需下载 ~12MB）',
+    gazeOff: '眼动追踪已关闭（摄像头已释放）',
+    gazeNeedOn: '请先开启眼动追踪再校准',
+    gazeCalibHint: '校准：依次注视并点击 9 个黄点（Esc 取消）',
+    gazeCalibDone: '校准完成，透镜将跟随视线',
+    gazeCalibCancel: '校准已取消',
+    gazeStatusRunning: '· 视线跟随中',
+    gazeStatusLoading: '· 眼动加载中…',
+    gazeStatusError: '· 眼动出错',
 
     // 滑块
     panelAlpha: '面板透明度',
@@ -129,6 +143,19 @@ const DICT = {
     flashVideo: 'Live rendering from source video',
     flashWeb: 'Loading Web wallpaper page',
     flashSource: 'Live rendering from wallpaper source file',
+
+    // Eye tracking
+    gazeMode: 'Eye Tracking',
+    gazeCalibrate: 'Calibrate Gaze',
+    gazeStarting: 'Eye tracking: loading model & requesting camera… (~12MB first time)',
+    gazeOff: 'Eye tracking off (camera released)',
+    gazeNeedOn: 'Enable eye tracking before calibrating',
+    gazeCalibHint: 'Calibration: look at and click each of the 9 yellow dots (Esc to cancel)',
+    gazeCalibDone: 'Calibrated — lens will follow your gaze',
+    gazeCalibCancel: 'Calibration cancelled',
+    gazeStatusRunning: '· gaze following',
+    gazeStatusLoading: '· eye tracking loading…',
+    gazeStatusError: '· eye tracking error',
 
     // Sliders
     panelAlpha: 'Panel Transparency',
@@ -210,6 +237,10 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
   const [monitor, setMonitor] = useState(store.settings.monitor)
   const [focus, setFocus] = useState(store.settings.focus)
   const [renderMode, setRenderMode] = useState(store.settings.renderMode)
+  const [gazeEnabled, setGazeEnabled] = useState(store.settings.gazeEnabled)
+  const [gazeStatus, setGazeStatus] = useState<GazeStatus>('off')
+  const [gazeError, setGazeError] = useState('')
+  useEffect(() => onGazeStatus((s, err) => { setGazeStatus(s); setGazeError(err) }), [])
   const [appsOpen, setAppsOpen] = useState(false)
   const [apps, setApps] = useState<Array<{ id: string; title: string; file: string; type: string; hasPreview: boolean }>>([])
   const [appsCounts, setAppsCounts] = useState<Record<string, number>>({})
@@ -287,6 +318,26 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
     } else if (kind === 'video') flash(t.flashVideo)
     else if (kind === 'web') flash(t.flashWeb)
     else flash(t.flashSource)
+  }
+
+  const onGazeToggle = async (): Promise<void> => {
+    const next = !store.settings.gazeEnabled
+    store.settings.gazeEnabled = next
+    setGazeEnabled(next)
+    if (next) {
+      flash(t.gazeStarting)
+      await startGaze()
+    } else {
+      stopGaze()
+      flash(t.gazeOff)
+    }
+    store.notify()
+  }
+
+  const onCalibrate = (): void => {
+    if (!store.settings.gazeEnabled) { flash(t.gazeNeedOn); return }
+    flash(t.gazeCalibHint)
+    calibrate((completed) => { flash(completed ? t.gazeCalibDone : t.gazeCalibCancel) })
   }
 
   // 壁纸库：列出全部类型壁纸（场景/视频/图片/应用/网页）；点击缩略图卡片在资源管理器中打开所在文件夹
@@ -439,6 +490,21 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
               {m === 'eco' ? t.modeEco : m === 'perf' ? t.modePerf : t.modeEnhanced}
             </button>
           ))}
+        </div>
+        <div className="wesync-actions">
+          <button className={['wesync-btn', gazeEnabled ? 'wesync-focusOn' : 'wesync-focusOff'].join(' ')} onClick={() => { void onGazeToggle() }}>
+            {t.gazeMode}
+          </button>
+          <button className="wesync-btn" onClick={onCalibrate} disabled={!gazeEnabled}>
+            {t.gazeCalibrate}
+          </button>
+          {gazeStatus === 'running'
+            ? <span style={{ fontSize: '11px', color: '#7ee2a8', alignSelf: 'center' }}>{t.gazeStatusRunning}</span>
+            : gazeStatus === 'error'
+              ? <span style={{ fontSize: '11px', color: '#fdba74', alignSelf: 'center' }}>{t.gazeStatusError}{gazeError !== '' ? '：' + gazeError : ''}</span>
+              : gazeEnabled
+                ? <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.6)', alignSelf: 'center' }}>{t.gazeStatusLoading}</span>
+                : null}
         </div>
         {/* 专注模式开启时三个滑块由 FOCUS_WORK/IDLE + 注视点透镜接管，直接隐藏 */}
         {focus

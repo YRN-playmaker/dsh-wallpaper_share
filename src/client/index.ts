@@ -9,6 +9,7 @@ import { WallpaperSharePanel } from './WallpaperSharePanel.tsx'
 import { PANEL_CSS } from './panelStyle.ts'
 import { SceneCanvas } from './SceneCanvas.ts'
 import { SceneModelRenderer } from './SceneModelRenderer.ts'
+import { getGaze } from './GazeLens.ts'
 
 export const inject = ['slots', 'theme']
 
@@ -60,6 +61,8 @@ export interface WeSyncSettings {
   taskActive: boolean
   /** 渲染模式（三档）：'eco' 节能（静态预览图）| 'perf' 性能（捕获 WE 桌面背景，WE 未开则回退增强）| 'enhanced' 增强（浏览器解 pkg 渲染，不依赖 WE） */
   renderMode: 'eco' | 'perf' | 'enhanced'
+  /** 眼动追踪：开启后专注透镜跟随视线（getGaze），无脸 / 陈旧自动回落鼠标 */
+  gazeEnabled: boolean
   /** 沉浸模式：隐藏对话 chrome（上边栏 + 输入框），并把 web 壁纸 iframe 置顶解锁鼠标交互 */
   immersive: boolean
   /** 是否有待用户授权的请求（黄色状态信号） */
@@ -86,7 +89,7 @@ export const store = {
    *  模块级持久：conversation.view 是 session 作用域插槽，切会话/轨迹会重挂载面板，
    *  重挂载时直接读这里而不是重新探测，语言才不会"弹回英语"。 */
   locale: null as 'zh' | 'en' | null,
-  settings: { enabled: true, panelAlpha: 72, blur: 6, shadow: 30, monitor: '', focus: false, taskActive: false, renderMode: 'perf', immersive: false, approvalPending: false } as WeSyncSettings,
+  settings: { enabled: true, panelAlpha: 72, blur: 6, shadow: 30, monitor: '', focus: false, taskActive: false, renderMode: 'perf', gazeEnabled: false, immersive: false, approvalPending: false } as WeSyncSettings,
   listeners: new Set<() => void>(),
   actions: {
     applyTheme: (): void => {},
@@ -281,20 +284,24 @@ export function apply(ctx: CordisCtx): void {
   //   backdrop-filter 补差值模糊 + 圆形暗纱补面板透明度/阴影差值，mask 把两者裁进大柔边圆。
   const FOCUS_LENS_RADIUS = 240
   let focusLens: HTMLDivElement | null = null
+  let mouseX = 0
+  let mouseY = 0
   let lensX = 0
   let lensY = 0
   let lensRaf: number | null = null
   function onLensMove(ev: MouseEvent): void {
-    lensX = ev.clientX
-    lensY = ev.clientY
-    if (lensRaf !== null) return
-    lensRaf = requestAnimationFrame(() => {
-      lensRaf = null
-      if (focusLens !== null) {
-        focusLens.style.setProperty('--wesync-lens-x', lensX + 'px')
-        focusLens.style.setProperty('--wesync-lens-y', lensY + 'px')
-      }
-    })
+    mouseX = ev.clientX
+    mouseY = ev.clientY
+  }
+  // 每帧决定透镜位置：眼动开启且有新鲜注视 → 跟视线；否则跟鼠标。
+  // 无脸 / 离开座位时 getGaze() 返回 null，自动回落鼠标（无需额外逻辑）。
+  function pumpLens(): void {
+    if (focusLens === null) { lensRaf = null; return }
+    const g = store.settings.gazeEnabled ? getGaze() : null
+    if (g !== null) { lensX = g.x; lensY = g.y } else { lensX = mouseX; lensY = mouseY }
+    focusLens.style.setProperty('--wesync-lens-x', lensX + 'px')
+    focusLens.style.setProperty('--wesync-lens-y', lensY + 'px')
+    lensRaf = requestAnimationFrame(pumpLens)
   }
   function destroyFocusLens(): void {
     if (focusLens === null) return
@@ -307,9 +314,11 @@ export function apply(ctx: CordisCtx): void {
     // 仅「专注开启 + 任务进行中」显示透镜；空闲（无任务运行）时圆圈不出现
     if (!store.settings.focus || !store.settings.taskActive) { destroyFocusLens(); return }
     if (focusLens === null) {
-      // 初始放在视口中心，等鼠标移动再接管
-      lensX = window.innerWidth / 2
-      lensY = window.innerHeight / 2
+      // 初始放在视口中心，等鼠标 / 视线接管
+      mouseX = window.innerWidth / 2
+      mouseY = window.innerHeight / 2
+      lensX = mouseX
+      lensY = mouseY
       focusLens = document.createElement('div')
       focusLens.dataset.plugin = 'dsh-wallpaper_share'
       focusLens.style.cssText = 'position:fixed;inset:0;z-index:-1;pointer-events:none;'
@@ -317,6 +326,7 @@ export function apply(ctx: CordisCtx): void {
       focusLens.style.setProperty('--wesync-lens-y', lensY + 'px')
       document.addEventListener('mousemove', onLensMove, true)
       document.body.appendChild(focusLens)
+      if (lensRaf === null) lensRaf = requestAnimationFrame(pumpLens)
     }
     const v = effectiveVisuals()
     // 圆内目标 = FOCUS_LENS；与全局差值折算为附加模糊 + 暗纱

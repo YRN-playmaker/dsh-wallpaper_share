@@ -32,6 +32,14 @@
   - 三档对 scene 壁纸区分明确；对 video / image / web 壁纸，性能与增强均等价「使用源文件实时渲染」，节能为静态预览。捕获的启停完全由客户端是否连 `/we-sync/scene/stream` 决定（`SceneAdapter` 按 `clientCount` 起停），故增强档天然不跑捕获、零额外 CPU，也无需改动服务端。
 - **修复状态行 scene 判断 bug**：面板副标题原以 `info.kind === 'scene'` 判定，但 `info.kind` 实为预览类型（scene 壁纸的预览是图片 → `'image'`），导致 `Scene[...]` 状态一直不显示；改用 `info.source.kind === 'scene'`，并让标签反映**实际生效**的渲染器（eco / external / browser）。
 
+### 👁 眼动追踪（实验特性）
+
+- **专注透镜可跟随视线而非鼠标**：面板新增「眼动追踪」开关 + 「校准视线」按钮。开启后**惰性**从 CDN 加载 [WebGazer.js](https://webgazer.cs.brown.edu)（GPL-3.0，与本项目 GPL-3.0 许可兼容；内含 MediaPipe FaceMesh，首次约下载 ~12MB，**不进基础包**），用摄像头推断屏幕注视点驱动透镜柔边圆；`getGaze()` 带 1.2s 时效，**无脸 / 离开座位 / 低置信度自动回落鼠标**。
+  - 校准：WebGazer 在 `begin()` 期间自动从点击 / 鼠标移动自校准；「校准视线」提供 9 点引导序列加速，样本经 localforage 存 IndexedDB 跨会话复用。
+  - 隐私：全程本地推理、画面不出设备；关闭时显式 `stopVideo()` 释放摄像头（WebGazer 的 `end()` 并不会停流，已在 `GazeLens.stopGaze` 修正）。仅在 `http://127.0.0.1`（安全上下文）可用，并抑制其"仅 https"提示。
+  - 透镜位置改为每帧 rAF 泵 `pumpLens`：眼动新鲜则用视线、否则用鼠标，二者共用同一 CSS 变量写入路径。
+  - 边界：需摄像头 + 联网加载模型；开启期间摄像头常开（opt-in，可随时关）；精度为消费级 webcam 水平（对 240px 柔边透镜足够宽容）。免校准的更高精度方案留作后续。
+
 ### 🐛 修复
 
 - **原生捕获器 stdin 关闭后单核 100% 空转**：控制命令内层循环的 `Disconnected` 分支只置 `running=false` 而未 `break`，`stdin_reader` 线程结束丢弃发送端后 `try_recv` 会永远返回 `Disconnected`，导致主循环死转、协议路径卡死。补 `break`（生产环境父进程关管道 / 发完 `stop` 时同样受益）。
