@@ -64,6 +64,9 @@ const DICT = {
     gazeStatusRunning: '· 视线跟随中',
     gazeStatusLoading: '· 眼动加载中…',
     gazeStatusError: '· 眼动出错',
+    lensCenterClear: '圆心清晰',
+    lensCenterBlur: '圆心模糊',
+    gazeSnap: '文字吸附',
 
     // 滑块
     panelAlpha: '面板透明度',
@@ -156,6 +159,9 @@ const DICT = {
     gazeStatusRunning: '· gaze following',
     gazeStatusLoading: '· eye tracking loading…',
     gazeStatusError: '· eye tracking error',
+    lensCenterClear: 'Clear center',
+    lensCenterBlur: 'Blur center',
+    gazeSnap: 'Text snap',
 
     // Sliders
     panelAlpha: 'Panel Transparency',
@@ -240,6 +246,8 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
   const [gazeEnabled, setGazeEnabled] = useState(store.settings.gazeEnabled)
   const [gazeStatus, setGazeStatus] = useState<GazeStatus>('off')
   const [gazeError, setGazeError] = useState('')
+  const [lensCenterClear, setLensCenterClear] = useState(store.settings.lensCenterClear)
+  const [gazeSnapText, setGazeSnapText] = useState(store.settings.gazeSnapText)
   useEffect(() => onGazeStatus((s, err) => { setGazeStatus(s); setGazeError(err) }), [])
   const [appsOpen, setAppsOpen] = useState(false)
   const [apps, setApps] = useState<Array<{ id: string; title: string; file: string; type: string; hasPreview: boolean }>>([])
@@ -324,6 +332,7 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
     const next = !store.settings.gazeEnabled
     store.settings.gazeEnabled = next
     setGazeEnabled(next)
+    store.actions.applyBackground()   // 眼动模式下无需任务也立即显示 / 移除透镜
     if (next) {
       flash(t.gazeStarting)
       await startGaze()
@@ -338,6 +347,20 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
     if (!store.settings.gazeEnabled) { flash(t.gazeNeedOn); return }
     flash(t.gazeCalibHint)
     calibrate((completed) => { flash(completed ? t.gazeCalibDone : t.gazeCalibCancel) })
+  }
+
+  const onToggleLensCenter = (): void => {
+    const next = !store.settings.lensCenterClear
+    store.settings.lensCenterClear = next
+    setLensCenterClear(next)
+    store.notify()
+  }
+
+  const onToggleSnap = (): void => {
+    const next = !store.settings.gazeSnapText
+    store.settings.gazeSnapText = next
+    setGazeSnapText(next)
+    store.notify()
   }
 
   // 壁纸库：列出全部类型壁纸（场景/视频/图片/应用/网页）；点击缩略图卡片在资源管理器中打开所在文件夹
@@ -497,6 +520,12 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
           </button>
           <button className="wesync-btn" onClick={onCalibrate} disabled={!gazeEnabled}>
             {t.gazeCalibrate}
+          </button>
+          <button className="wesync-btn" onClick={onToggleLensCenter}>
+            {lensCenterClear ? t.lensCenterClear : t.lensCenterBlur}
+          </button>
+          <button className={['wesync-btn', gazeSnapText ? 'wesync-focusOn' : 'wesync-focusOff'].join(' ')} onClick={onToggleSnap}>
+            {t.gazeSnap}
           </button>
           {gazeStatus === 'running'
             ? <span style={{ fontSize: '11px', color: '#7ee2a8', alignSelf: 'center' }}>{t.gazeStatusRunning}</span>

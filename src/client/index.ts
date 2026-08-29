@@ -63,6 +63,10 @@ export interface WeSyncSettings {
   renderMode: 'eco' | 'perf' | 'enhanced'
   /** 眼动追踪：开启后专注透镜跟随视线（getGaze），无脸 / 陈旧自动回落鼠标 */
   gazeEnabled: boolean
+  /** 透镜圆心模式：true=圆心清晰、圆外模糊（阅读窗）；false=圆心模糊、圆外清晰（模糊圆盘）。可切换 */
+  lensCenterClear: boolean
+  /** 文字吸附：眼动时把注视点磁吸到最近文字块中心，抑制消费级眼动的抖动 */
+  gazeSnapText: boolean
   /** 沉浸模式：隐藏对话 chrome（上边栏 + 输入框），并把 web 壁纸 iframe 置顶解锁鼠标交互 */
   immersive: boolean
   /** 是否有待用户授权的请求（黄色状态信号） */
@@ -89,7 +93,7 @@ export const store = {
    *  模块级持久：conversation.view 是 session 作用域插槽，切会话/轨迹会重挂载面板，
    *  重挂载时直接读这里而不是重新探测，语言才不会"弹回英语"。 */
   locale: null as 'zh' | 'en' | null,
-  settings: { enabled: true, panelAlpha: 72, blur: 6, shadow: 30, monitor: '', focus: false, taskActive: false, renderMode: 'perf', gazeEnabled: false, immersive: false, approvalPending: false } as WeSyncSettings,
+  settings: { enabled: true, panelAlpha: 72, blur: 6, shadow: 30, monitor: '', focus: false, taskActive: false, renderMode: 'perf', gazeEnabled: false, lensCenterClear: false, gazeSnapText: true, immersive: false, approvalPending: false } as WeSyncSettings,
   listeners: new Set<() => void>(),
   actions: {
     applyTheme: (): void => {},
@@ -279,14 +283,16 @@ export function apply(ctx: CordisCtx): void {
     }
   }
 
-  // —— 专注模式 · 注视点「清晰窗」透镜：focus 开启且任务进行中时，视线（或鼠标）处保持一个清晰圆，
-  //   圆外柔焦（让视线所到的文字清晰可读）。实现：壁纸全局模糊在透镜激活时置 0（见 applyBackground），
-  //   改由此 fixed 层用 backdrop-filter 在「清晰圆之外」施加模糊；mask 反向（圆心透明→清晰，圆外不透明→模糊）。
-  //   入场：半径由 0（全屏模糊）缓出到目标（"汇聚"到视线处）。空闲无任务时不显示。
-  const FOCUS_LENS_RADIUS = 260          // 渐变半径（px）；清晰核心约取其 50%
-  const LENS_SURROUND_BLUR = 12          // 圆外附加模糊（px）
-  const LENS_ENTER_MS = 1400             // 入场动画时长（全屏模糊 → 清晰圆张开）
+  // —— 专注 / 眼动 · 注视点透镜：眼动模式（gazeEnabled）下始终显示并跟随视线；或专注+任务时跟随鼠标。
+  //   圆心可切换：清晰（阅读窗，圆外模糊）或模糊（圆盘，圆外清晰）。实现：壁纸全局模糊在透镜激活时
+  //   置 0（见 applyBackground），改由此 fixed 层用 backdrop-filter 施加模糊，mask 决定模糊落在圆心还是圆外。
+  //   入场：先全屏模糊，再"汇聚"到视线处的圆（清晰模式半径 0→R 张开；模糊模式半径 大→R 收拢）。
+  const FOCUS_LENS_RADIUS = 260          // 目标圆渐变半径（px）
+  const LENS_BLUR = 12                   // 透镜 backdrop-filter 模糊强度（px）
+  const LENS_ENTER_MS = 1400             // 入场动画时长
+  const LENS_ENTER_START_MULT = 1.35     // 模糊模式入场起始半径 = 视口对角线 × 此系数（先盖满全屏）
   const GAZE_SMOOTH = 0.1                // 视线 EMA 平滑系数（抑制抖动）
+  const SNAP_PULL = 0.6                  // 文字吸附强度（0=不吸，1=完全吸到块中心）
   let focusLens: HTMLDivElement | null = null
   let mouseX = 0
   let mouseY = 0
@@ -294,6 +300,41 @@ export function apply(ctx: CordisCtx): void {
   let lensY = 0
   let lensRaf: number | null = null
   let lensStart = 0
+  // —— 文字吸附：把注视点磁吸到最近的文字块中心，抑制消费级眼动的抖动 ——
+  let textRects: Array<{ x: number; y: number; w: number; h: number }> = []
+  let textRectsAt = 0
+  const TEXT_SNAP_SELECTOR = 'p,li,h1,h2,h3,h4,h5,h6,blockquote,pre,td,th,dd,dt,figcaption'
+  function refreshTextRects(): void {
+    const now = performance.now()
+    if (now - textRectsAt < 250) return
+    textRectsAt = now
+    const out: Array<{ x: number; y: number; w: number; h: number }> = []
+    const els = document.querySelectorAll(TEXT_SNAP_SELECTOR)
+    const n = Math.min(els.length, 500)
+    for (let i = 0; i < n; i++) {
+      const el = els[i] as HTMLElement
+      const r = el.getBoundingClientRect()
+      if (r.width < 30 || r.height < 12 || r.height > 160) continue
+      if (r.bottom < 0 || r.top > window.innerHeight || r.right < 0 || r.left > window.innerWidth) continue
+      out.push({ x: r.left, y: r.top, w: r.width, h: r.height })
+    }
+    textRects = out
+  }
+  function snapToText(x: number, y: number): { x: number; y: number } | null {
+    refreshTextRects()
+    let bx = 0
+    let by = 0
+    let bestArea = Infinity
+    let hit = false
+    for (const r of textRects) {
+      if (x >= r.x - 8 && x <= r.x + r.w + 8 && y >= r.y - 6 && y <= r.y + r.h + 6) {
+        const area = r.w * r.h
+        if (area < bestArea) { bestArea = area; bx = r.x + r.w / 2; by = r.y + r.h / 2; hit = true }
+      }
+    }
+    if (!hit) return null
+    return { x: x + (bx - x) * SNAP_PULL, y: y + (by - y) * SNAP_PULL }
+  }
   function onLensMove(ev: MouseEvent): void {
     mouseX = ev.clientX
     mouseY = ev.clientY
@@ -302,23 +343,38 @@ export function apply(ctx: CordisCtx): void {
   // 无脸 / 离开座位时 getGaze() 返回 null，自动回落鼠标（无需额外逻辑）。
   function pumpLens(): void {
     if (focusLens === null) { lensRaf = null; return }
-    // 位置：眼动新鲜 → 向注视点做 EMA 平滑（抑制抖动）；否则直接跟鼠标（鼠标本身精确，不滞后）
+    // 位置：眼动新鲜 → （可选文字吸附 +）EMA 平滑；否则直接跟鼠标（精确，不滞后）
     const g = store.settings.gazeEnabled ? getGaze() : null
     if (g !== null) {
-      lensX += (g.x - lensX) * GAZE_SMOOTH
-      lensY += (g.y - lensY) * GAZE_SMOOTH
+      let tx = g.x
+      let ty = g.y
+      if (store.settings.gazeSnapText) {
+        const s = snapToText(tx, ty)
+        if (s !== null) { tx = s.x; ty = s.y }
+      }
+      lensX += (tx - lensX) * GAZE_SMOOTH
+      lensY += (ty - lensY) * GAZE_SMOOTH
     } else {
       lensX = mouseX
       lensY = mouseY
     }
-    // 入场：清晰圆半径从 0（全屏模糊）缓出到 FOCUS_LENS_RADIUS（"汇聚"到视线处）。
-    // 半径用字面量拼进 mask（与旧版一致，最稳），圆心位置仍用 CSS 变量。
+    // 入场：先全屏模糊，再"汇聚"到视线处的圆。半径用字面量拼进 mask（最稳），圆心位置用 CSS 变量。
     const p = Math.min(1, (performance.now() - lensStart) / LENS_ENTER_MS)
     const eased = 1 - Math.pow(1 - p, 3)
-    const r = Math.max(0.5, eased * FOCUS_LENS_RADIUS)
+    let r: number
+    let grad: string
+    if (store.settings.lensCenterClear) {
+      // 圆心清晰：透明核心 0→R 张开（起始全糊）
+      r = Math.max(0.5, eased * FOCUS_LENS_RADIUS)
+      grad = 'radial-gradient(circle ' + r.toFixed(1) + 'px at var(--wesync-lens-x) var(--wesync-lens-y), transparent 0%, transparent 50%, rgba(0,0,0,0.45) 70%, rgba(0,0,0,0.82) 88%, #000 100%)'
+    } else {
+      // 圆心模糊：不透明核心 大→R 收拢（起始盖满全屏 = 全糊）
+      const startR = Math.hypot(window.innerWidth, window.innerHeight) * LENS_ENTER_START_MULT
+      r = startR + (FOCUS_LENS_RADIUS - startR) * eased
+      grad = 'radial-gradient(circle ' + r.toFixed(1) + 'px at var(--wesync-lens-x) var(--wesync-lens-y), #000 0%, #000 50%, rgba(0,0,0,0.5) 72%, rgba(0,0,0,0.18) 88%, transparent 100%)'
+    }
     focusLens.style.setProperty('--wesync-lens-x', lensX + 'px')
     focusLens.style.setProperty('--wesync-lens-y', lensY + 'px')
-    const grad = 'radial-gradient(circle ' + r.toFixed(1) + 'px at var(--wesync-lens-x) var(--wesync-lens-y), transparent 0%, transparent 50%, rgba(0,0,0,0.45) 70%, rgba(0,0,0,0.82) 88%, #000 100%)'
     focusLens.style.maskImage = grad
     focusLens.style.webkitMaskImage = grad
     lensRaf = requestAnimationFrame(pumpLens)
@@ -331,8 +387,9 @@ export function apply(ctx: CordisCtx): void {
     if (lensRaf !== null) { cancelAnimationFrame(lensRaf); lensRaf = null }
   }
   function applyFocusLens(): void {
-    // 仅「专注开启 + 任务进行中」显示透镜；空闲（无任务运行）时圆圈不出现
-    if (!store.settings.focus || !store.settings.taskActive) { destroyFocusLens(); return }
+    // 眼动模式（gazeEnabled）下始终显示并追踪（无需任务）；或专注+任务时显示（跟随鼠标）
+    const show = store.settings.gazeEnabled || (store.settings.focus && store.settings.taskActive)
+    if (!show) { destroyFocusLens(); return }
     if (focusLens === null) {
       // 初始放在视口中心，等鼠标 / 视线接管
       mouseX = window.innerWidth / 2
@@ -349,10 +406,9 @@ export function apply(ctx: CordisCtx): void {
       document.body.appendChild(focusLens)
       if (lensRaf === null) lensRaf = requestAnimationFrame(pumpLens)
     }
-    // 新模型：壁纸全局不再模糊（applyBackground 中 lensActive→blur 0），改由此透镜层在「清晰圆之外」
-    // 施加 backdrop-filter 模糊 —— 视线处清晰可读，四周柔焦。mask 反向（圆心透明→清晰，圆外不透明→模糊）
-    // 由 pumpLens 每帧按入场半径重建，这里只设静态的模糊强度。
-    const bf = 'blur(' + LENS_SURROUND_BLUR + 'px)'
+    // 壁纸全局模糊在透镜激活时置 0（见 applyBackground），模糊全部由本层 backdrop-filter 承担；
+    // mask（圆心清晰 or 圆心模糊）由 pumpLens 每帧按入场半径重建，这里只设静态模糊强度。
+    const bf = 'blur(' + LENS_BLUR + 'px)'
     focusLens.style.backdropFilter = bf
     focusLens.style.setProperty('-webkit-backdrop-filter', bf)
     focusLens.style.background = 'transparent'
@@ -410,7 +466,7 @@ export function apply(ctx: CordisCtx): void {
     const visuals = effectiveVisuals()
     const enabled = store.settings.enabled
     // 专注+任务时透镜接管模糊：壁纸全局模糊置 0，由透镜在清晰圆之外施加（圆心才能真清晰）
-    const lensActive = store.settings.focus && store.settings.taskActive
+    const lensActive = store.settings.gazeEnabled || (store.settings.focus && store.settings.taskActive)
     const blurPx = lensActive ? 0 : Math.round(visuals.blur)
     const scale = 1 + blurPx / 400
     const shadowAlpha = (visuals.shadow / 100) * 0.60
