@@ -39,9 +39,9 @@
   - **眼动模式下始终追踪**：只要开启眼动追踪，透镜即显示并跟随视线，**无需任务进行中**（专注+任务时则跟随鼠标，作为同一透镜的另一触发源）。
   - **入场动画**：先全屏模糊，再"汇聚"到视线处的圆——清晰模式半径 0→R 张开，模糊模式半径 大→R 收拢（`LENS_ENTER_MS`）。
   - **免校准（隐式自学习）**：默认零操作，WebGazer 在 `begin()` 期间持续从鼠标移动 / 点击采样自校准，样本经 localforage 存 IndexedDB 跨会话复用、越用越准；「校准视线」9 点降级为可选精度加速。
-  - **抗抖动**：`pumpLens` 对注视点做 EMA 平滑（`GAZE_SMOOTH`）+ WebGazer Kalman；**文字吸附**（`gazeSnapText`）把注视点磁吸到最近的文字块（`p/li/pre/blockquote/标题` 等）中心，进一步抑制"波动大"，可在面板开关。
+  - **抗抖动**：注视点先经 **One Euro 自适应滤波**（静止时强平滑、眼跳时轻平滑；实测抑制静态抖动 ~76%、400px 眼跳 32ms 跟上）+ WebGazer Kalman；**文字吸附**（`gazeSnapText`）改用 `elementFromPoint` 命中注视处元素并向上找最近文本块磁吸（与标签 / class 无关，比固定选择器稳），可在面板开关。
   - 隐私：全程本地推理、画面不出设备；关闭时显式 `stopVideo()` 释放摄像头（WebGazer 的 `end()` 并不会停流，已在 `GazeLens.stopGaze` 修正）。仅在 `http://127.0.0.1`（安全上下文）可用，并抑制其"仅 https"提示。
-  - 可调参数：`FOCUS_LENS_RADIUS`（圆大小）、`LENS_BLUR`（模糊强度）、`LENS_ENTER_MS`（入场时长）、`GAZE_SMOOTH`（平滑）、`SNAP_PULL`（吸附强度）。
+  - 可调参数：`FOCUS_LENS_RADIUS`（圆大小）、`LENS_BLUR`（模糊强度）、`LENS_ENTER_MS`（入场时长）、`makeOneEuro(0.5, 0.01, 1)`（平滑：minCutoff 越小越稳、beta 越小移动时越平滑）、`SNAP_PULL`（吸附强度）。
   - 边界：需摄像头 + 联网加载模型；开启期间摄像头常开（opt-in，可随时关）；零样本初期注视点可能有偏移，随鼠标使用收敛；文字吸附依赖页面存在语义文本块，若某 UI 文本非 `p/li/…` 结构则吸附可能不生效。
 
 ### 🐛 修复

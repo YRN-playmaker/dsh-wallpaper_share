@@ -291,8 +291,7 @@ export function apply(ctx: CordisCtx): void {
   const LENS_BLUR = 12                   // 透镜 backdrop-filter 模糊强度（px）
   const LENS_ENTER_MS = 1400             // 入场动画时长
   const LENS_ENTER_START_MULT = 1.35     // 模糊模式入场起始半径 = 视口对角线 × 此系数（先盖满全屏）
-  const GAZE_SMOOTH = 0.1                // 视线 EMA 平滑系数（抑制抖动）
-  const SNAP_PULL = 0.6                  // 文字吸附强度（0=不吸，1=完全吸到块中心）
+  const SNAP_PULL = 0.7                  // 文字吸附强度（0=不吸，1=完全吸到块中心）
   let focusLens: HTMLDivElement | null = null
   let mouseX = 0
   let mouseY = 0
@@ -300,41 +299,64 @@ export function apply(ctx: CordisCtx): void {
   let lensY = 0
   let lensRaf: number | null = null
   let lensStart = 0
-  // —— 文字吸附：把注视点磁吸到最近的文字块中心，抑制消费级眼动的抖动 ——
-  let textRects: Array<{ x: number; y: number; w: number; h: number }> = []
-  let textRectsAt = 0
-  const TEXT_SNAP_SELECTOR = 'p,li,h1,h2,h3,h4,h5,h6,blockquote,pre,td,th,dd,dt,figcaption'
-  function refreshTextRects(): void {
-    const now = performance.now()
-    if (now - textRectsAt < 250) return
-    textRectsAt = now
-    const out: Array<{ x: number; y: number; w: number; h: number }> = []
-    const els = document.querySelectorAll(TEXT_SNAP_SELECTOR)
-    const n = Math.min(els.length, 500)
-    for (let i = 0; i < n; i++) {
-      const el = els[i] as HTMLElement
-      const r = el.getBoundingClientRect()
-      if (r.width < 30 || r.height < 12 || r.height > 160) continue
-      if (r.bottom < 0 || r.top > window.innerHeight || r.right < 0 || r.left > window.innerWidth) continue
-      out.push({ x: r.left, y: r.top, w: r.width, h: r.height })
-    }
-    textRects = out
-  }
+  // —— 文字吸附：用 elementFromPoint 命中注视处的元素，向上找最近的"文本行/块"，把目标磁吸到其中心。
+  //   与具体标签 / class 无关（DSH 聊天文本可能是 div+pre-wrap 或 markdown 的 p/li），故比固定选择器稳。
   function snapToText(x: number, y: number): { x: number; y: number } | null {
-    refreshTextRects()
-    let bx = 0
-    let by = 0
-    let bestArea = Infinity
-    let hit = false
-    for (const r of textRects) {
-      if (x >= r.x - 8 && x <= r.x + r.w + 8 && y >= r.y - 6 && y <= r.y + r.h + 6) {
-        const area = r.w * r.h
-        if (area < bestArea) { bestArea = area; bx = r.x + r.w / 2; by = r.y + r.h / 2; hit = true }
+    let cur = document.elementFromPoint(x, y) as HTMLElement | null
+    for (let i = 0; i < 6 && cur !== null; i++) {
+      const r = cur.getBoundingClientRect()
+      const txt = (cur.textContent || '').trim()
+      if (r.width >= 40 && r.height >= 16 && r.height <= 200 && txt.length > 1) {
+        return { x: x + (r.left + r.width / 2 - x) * SNAP_PULL, y: y + (r.top + r.height / 2 - y) * SNAP_PULL }
+      }
+      cur = cur.parentElement
+    }
+    return null
+  }
+  // —— One Euro 滤波（Casiez 2012）：自适应低通。静止（阅读）时强平滑杀抖动，快速移动（眼跳）时轻平滑跟得上。
+  //   比固定 EMA 更适合眼动这种"大部分时间高频抖、偶尔大幅跳"的信号。
+  function makeOneEuro(minCutoff: number, beta: number, dCutoff: number): {
+    filter: (x: number, y: number, tMs: number) => [number, number]
+    reset: (x: number, y: number) => void
+  } {
+    let xPrev = 0
+    let yPrev = 0
+    let tPrev = 0
+    let dxPrev = 0
+    let dyPrev = 0
+    let fxPrev = 0
+    let fyPrev = 0
+    let init = false
+    const alpha = (cutoff: number, dt: number): number => {
+      const tau = 1 / (2 * Math.PI * cutoff)
+      return 1 / (1 + tau / dt)
+    }
+    return {
+      reset(x, y) { xPrev = x; yPrev = y; fxPrev = x; fyPrev = y; dxPrev = 0; dyPrev = 0; tPrev = performance.now(); init = true },
+      filter(x, y, tMs) {
+        if (!init) { xPrev = x; yPrev = y; fxPrev = x; fyPrev = y; tPrev = tMs; dxPrev = 0; dyPrev = 0; init = true; return [x, y] }
+        let dt = (tMs - tPrev) / 1000
+        if (dt <= 0) dt = 1 / 60
+        tPrev = tMs
+        const dxHat = (x - xPrev) / dt
+        const dyHat = (y - yPrev) / dt
+        const aD = alpha(dCutoff, dt)
+        const edx = aD * dxHat + (1 - aD) * dxPrev
+        const edy = aD * dyHat + (1 - aD) * dyPrev
+        dxPrev = edx
+        dyPrev = edy
+        const cutoff = minCutoff + beta * Math.sqrt(edx * edx + edy * edy)
+        const a = alpha(cutoff, dt)
+        fxPrev = a * x + (1 - a) * fxPrev
+        fyPrev = a * y + (1 - a) * fyPrev
+        xPrev = x
+        yPrev = y
+        return [fxPrev, fyPrev]
       }
     }
-    if (!hit) return null
-    return { x: x + (bx - x) * SNAP_PULL, y: y + (by - y) * SNAP_PULL }
   }
+  const gazeFilter = makeOneEuro(0.5, 0.01, 1.0)
+  let gazeWasActive = false
   function onLensMove(ev: MouseEvent): void {
     mouseX = ev.clientX
     mouseY = ev.clientY
@@ -343,7 +365,7 @@ export function apply(ctx: CordisCtx): void {
   // 无脸 / 离开座位时 getGaze() 返回 null，自动回落鼠标（无需额外逻辑）。
   function pumpLens(): void {
     if (focusLens === null) { lensRaf = null; return }
-    // 位置：眼动新鲜 → （可选文字吸附 +）EMA 平滑；否则直接跟鼠标（精确，不滞后）
+    // 位置：眼动新鲜 → 文字吸附 + One Euro 滤波（杀抖动又跟得上眼跳）；否则直接跟鼠标（精确不滞后）
     const g = store.settings.gazeEnabled ? getGaze() : null
     if (g !== null) {
       let tx = g.x
@@ -352,11 +374,14 @@ export function apply(ctx: CordisCtx): void {
         const s = snapToText(tx, ty)
         if (s !== null) { tx = s.x; ty = s.y }
       }
-      lensX += (tx - lensX) * GAZE_SMOOTH
-      lensY += (ty - lensY) * GAZE_SMOOTH
+      if (!gazeWasActive) { gazeFilter.reset(lensX, lensY); gazeWasActive = true }
+      const f = gazeFilter.filter(tx, ty, performance.now())
+      lensX = f[0]
+      lensY = f[1]
     } else {
       lensX = mouseX
       lensY = mouseY
+      gazeWasActive = false
     }
     // 入场：先全屏模糊，再"汇聚"到视线处的圆。半径用字面量拼进 mask（最稳），圆心位置用 CSS 变量。
     const p = Math.min(1, (performance.now() - lensStart) / LENS_ENTER_MS)
