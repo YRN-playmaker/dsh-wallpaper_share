@@ -279,16 +279,21 @@ export function apply(ctx: CordisCtx): void {
     }
   }
 
-  // —— 专注模式 · 注视点透镜：focus 开启且任务进行中时捕捉鼠标位置，圆形范围内的背景按 FOCUS_LENS 加浓
-  //   （圆外 = 当前专注全局值；空闲无任务时不显示圆圈）。实现：一张盖在壁纸层之上、UI 之下的 fixed 层，
-  //   backdrop-filter 补差值模糊 + 圆形暗纱补面板透明度/阴影差值，mask 把两者裁进大柔边圆。
-  const FOCUS_LENS_RADIUS = 240
+  // —— 专注模式 · 注视点「清晰窗」透镜：focus 开启且任务进行中时，视线（或鼠标）处保持一个清晰圆，
+  //   圆外柔焦（让视线所到的文字清晰可读）。实现：壁纸全局模糊在透镜激活时置 0（见 applyBackground），
+  //   改由此 fixed 层用 backdrop-filter 在「清晰圆之外」施加模糊；mask 反向（圆心透明→清晰，圆外不透明→模糊）。
+  //   入场：半径由 0（全屏模糊）缓出到目标（"汇聚"到视线处）。空闲无任务时不显示。
+  const FOCUS_LENS_RADIUS = 260          // 渐变半径（px）；清晰核心约取其 50%
+  const LENS_SURROUND_BLUR = 12          // 圆外附加模糊（px）
+  const LENS_ENTER_MS = 1400             // 入场动画时长（全屏模糊 → 清晰圆张开）
+  const GAZE_SMOOTH = 0.1                // 视线 EMA 平滑系数（抑制抖动）
   let focusLens: HTMLDivElement | null = null
   let mouseX = 0
   let mouseY = 0
   let lensX = 0
   let lensY = 0
   let lensRaf: number | null = null
+  let lensStart = 0
   function onLensMove(ev: MouseEvent): void {
     mouseX = ev.clientX
     mouseY = ev.clientY
@@ -297,10 +302,25 @@ export function apply(ctx: CordisCtx): void {
   // 无脸 / 离开座位时 getGaze() 返回 null，自动回落鼠标（无需额外逻辑）。
   function pumpLens(): void {
     if (focusLens === null) { lensRaf = null; return }
+    // 位置：眼动新鲜 → 向注视点做 EMA 平滑（抑制抖动）；否则直接跟鼠标（鼠标本身精确，不滞后）
     const g = store.settings.gazeEnabled ? getGaze() : null
-    if (g !== null) { lensX = g.x; lensY = g.y } else { lensX = mouseX; lensY = mouseY }
+    if (g !== null) {
+      lensX += (g.x - lensX) * GAZE_SMOOTH
+      lensY += (g.y - lensY) * GAZE_SMOOTH
+    } else {
+      lensX = mouseX
+      lensY = mouseY
+    }
+    // 入场：清晰圆半径从 0（全屏模糊）缓出到 FOCUS_LENS_RADIUS（"汇聚"到视线处）。
+    // 半径用字面量拼进 mask（与旧版一致，最稳），圆心位置仍用 CSS 变量。
+    const p = Math.min(1, (performance.now() - lensStart) / LENS_ENTER_MS)
+    const eased = 1 - Math.pow(1 - p, 3)
+    const r = Math.max(0.5, eased * FOCUS_LENS_RADIUS)
     focusLens.style.setProperty('--wesync-lens-x', lensX + 'px')
     focusLens.style.setProperty('--wesync-lens-y', lensY + 'px')
+    const grad = 'radial-gradient(circle ' + r.toFixed(1) + 'px at var(--wesync-lens-x) var(--wesync-lens-y), transparent 0%, transparent 50%, rgba(0,0,0,0.45) 70%, rgba(0,0,0,0.82) 88%, #000 100%)'
+    focusLens.style.maskImage = grad
+    focusLens.style.webkitMaskImage = grad
     lensRaf = requestAnimationFrame(pumpLens)
   }
   function destroyFocusLens(): void {
@@ -319,6 +339,7 @@ export function apply(ctx: CordisCtx): void {
       mouseY = window.innerHeight / 2
       lensX = mouseX
       lensY = mouseY
+      lensStart = performance.now()
       focusLens = document.createElement('div')
       focusLens.dataset.plugin = 'dsh-wallpaper_share'
       focusLens.style.cssText = 'position:fixed;inset:0;z-index:-1;pointer-events:none;'
@@ -328,20 +349,13 @@ export function apply(ctx: CordisCtx): void {
       document.body.appendChild(focusLens)
       if (lensRaf === null) lensRaf = requestAnimationFrame(pumpLens)
     }
-    const v = effectiveVisuals()
-    // 圆内目标 = FOCUS_LENS；与全局差值折算为附加模糊 + 暗纱
-    //（面板透明度 a = 0.30 + α/100×0.60、阴影 a = shadow/100×0.60，与 applyTheme/applyBackground 同式）
-    const blurDelta = Math.max(0, FOCUS_LENS.blur - v.blur)
-    const scrimDelta = Math.max(0, ((FOCUS_LENS.panelAlpha - v.panelAlpha) / 100) * 0.60)
-      + Math.max(0, ((FOCUS_LENS.shadow - v.shadow) / 100) * 0.60)
-    // 大柔边：15% 内实心，随后多段平滑衰减到透明（近似高斯边缘），避免可见的圆形轮廓
-    const grad = 'radial-gradient(circle ' + String(FOCUS_LENS_RADIUS) + 'px at var(--wesync-lens-x) var(--wesync-lens-y), #000 0%, #000 15%, rgba(0,0,0,0.62) 42%, rgba(0,0,0,0.3) 68%, rgba(0,0,0,0.1) 86%, transparent 100%)'
-    const bf = blurDelta > 0 ? 'blur(' + blurDelta.toFixed(1) + 'px)' : 'none'
+    // 新模型：壁纸全局不再模糊（applyBackground 中 lensActive→blur 0），改由此透镜层在「清晰圆之外」
+    // 施加 backdrop-filter 模糊 —— 视线处清晰可读，四周柔焦。mask 反向（圆心透明→清晰，圆外不透明→模糊）
+    // 由 pumpLens 每帧按入场半径重建，这里只设静态的模糊强度。
+    const bf = 'blur(' + LENS_SURROUND_BLUR + 'px)'
     focusLens.style.backdropFilter = bf
     focusLens.style.setProperty('-webkit-backdrop-filter', bf)
-    focusLens.style.background = scrimDelta > 0.002 ? 'rgba(15,16,20,' + scrimDelta.toFixed(3) + ')' : 'transparent'
-    focusLens.style.maskImage = grad
-    focusLens.style.webkitMaskImage = grad
+    focusLens.style.background = 'transparent'
   }
 
   orbBtn.addEventListener('click', () => {
@@ -395,7 +409,9 @@ export function apply(ctx: CordisCtx): void {
     const info = store.info
     const visuals = effectiveVisuals()
     const enabled = store.settings.enabled
-    const blurPx = Math.round(visuals.blur)
+    // 专注+任务时透镜接管模糊：壁纸全局模糊置 0，由透镜在清晰圆之外施加（圆心才能真清晰）
+    const lensActive = store.settings.focus && store.settings.taskActive
+    const blurPx = lensActive ? 0 : Math.round(visuals.blur)
     const scale = 1 + blurPx / 400
     const shadowAlpha = (visuals.shadow / 100) * 0.60
     const monitorKey = info !== null && info.monitor !== '' ? info.monitor : ''

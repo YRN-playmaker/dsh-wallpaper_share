@@ -55,7 +55,7 @@ const DICT = {
     // 眼动追踪
     gazeMode: '眼动追踪',
     gazeCalibrate: '校准视线',
-    gazeStarting: '眼动：正在加载模型并请求摄像头…（首次约需下载 ~12MB）',
+    gazeStarting: '眼动：加载模型并请求摄像头…（无需校准，随日常鼠标使用自动学习）',
     gazeOff: '眼动追踪已关闭（摄像头已释放）',
     gazeNeedOn: '请先开启眼动追踪再校准',
     gazeCalibHint: '校准：依次注视并点击 9 个黄点（Esc 取消）',
@@ -147,7 +147,7 @@ const DICT = {
     // Eye tracking
     gazeMode: 'Eye Tracking',
     gazeCalibrate: 'Calibrate Gaze',
-    gazeStarting: 'Eye tracking: loading model & requesting camera… (~12MB first time)',
+    gazeStarting: 'Eye tracking: loading model & requesting camera… (no calibration — self-learns from mouse use)',
     gazeOff: 'Eye tracking off (camera released)',
     gazeNeedOn: 'Enable eye tracking before calibrating',
     gazeCalibHint: 'Calibration: look at and click each of the 9 yellow dots (Esc to cancel)',
