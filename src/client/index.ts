@@ -93,7 +93,7 @@ export const store = {
    *  模块级持久：conversation.view 是 session 作用域插槽，切会话/轨迹会重挂载面板，
    *  重挂载时直接读这里而不是重新探测，语言才不会"弹回英语"。 */
   locale: null as 'zh' | 'en' | null,
-  settings: { enabled: true, panelAlpha: 72, blur: 6, shadow: 30, monitor: '', focus: false, taskActive: false, renderMode: 'perf', gazeEnabled: false, lensCenterClear: false, gazeSnapText: false, immersive: false, approvalPending: false } as WeSyncSettings,
+  settings: { enabled: true, panelAlpha: 72, blur: 6, shadow: 30, monitor: '', focus: false, taskActive: false, renderMode: 'perf', gazeEnabled: false, lensCenterClear: false, gazeSnapText: true, immersive: false, approvalPending: false } as WeSyncSettings,
   listeners: new Set<() => void>(),
   actions: {
     applyTheme: (): void => {},
@@ -291,7 +291,7 @@ export function apply(ctx: CordisCtx): void {
   const LENS_BLUR = 12                   // 透镜 backdrop-filter 模糊强度（px）
   const LENS_ENTER_MS = 1400             // 入场动画时长
   const LENS_ENTER_START_MULT = 1.35     // 模糊模式入场起始半径 = 视口对角线 × 此系数（先盖满全屏）
-  const SNAP_PULL = 0.7                  // 文字吸附强度（0=不吸，1=完全吸到块中心）
+  const LINE_HYST = 6                    // 行锁定滞回：注视 y 在当前行带内 ±此值则不切换行
   const GAZE_SMOOTH = 0.08               // 视线 EMA 平滑系数（越小越稳）
   const GAZE_DEADZONE = 12               // 死区：注视点移动 < 此值视为抖动，忽略（冻结）
   let focusLens: HTMLDivElement | null = null
@@ -301,19 +301,54 @@ export function apply(ctx: CordisCtx): void {
   let lensY = 0
   let lensRaf: number | null = null
   let lensStart = 0
-  // —— 文字吸附：用 elementFromPoint 命中注视处的元素，向上找最近的"文本行/块"，把目标磁吸到其中心。
-  //   与具体标签 / class 无关（DSH 聊天文本可能是 div+pre-wrap 或 markdown 的 p/li），故比固定选择器稳。
-  function snapToText(x: number, y: number): { x: number; y: number } | null {
+  // —— 文字行锁定：把注视点 Y 锁到最近的文字行中心（X 仍跟随），逐行吸附、消除上下抖动。
+  //   用 Range.getClientRects 拿到块内每一"视觉行"；带滞回，避免在相邻两行间反复横跳。
+  let lineCache: { el: Element; lines: Array<{ top: number; bottom: number; cy: number }>; at: number } | null = null
+  let lockedLineCy: number | null = null
+  function collectLines(el: Element): Array<{ top: number; bottom: number; cy: number }> {
+    const range = document.createRange()
+    range.selectNodeContents(el)
+    const rects = range.getClientRects()
+    const lines: Array<{ top: number; bottom: number; cy: number }> = []
+    for (let i = 0; i < rects.length; i++) {
+      const r = rects[i]
+      if (r.height < 6 || r.width < 8) continue
+      lines.push({ top: r.top, bottom: r.bottom, cy: (r.top + r.bottom) / 2 })
+    }
+    return lines
+  }
+  function findTextBlock(x: number, y: number): Element | null {
     let cur = document.elementFromPoint(x, y) as HTMLElement | null
     for (let i = 0; i < 6 && cur !== null; i++) {
-      const r = cur.getBoundingClientRect()
-      const txt = (cur.textContent || '').trim()
-      if (r.width >= 40 && r.height >= 16 && r.height <= 200 && txt.length > 1) {
-        return { x: x + (r.left + r.width / 2 - x) * SNAP_PULL, y: y + (r.top + r.height / 2 - y) * SNAP_PULL }
-      }
+      if ((cur.textContent || '').trim().length > 1 && cur.getBoundingClientRect().width >= 40) return cur
       cur = cur.parentElement
     }
     return null
+  }
+  function snapToLine(x: number, y: number): { x: number; y: number } | null {
+    const el = findTextBlock(x, y)
+    if (el === null) { lockedLineCy = null; return null }
+    const now = performance.now()
+    let lines: Array<{ top: number; bottom: number; cy: number }>
+    if (lineCache !== null && lineCache.el === el && now - lineCache.at < 200) lines = lineCache.lines
+    else { lines = collectLines(el); lineCache = { el, lines, at: now } }
+    if (lines.length === 0) return null
+    // 滞回：当前锁定行仍罩住注视 y 就保持，避免在相邻行抖动
+    if (lockedLineCy !== null) {
+      const lockCy = lockedLineCy
+      const lk = lines.find((ln) => Math.abs(ln.cy - lockCy) < 2)
+      if (lk !== undefined && y >= lk.top - LINE_HYST && y <= lk.bottom + LINE_HYST) return { x, y: lk.cy }
+    }
+    let bestCy: number | null = null
+    let bestD = Infinity
+    for (const ln of lines) {
+      const inLine = y >= ln.top - 4 && y <= ln.bottom + 4
+      const d = inLine ? 0 : Math.min(Math.abs(y - ln.top), Math.abs(y - ln.bottom))
+      if (d < bestD) { bestD = d; bestCy = ln.cy }
+    }
+    if (bestCy === null || bestD > 40) { lockedLineCy = null; return null } // 离文字太远（空白处）→ 不锁
+    lockedLineCy = bestCy
+    return { x, y: bestCy }
   }
   function onLensMove(ev: MouseEvent): void {
     mouseX = ev.clientX
@@ -329,7 +364,7 @@ export function apply(ctx: CordisCtx): void {
       let tx = g.x
       let ty = g.y
       if (store.settings.gazeSnapText) {
-        const s = snapToText(tx, ty)
+        const s = snapToLine(tx, ty)
         if (s !== null) { tx = s.x; ty = s.y }
       }
       // 死区：注视点相对当前透镜只移动一点点（< GAZE_DEADZONE）当作抖动忽略、冻结不动 → 只有大幅移动才跟随
@@ -342,6 +377,7 @@ export function apply(ctx: CordisCtx): void {
     } else {
       lensX = mouseX
       lensY = mouseY
+      lockedLineCy = null
     }
     // 入场：先全屏模糊，再"汇聚"到视线处的圆。半径用字面量拼进 mask（最稳），圆心位置用 CSS 变量。
     const p = Math.min(1, (performance.now() - lensStart) / LENS_ENTER_MS)
