@@ -1,4 +1,5 @@
-# dsh-wallpaper_share · Wallpaper Engine ↔ DeepSeek Harness 壁纸同步
+# dsh-wallpaper_share
+# Wallpaper Engine ↔ DeepSeek Harness 壁纸同步
 
 
 https://github.com/user-attachments/assets/4461d385-de62-42be-8420-7edce5606f44
@@ -7,55 +8,87 @@ https://github.com/user-attachments/assets/4461d385-de62-42be-8420-7edce5606f44
 
 [中文](#中文) | [English](#english)
 
-把 Wallpaper Engine 当前显示的壁纸实时同步为 DeepSeek Harness Web 界面的背景（磨砂玻璃风格），并提供 `wallpaper_share` 会话视图标签页用于控制显示器来源、透明度 / 模糊 / 阴影、渲染模式与专注模式。
+把 Wallpaper Engine 当前显示的壁纸实时同步为 DeepSeek Harness Web 界面的背景，并提供 `wallpaper_share` 标签页用于调整渲染模式、视觉效果、专注透镜与壁纸库。支持场景壁纸的完整动效与应用壁纸的导入。
 
 > **纯显示同步**：只读取 WE 状态，不控制 / 不修改桌面壁纸（换壁纸请在 WE 内操作）。
-> **无敏感信息**：代码不含 Steam 用户名 / SteamID / 令牌；WE 安装目录运行时自动检测（注册表 `HKCU\Software\WallpaperEngine\installPath` → 常见 Steam 路径），检测不到时才需要手动配置。
+> **无敏感信息**：代码不含 Steam 用户名 / SteamID / 令牌；WE 安装目录运行时自动检测（注册表 `HKCU\Software\WallpaperEngine\installPath` → 常见 Steam 路径），检测不到时才需要手动配置。眼动追踪全程本地推理，摄像头画面不出设备。
 
 ---
 
 <a name="中文"></a>
 # 中文
 
-## 增强模式兼容矩阵
+## 渲染模式（三档滑块）
 
-| 壁纸类型 | 增强模式行为 |
-| --- | --- |
-| `video` | 播放源视频（支持 HTTP Range，可正常 seek） |
-| `web` | iframe 加载源页面 |
-| `image` | 显示源图 |
-| `scene` | **浏览器子集渲染器**（默认）：真实图层树 + transform + 已解码纹理 / 粒子 / puppet 动画合成进 canvas；或**外部 renderer**（`sceneRendererPath` + WS 帧流）；renderer 不可用/失败 → 提取 pkg 内嵌高清纹理 → 预览 |
-| `application` / `other` | 回退静态预览 |
+面板顶部的三档滑块决定壁纸如何呈现：
 
-> scene 增强的完整 fallback 链与各层实现（渲染模式 / 纹理解码 / 粒子 / puppet）见 **[docs/scene-fallback.md](docs/scene-fallback.md)**。
+| 档位 | 含义 | 说明 |
+| --- | --- | --- |
+| **节能** | 静态预览图 | 只贴 WE 的预览图，最省资源，不加载动效 |
+| **性能** | 捕获 WE 桌面 | scene 走**原生捕获器 `we-capture.exe`**，镜像 WE 自己渲染的桌面 → 效果全覆盖；WE 未运行时自动回退浏览器渲染 |
+| **增强** | 浏览器解 pkg | scene 走**浏览器子集渲染器**，直接解析 `.pkg` 在浏览器里重绘，不依赖 WE 运行 |
+
+> 对 video / web / image，性能与增强行为一致（都加载源内容）；三档的真正差别在 **scene**：性能 = 捕获 WE 桌面（全覆盖、需 WE 运行），增强 = 浏览器解 pkg（独立、覆盖子集）。
+
+## 兼容矩阵
+
+| 壁纸类型 | 节能 | 性能 | 增强 |
+| --- | --- | --- | --- |
+| `video` | 静态预览图 | 播放源视频（HTTP Range，可 seek） | 播放源视频 |
+| `web` | 静态预览图 | iframe 加载源页面 | iframe 加载源页面 |
+| `image` | 静态预览图 | 显示源图 | 显示源图 |
+| `scene` | 静态预览图 | **原生捕获 WE 桌面**（效果全覆盖；WE 未运行回退浏览器） | **浏览器解 pkg 渲染**（不依赖 WE，子集效果） |
+| `application` / `other` | 静态预览图 | 回退静态预览（可在壁纸库中预览） | 回退静态预览 |
+
+> scene 的完整 fallback 链与各层实现（渲染模式 / 纹理解码 / 粒子 / puppet）见 **[docs/scene-fallback.md](docs/scene-fallback.md)**。
 
 ## 功能
 
-- **实时同步**：在 Wallpaper Engine 中应用壁纸后，页面背景约 2 秒内自动跟随
+- **实时同步**：在 WE 切换壁纸后，页面背景约 2 秒内自动跟随
 - **多显示器**：自动跟随"最近变化"的一台；复数显示器时可手动锁定某台作为背景来源
-- **视觉效果滑块（即时生效）**：面板透明度 0–100% / 背景模糊 0–30px / 阴影深度 0–100%
-- **渲染模式切换**：性能（静态预览图，默认）⇄ 增强（加载壁纸源内容）
-- **Scene 实时渲染（新增）**：scene 壁纸增强模式默认走**浏览器子集渲染器**（真实 `scene.json` 图层树 + transform + 已解码纹理合成进 canvas，含粒子与 puppet 动画）；显式配置 `sceneRendererPath` 后走独立 renderer 子进程（offscreen，不弹窗）→ WebSocket 帧流；完整回退链见 [docs/scene-fallback.md](docs/scene-fallback.md)
-- **专注模式 🎯**：任务进行中自动切换为 30% / 15px / 90%，任务完成后自动切换为 9% / 6px / 40%
-- **同步开关** ⏻ 一键启停
-- 自诊断路由 `/we-sync/diag`（仅本机可访问，含 scene renderer 状态与纹理提取结果）
+- **三档渲染模式**：节能（静态预览）/ 性能（捕获 WE 桌面）/ 增强（浏览器解 pkg）
+- **原生 scene 捕获渲染器**：随包内置 Rust 编写的 `we-capture.exe`，用 Windows Graphics Capture 抓取 WE 正在渲染的桌面，镜像 WE 自身输出 → GLSL / SceneScript / 关键帧 / 粒子等**所有 WE 效果天然全覆盖**
+- **专注透镜**：叠加一个圆心清晰、圆外模糊的阅读窗；默认跟随鼠标，开专注即生效
+- **眼动追踪（实验）**：可选，用摄像头推断注视点让透镜跟随视线；9 点校准、文字行锁定、抗抖动
+- **壁纸库**：读取全部类型壁纸（场景 / 视频 / 图片 / 应用 / 网页），带类型筛选、标题搜索、缩略图与计数
+- **视觉效果滑块**：面板透明度 0–100% / 背景模糊 0–30px / 阴影深度 0–100%，即时生效
+- **后台任务可视化**：收纳侧边栏时，用圆形指示感知任务进度（绿 = 空闲 / 蓝 = 进行中 / 橙 = 需介入）
+- **同步开关**：一键启停
+- **自诊断路由** `/we-sync/diag`（仅本机可访问，含 scene renderer 状态与纹理提取结果）
+
+## 原生 scene 捕获渲染器
+
+- **原理**：WE 的 DX11 渲染窗口是 Progman 子窗口、WGC 不接受子窗口，故捕获其顶层根 Progman / WorkerW，BGRA→JPEG 按外部渲染器协议输出到 stdout。因为镜像的是 **WE 自身的渲染结果**，无需在 JS 端复刻对面那套 ~500KB 软渲染引擎，效果 100% 覆盖。
+- **打包**：`bin/we-capture.exe`（约 540KB，Windows-only）随 npm 包发布；Rust 源码在 `native/we-capture/`（`cargo build --release` 可重建，含 `--selftest` 诊断模式）。
+- **自动发现**：DSH 侧 `probeRenderer` 自动发现随包 `bin/we-capture.exe`（或本地 `native/we-capture/target/release/`）；`sceneRenderMode='auto'` 检测到原生渲染器即走 external（性能档），否则回退 browser。
+- **编码**：JPEG 编码器用 SIMD 的 `jpeg-encoder`，1080p 编码仅约 11ms；默认按原生 1920×1080 全清晰度输出，4K / 高刷屏可在 `CONFIG` 下调分辨率省 CPU。
+- **边界**：捕获会把桌面图标一并抓入（建议隐藏图标）；WE 全屏应用时默认暂停渲染 → 画面定格；镜像当前激活显示器的壁纸；WE 未运行 / 找不到窗口时自动回退浏览器渲染。
+
+## 专注透镜与眼动追踪
+
+- **专注模式 = 透镜总开关**：开启即在壁纸上叠加一个跟随注视点的透镜（圆心清晰、圆外模糊的阅读窗）。壁纸全局模糊在透镜激活时置 0，模糊全部由透镜层 `backdrop-filter` 承担。默认跟随**鼠标**（精确、零延迟）。
+- **眼动追踪（可选）**：在专注基础上开启后，惰性从 CDN 加载 [WebGazer.js](https://webgazer.cs.brown.edu)（GPL-3.0，与本项目许可兼容；内含 MediaPipe FaceMesh，首次约下载 ~12MB，不进基础包），用摄像头推断屏幕注视点跟随视线；无脸 / 离开座位（> 1.2s）自动回落鼠标。关闭专注会一并关闭眼动并释放摄像头。
+- **校准视线**：9 点引导序列；摄像头画面仅在校准期间投影到页面，平时不显示。训练数据只来自校准点击（追踪时关闭 WebGazer 的鼠标采样，避免"鼠标移动"污染回归拟合）；样本持久化，校准一次即复用。
+- **文字行锁定**（默认开）：注视点 Y 锁到最近的文字行中心（用 `Range.getClientRects` 取块内每一视觉行），X 仍跟随滑动，带滞回避免相邻行横跳——读哪行、圆圈稳在哪行。
+- **抗抖动**：死区 + EMA，小幅高频抖动忽略、大幅移动才缓动跟随。
+- **隐私**：全程本地推理、画面不出设备；关闭时显式 `stopVideo()` 释放摄像头；仅在 `http://127.0.0.1`（安全上下文）可用。
 
 ## 安装（官方 `dsh plugin` 通道，零手工配置）
 
-> 前置：兼容 DSH Web `0.1.0-rc.6` 及以上（已在 0.1.0-rc.6 实机验证），以 `dsh --profile web` 启动过至少一次。
+> 前置：兼容 DSH Web `0.1.0-rc.6` 及以上（已在 0.1.0-rc.6 实机验证），以 `dsh --profile web` 运行。
 
 ```bash
 # 任选其一：
 dsh plugin --profile web add github:YRN-playmaker/dsh-wallpaper_share
 #   从 GitHub 安装（仓库自带预构建 lib/，不需要构建许可）
 dsh plugin --profile web add dsh-wallpaper_share
-#   从 npm 安装（发布后）
-dsh plugin --profile web add ./dsh-wallpaper_share-v26.0822T.tgz
+#   从 npm 安装
+dsh plugin --profile web add ./dsh-wallpaper_share-26.8.291.tgz
 #   本地 tarball 安装
 ```
 
 ```bash
-# 安装 test 分支（最新开发版，含 Scene 渲染 / 粒子 / puppet 动画）：
+# 安装 test 分支（测试版本，含壁纸特效优化、页面功能更新等）：
 dsh plugin --profile web add github:YRN-playmaker/dsh-wallpaper_share#test
 ```
 
@@ -63,7 +96,7 @@ dsh plugin --profile web add github:YRN-playmaker/dsh-wallpaper_share#test
 # 重启 dsh（web profile），打开页面即可看到 wallpaper_share 标签页
 ```
 
-**无需手动编辑任何配置文件**：包内 `dsh.bundle.patch` 指向的 `cordis.patch.yml` 会在安装时自动加入 profile 的 bundle 层，其中一行同时是 host 行（node 半：轮询 + HTTP 路由）和 `dsh.client` roster 行（浏览器半的预构建 `lib/client.js` 由模块系统自动注入页面）。包发布时**自带预构建产物**，用户侧零构建。
+**无需手动编辑任何配置文件**：包内 `dsh.bundle.patch` 指向的 `cordis.patch.yml` 会在安装时自动加入 profile 的 bundle 层，其中一行同时是 host 行（node 半：轮询 + HTTP 路由）和 `dsh.client` roster 行（浏览器半的预构建 `lib/client.js` 由模块系统自动注入页面）。包发布时自带预构建产物，用户侧零构建。
 
 ## 从源码构建（开发者）
 
@@ -74,6 +107,7 @@ dsh plugin --profile web add github:YRN-playmaker/dsh-wallpaper_share#test
 5. 产物在 `packages/client/we-sync/lib/`（`index.js` node 半 + `client.js` 浏览器半），拷回本仓库 `lib/` 后 `pnpm pack` 出新 tarball。
 
 > 也可以在本仓库根目录直接 `pnpm install && pnpm build`（`tsdown` 独立构建，不依赖 DSH checkout）。
+> 原生捕获器：`cd native/we-capture && cargo build --release`（需 `x86_64-pc-windows-gnu` 或 `-msvc` 工具链），产物拷到 `bin/we-capture.exe`。
 
 ## 配置
 
@@ -85,167 +119,223 @@ dsh plugin --profile web add github:YRN-playmaker/dsh-wallpaper_share#test
 | `workshopContentDir` | `''`（自动推导） | 工作坊内容目录 |
 | `pollIntervalMs` | `2000` | 轮询间隔 |
 | `previewMaxBytes` | `6291456` | 预览图大小上限 |
-| `sceneRendererPath` | `''`（内置参考 renderer） | 外部 scene renderer 可执行文件；留空用内置参考 renderer（诊断动画） |
-| `wallpaperEngineAssetsDir` | `''`（自动推导） | WE engine assets 目录（自动为 `<weDir>/assets`；缺失时 renderer 不可用） |
-| `sceneRenderWidth` | `1920` | scene renderer 输出宽度 |
-| `sceneRenderHeight` | `1080` | scene renderer 输出高度 |
+| `sceneRendererPath` | `''`（自动发现） | 外部 scene renderer；留空自动发现随包 `bin/we-capture.exe`（或本地 `native/we-capture/target/release/`） |
+| `wallpaperEngineAssetsDir` | `''`（自动推导） | WE engine assets 目录（`<weDir>/assets`；缺失时 renderer 不可用） |
+| `sceneRenderWidth` | `1920` | 原生捕获器输出宽度（小于壁纸原生分辨率时盒式降采样；4K 想省 CPU 可下调） |
+| `sceneRenderHeight` | `1080` | 原生捕获器输出高度 |
 | `sceneRenderFps` | `30` | scene renderer 目标帧率 |
-| `sceneRenderQuality` | `80` | JPEG/WebP 帧质量（0..100） |
-| `sceneRenderMode` | `'auto'` | `'auto'`（浏览器子集渲染器为主；配置了 `sceneRendererPath` 则 external）\| `'browser'` \| `'external'` |
-| `particleRateScale` | `1` | 粒子发射率缩放（WE rate 单位 = 每秒粒子数） |
+| `sceneRenderQuality` | `80` | JPEG 帧质量（0..100） |
+| `sceneRenderMode` | `'auto'` | `'auto'`（探测到原生 we-capture 或显式 `sceneRendererPath` 则 external，否则 browser）\| `'browser'` \| `'external'` |
+| `particleRateScale` | `1` | 粒子发射率缩放（浏览器子集渲染器） |
 | `particleSizeScale` | `1` | 粒子尺寸缩放 |
+| `effectStrengthScale` | `1` | 特效强度缩放 |
+| `puppetMeshRender` | `true` | puppet 网格渲染开关 |
 
-## 排查
+> 面板里的三档滑块（节能 / 性能 / 增强）是运行时 UI 设置，与上面的 `sceneRenderMode`（后端浏览器 / 外部 renderer 选择）不同：节能 = 静态预览，性能 = 优先用 external（原生捕获），增强 = 用 browser（浏览器子集渲染器）。
 
-- `http://127.0.0.1:3080/we-sync/diag`：内部状态（`kind` / `fingerprint` / `weDir` / `lastError` / 每台显示器的 `sceneImage` 提取结果 / **scene renderer 的 capabilities / status / fallback 层**）；
-- `lastError` 提示未找到安装目录 → 在包源码 `CONFIG.wallpaperEngineDir` 手动指定后重新构建 / 重新安装；
-- scene 增强无动态画面 → 看 `scene.available`：`false` 表示 renderer 缺失或 assets 目录缺失（`/we-sync/diag` 里有 `reason`）；
-- 页面没变化 → 刷新页面，确认标签栏出现 `wallpaper_share`。
+## Scene 渲染与回退链
 
-## 已知限制
+scene 壁纸在性能 / 增强档下的渲染优先级与回退：
 
-- scene 增强的"真实动态画面"取决于渲染模式：默认浏览器子集渲染器做**图层树 + transform + 纹理/粒子/puppet 动画合成**（shader effect / SceneScript / keyframe 动画为后续）；外部 renderer（`sceneRendererPath`）可提供真实渲染，但需用户自备（如 WSL2 封装的 linux-wallpaperengine 离屏封装，GPL，独立组件）；
-- 参考 renderer 为 1920×1080 RGBA 全帧传输，CPU 占用偏高（本机实测 ~24-27fps @960×540）；真 renderer 建议输出 JPEG/WebP 以降低带宽；
-- 多显示器时取 `lastselectedmonitor`（无则第一台）；
-- 视觉参数仅保存在页面内存，刷新回到默认值（72% / 6px / 30%）。
+1. **原生捕获（external）**：探测到 `we-capture.exe` 且 WE 正在渲染 → WS 帧流 live canvas（效果全覆盖）。
+2. **浏览器子集渲染（browser）**：解析 `scene.json` 图层树 + transform + 已解码纹理 / 粒子 / puppet 合成进 canvas。
+3. **静态纹理**：提取 pkg 内嵌高清纹理垫底。
+4. **预览图**：以上皆不可用 → WE 预览图。
 
-## 目录
+完整链路与各层实现见 **[docs/scene-fallback.md](docs/scene-fallback.md)**；pkg / 纹理 / puppet 格式见 **[docs/scene-format.md](docs/scene-format.md)**、**[docs/tex-format-findings.md](docs/tex-format-findings.md)**、**[docs/mdl-skinning-findings.md](docs/mdl-skinning-findings.md)**。
 
-- `package.json` — 包清单：`dsh.bundle.patch` → `cordis.patch.yml`，`dsh.client` → 浏览器半，`exports["./client"]` → 预构建 `lib/client.js`
-- `cordis.patch.yml` — bundle 补丁层（host 行 + dsh.client roster 行）
-- `src/index.ts` — node 半源码（轮询 / HTTP 路由 / scene 纹理提取 / HTTP Range / SceneAdapter 接入 / SceneModel 路由 / WebSocket 帧流）
-- `src/scene/` — SceneAdapter 模块（协议 / 能力探测 / renderer 进程 / WebSocket / fallback / **PKGV0001 解析 / SceneModel 图层模型 / .tex 解码 / puppet mdl 解析**）
-- `src/client/` — 浏览器半源码（主题覆盖 / 背景层 / SceneCanvas / **SceneModelRenderer 子集渲染器 / ParticleRuntime** / wallpaper_share 面板）
-- `docs/` — 格式与实现文档（`tex-format-findings.md` / `mdl-skinning-findings.md` / **`scene-fallback.md`**）
-- `tools/scene-renderer/` — 内置参考 renderer（协议契约实现；真 renderer 按同协议替换）
-- `lib/` — 预构建产物（用户零构建；GitHub 安装也无需构建许可）
-- `dsh-wallpaper_share-v26.0822T.tgz` — 发布 tarball（GitHub Release 附件）
-- `install.ps1` — 可选的一键安装脚本（走官方 `dsh plugin add` 通道）
-- `CHANGELOG.md` — 更新记录
+## 已知限制与边界
 
-## 许可证
+- **平台**：原生捕获器为 Windows-only（依赖 Windows Graphics Capture）；非 Windows 或捕获不可用时 scene 自动回退浏览器子集渲染器。
+- **桌面图标**：捕获镜像整个桌面壁纸层，会把桌面图标一并抓入（建议隐藏桌面图标）。
+- **全屏应用**：WE 在全屏应用时默认暂停渲染，捕获画面随之定格。
+- **眼动精度**：webcam + 线性回归的原生精度约 ±50–150px，行距较小时偶尔可能锁到相邻行；靠大圆 + 滞回缓解。需摄像头 + 联网加载模型；首次开眼动需校准一次。
+- **浏览器子集渲染器**：是 WE 渲染引擎的子集复刻，个别复杂 shader / 特效可能不完美；需要 100% 覆盖时用性能档（原生捕获）。
 
-gplv3
+## 性能说明
+
+- 原生捕获：SIMD `jpeg-encoder`，1080p 编码约 11ms；默认 1920×1080@30fps，可在 `CONFIG` 下调分辨率 / 帧率省 CPU。
+- 节能档只贴静态预览，开销最低；性能 / 增强档才加载动效。
+- 专注透镜激活时壁纸全局模糊置 0，模糊由透镜层承担，避免双重模糊开销。
+
+## 项目结构
+
+- `src/index.ts` — Node 半：WE 状态轮询、HTTP 路由、scene renderer 子进程管理、壁纸库扫描
+- `src/scene/` — SceneAdapter 模块（协议 / 能力探测 / renderer 进程 / WebSocket / 回退 / PKGV0001 解析 / SceneModel 图层模型 / .tex 解码 / puppet mdl 解析）
+- `src/client/` — 浏览器半（主题覆盖 / 背景层 / SceneCanvas / SceneModelRenderer 子集渲染器 / ParticleRuntime / GazeLens 眼动 / 专注透镜 / wallpaper_share 面板）
+- `native/we-capture/` — Rust 原生捕获器源码（Windows Graphics Capture → JPEG）
+- `bin/we-capture.exe` — 随包发布的原生捕获器（Windows-only）
+- `docs/` — 格式规范与技术文档（`scene-format.md` / `scene-fallback.md` / `tex-format-findings.md` / `mdl-skinning-findings.md`）
+- `tools/scene-renderer/` — 内置参考 renderer（实现协议契约；真·原生 renderer 以同协议替换之）
+- `lib/` — 预构建产物（用户侧零构建）
+- `install.ps1` — 可选一键安装脚本（走官方 `dsh plugin add`）
+- `CHANGELOG.md` — 版本历史
+
+## License
+
+GPL-3.0
 
 ---
 
 <a name="english"></a>
-
-
-
 # English
-<img width="1920" height="1080" alt="deepseek21" src="https://github.com/user-attachments/assets/4edaa26e-c5da-4801-b7b3-5ba04cd28184" />
-Sync the wallpaper currently displayed by Wallpaper Engine onto the DeepSeek Harness Web UI as a frosted-glass page background (display-only), with a `wallpaper_share` conversation-view tab for monitor selection, transparency / blur / shadow sliders, render-mode, and focus mode.
 
-> **Display-only**: reads WE state only — never controls or changes your desktop wallpaper.
-> **No sensitive data**: no Steam username / SteamID / tokens. The WE install dir is auto-detected at runtime (registry `HKCU\Software\WallpaperEngine\installPath` → common Steam paths); manual config is only a fallback.
+Syncs the wallpaper Wallpaper Engine is currently showing into the DeepSeek Harness Web UI background, with a `wallpaper_share` tab to tune render mode, visual effects, the focus lens and the wallpaper library. Full scene animation and application import are supported.
 
-## Enhanced-mode compatibility matrix
+> **Display-only sync**: it only reads WE state; it never controls or changes your desktop wallpaper (switch wallpapers inside WE).
+> **No sensitive data**: the code contains no Steam username / SteamID / token; the WE install dir is auto-detected at runtime (registry `HKCU\Software\WallpaperEngine\installPath` → common Steam paths), manual config only if detection fails. Eye tracking runs fully locally — camera frames never leave the device.
 
-| Wallpaper type | Enhanced-mode behavior |
-| --- | --- |
-| `video` | plays the source video (HTTP Range supported, so seeking works) |
-| `web` | loads the source page in an iframe |
-| `image` | shows the source image |
-| `scene` | **browser subset renderer** (default): real layer tree + transforms + decoded textures / particles / puppet animations composited into canvas; or **external renderer** (`sceneRendererPath` + WS frame stream); renderer unavailable/failed → extracted pkg texture → preview |
-| `application` / `other` | falls back to the static preview |
+## Render Modes (3-segment slider)
 
-> The full scene fallback chain and per-layer implementation (render modes / texture decoding / particles / puppet) is documented in **[docs/scene-fallback.md](docs/scene-fallback.md)**.
+The slider at the top of the panel controls how the wallpaper is presented:
+
+| Mode | Meaning | Notes |
+| --- | --- | --- |
+| **Eco** | Static preview | Only WE's preview image; lowest cost; no animation |
+| **Perf** | Capture WE desktop | scene uses the **native `we-capture.exe`**, mirroring WE's own rendered desktop → full effect coverage; falls back to browser rendering when WE isn't running |
+| **Enhanced** | Browser pkg render | scene uses the **browser subset renderer**, parsing `.pkg` and redrawing in-browser, independent of WE |
+
+> For video / web / image, Perf and Enhanced behave the same (both load source). The real difference is **scene**: Perf = capture WE desktop (full coverage, needs WE running), Enhanced = browser pkg render (independent, subset coverage).
+
+## Compatibility Matrix
+
+| Type | Eco | Perf | Enhanced |
+| --- | --- | --- | --- |
+| `video` | static preview | plays source video (HTTP Range, seekable) | plays source video |
+| `web` | static preview | iframe loads source page | iframe loads source page |
+| `image` | static preview | shows source image | shows source image |
+| `scene` | static preview | **native WE desktop capture** (full coverage; falls back to browser when WE not running) | **browser pkg render** (WE-independent, subset) |
+| `application` / `other` | static preview | static preview (viewable in the library) | static preview |
+
+> Full scene fallback chain & per-layer implementation (render mode / texture decode / particles / puppet): **[docs/scene-fallback.md](docs/scene-fallback.md)**.
 
 ## Features
 
-- **Live sync**: after applying a wallpaper in Wallpaper Engine, the page background follows within ~2 seconds
-- **Multi-monitor**: follows the "most recently changed" monitor automatically; lock one as the background source when several monitors exist
-- **Instant visual sliders**: panel transparency 0–100% / background blur 0–30px / shadow depth 0–100%
-- **Render-mode toggle**: Performance (static preview, default) ⇄ Enhanced (loads the wallpaper source)
-- **Scene live rendering (new)**: scene wallpapers in enhanced mode use the **browser subset renderer** by default (real `scene.json` layer tree + transforms + decoded textures composited into canvas, including particles and puppet animations); with `sceneRendererPath` configured it runs a standalone renderer subprocess (offscreen, no window) → WebSocket frame stream; full fallback chain in [docs/scene-fallback.md](docs/scene-fallback.md)
-- **Focus mode 🎯**: auto-switches to 30% / 15px / 90% while a task runs, then 9% / 6px / 40% when all tasks finish
-- **Sync toggle** ⏻ one-click on/off
-- Self-diagnostic route `/we-sync/diag` (localhost only, includes scene renderer status and texture extraction results)
+- **Real-time sync**: the page background follows WE's current wallpaper within ~2s
+- **Multi-monitor**: auto-follows the most recently changed; can lock a specific monitor
+- **3 render modes**: Eco (static preview) / Perf (capture WE desktop) / Enhanced (browser pkg render)
+- **Native scene capture renderer**: bundled Rust `we-capture.exe` uses Windows Graphics Capture to grab WE's rendered desktop, mirroring WE's own output → GLSL / SceneScript / keyframes / particles **all covered natively**
+- **Focus lens**: a center-clear, edge-blurred reading window; follows the mouse by default
+- **Eye tracking (experimental)**: optional; uses the webcam to follow your gaze; 9-point calibration, text-line lock, anti-jitter
+- **Wallpaper library**: reads all types (scene / video / image / application / web) with type filters, title search, thumbnails and counts
+- **Visual sliders**: panel opacity 0–100% / background blur 0–30px / shadow depth 0–100%, live
+- **Background task indicator**: a circular cue when the sidebar is collapsed (green idle / blue running / orange needs attention)
+- **Sync toggle**: one-click on/off
+- **Self-diagnostic route** `/we-sync/diag` (localhost only; scene renderer status & texture extraction results)
 
-## Install (official `dsh plugin` flow, zero manual config)
+## Native Scene Capture Renderer
 
-> Prerequisite: DSH has been started at least once with `dsh --profile web`.
+- **How**: WE's DX11 window is a child of Progman and WGC rejects child windows, so it captures the top-level Progman / WorkerW root, converts BGRA→JPEG and emits frames over stdout via the external-renderer protocol. Because it mirrors **WE's own rendering**, no ~500KB JS reimplementation is needed and effects are 100% covered.
+- **Packaging**: `bin/we-capture.exe` (~540KB, Windows-only) ships in the npm package; Rust source in `native/we-capture/` (`cargo build --release`, with a `--selftest` diagnostic mode).
+- **Auto-discovery**: DSH's `probeRenderer` finds the bundled `bin/we-capture.exe` (or local `native/we-capture/target/release/`); `sceneRenderMode='auto'` uses external (Perf) when detected, else browser.
+- **Encoding**: SIMD `jpeg-encoder`, ~11ms per 1080p frame; defaults to native 1920×1080, can be downscaled in `CONFIG` for 4K / high-refresh to save CPU.
+- **Boundaries**: captures desktop icons too (hide them for a clean bg); WE pauses rendering behind fullscreen apps → frame freezes; mirrors the active monitor's wallpaper; falls back to browser when WE isn't running.
+
+## Focus Lens & Eye Tracking
+
+- **Focus = lens master switch**: turning it on overlays a gaze-following lens (center clear, edges blurred). Global wallpaper blur is set to 0 while the lens is active; all blur is done by the lens layer's `backdrop-filter`. Follows the **mouse** by default (precise, zero latency).
+- **Eye tracking (optional)**: lazily loads [WebGazer.js](https://webgazer.cs.brown.edu) (GPL-3.0, compatible with this project; bundles MediaPipe FaceMesh, ~12MB from CDN on first use, not in the base package) and follows your gaze via the webcam; no face / away (> 1.2s) falls back to the mouse. Turning off focus also stops tracking and releases the camera.
+- **Calibration**: a 9-point guided sequence; the camera preview is shown only during calibration. Training data comes solely from calibration clicks (WebGazer's mouse sampling is disabled during tracking so mouse movement can't pollute the regression); samples persist, so you calibrate once.
+- **Text-line lock** (on by default): the lens Y snaps to the nearest text line (via `Range.getClientRects`), X still follows, with hysteresis to avoid flapping between adjacent lines.
+- **Anti-jitter**: deadzone + EMA — small high-frequency jitter is ignored, only large moves ease the lens.
+- **Privacy**: fully local inference, frames never leave the device; `stopVideo()` releases the camera on off; only available on `http://127.0.0.1` (secure context).
+
+## Installation (official `dsh plugin`, zero manual config)
+
+> Requires DSH Web `0.1.0-rc.6` or newer (verified on 0.1.0-rc.6), run with `dsh --profile web`.
 
 ```bash
-# Pick one:
+# pick one:
 dsh plugin --profile web add github:YRN-playmaker/dsh-wallpaper_share
-#   install from GitHub (the repo ships prebuilt lib/, no build allowance needed)
+#   install from GitHub (repo ships prebuilt lib/, no build permission needed)
 dsh plugin --profile web add dsh-wallpaper_share
-#   install from npm (once published)
-dsh plugin --profile web add ./dsh-wallpaper_share-v26.0822T.tgz
-#   install from the local tarball
+#   install from npm
+dsh plugin --profile web add ./dsh-wallpaper_share-26.8.291.tgz
+#   install from a local tarball
 ```
 
 ```bash
-# Install the test branch (latest dev build: Scene rendering / particles / puppet animations):
+# install the test branch (latest dev build):
 dsh plugin --profile web add github:YRN-playmaker/dsh-wallpaper_share#test
 ```
 
 ```bash
-# Restart dsh (web profile) and open the page — the wallpaper_share tab appears
+# restart dsh (web profile); the wallpaper_share tab appears
 ```
 
-**No config files to edit by hand**: the `cordis.patch.yml` referenced by `dsh.bundle.patch` is added to the profile's bundle layers automatically on install. Its single row is both a host row (node half: polling + HTTP routes) and a `dsh.client` roster row (the prebuilt browser half `lib/client.js` is injected into the page by the module system). The published package ships **prebuilt artifacts**, so users never build anything.
+**No manual config editing**: the `cordis.patch.yml` referenced by `dsh.bundle.patch` is auto-added to the profile's bundle layer on install; one line is both the host line (node half: polling + HTTP routes) and the `dsh.client` roster line (the prebuilt `lib/client.js` browser half is auto-injected). The package ships prebuilt artifacts — zero build for users.
 
-## Build from source (developers)
+## Building from Source (developers)
 
-1. Copy the repo root (`package.json` / `src/` / `tsconfig.json` / `tsdown.config.ts`) into your DSH checkout as `packages/client/we-sync/`;
+1. Copy this repo root (`package.json` / `src/` / `tsconfig.json` / `tsdown.config.ts`) into your DSH checkout at `packages/client/we-sync/`;
 2. `pnpm install`
 3. `pnpm --filter dsh-wallpaper_share exec tsc -b`
 4. `pnpm --filter dsh-wallpaper_share bundle`
-5. Artifacts land in `packages/client/we-sync/lib/` (`index.js` node half + `client.js` browser half); copy them back to the repo `lib/` and run `pnpm pack` for a new tarball.
+5. Artifacts land in `packages/client/we-sync/lib/` (`index.js` node half + `client.js` browser half); copy back to this repo's `lib/` and `pnpm pack`.
 
-> You can also run `pnpm install && pnpm build` directly in this repo root (`tsdown` standalone build, no DSH checkout required).
+> You can also run `pnpm install && pnpm build` at this repo root (`tsdown` builds standalone, no DSH checkout needed).
+> Native capture: `cd native/we-capture && cargo build --release` (needs an `x86_64-pc-windows-gnu` or `-msvc` toolchain); copy the output to `bin/we-capture.exe`.
 
 ## Configuration
 
 `CONFIG` at the top of `src/index.ts`:
 
-| Key | Default | Meaning |
+| Key | Default | Notes |
 | --- | --- | --- |
-| `wallpaperEngineDir` | `''` (auto-detect) | Manual install dir when detection fails |
-| `workshopContentDir` | `''` (auto-derived) | Workshop content directory |
-| `pollIntervalMs` | `2000` | Polling interval |
-| `previewMaxBytes` | `6291456` | Preview size cap |
-| `sceneRendererPath` | `''` (built-in reference renderer) | External scene renderer executable; empty = built-in reference renderer (diagnostic animation) |
-| `wallpaperEngineAssetsDir` | `''` (auto-derived) | WE engine assets dir (`<weDir>/assets`; renderer unavailable when missing) |
-| `sceneRenderWidth` | `1920` | Scene renderer output width |
-| `sceneRenderHeight` | `1080` | Scene renderer output height |
-| `sceneRenderFps` | `30` | Scene renderer target FPS |
-| `sceneRenderQuality` | `80` | JPEG/WebP frame quality (0..100) |
-| `sceneRenderMode` | `'auto'` | `'auto'` (browser subset renderer by default; external when `sceneRendererPath` set) \| `'browser'` \| `'external'` |
-| `particleRateScale` | `1` | Particle emission rate scale (WE rate unit = particles per second) |
-| `particleSizeScale` | `1` | Particle size scale |
+| `wallpaperEngineDir` | `''` (auto-detect) | set manually if detection fails |
+| `workshopContentDir` | `''` (auto) | workshop content dir |
+| `pollIntervalMs` | `2000` | polling interval |
+| `previewMaxBytes` | `6291456` | preview size cap |
+| `sceneRendererPath` | `''` (auto-discover) | external scene renderer; empty auto-discovers bundled `bin/we-capture.exe` (or local `native/we-capture/target/release/`) |
+| `wallpaperEngineAssetsDir` | `''` (auto) | WE engine assets dir (`<weDir>/assets`; renderer unavailable if missing) |
+| `sceneRenderWidth` | `1920` | native capture output width (box-downsample below native; lower for 4K to save CPU) |
+| `sceneRenderHeight` | `1080` | native capture output height |
+| `sceneRenderFps` | `30` | target fps |
+| `sceneRenderQuality` | `80` | JPEG frame quality (0..100) |
+| `sceneRenderMode` | `'auto'` | `'auto'` (external if native we-capture or explicit `sceneRendererPath` detected, else browser) \| `'browser'` \| `'external'` |
+| `particleRateScale` | `1` | particle emission-rate scale (browser subset renderer) |
+| `particleSizeScale` | `1` | particle size scale |
+| `effectStrengthScale` | `1` | effect strength scale |
+| `puppetMeshRender` | `true` | puppet mesh rendering toggle |
 
-## Troubleshooting
+> The panel's 3-mode slider (Eco / Perf / Enhanced) is a runtime UI setting, distinct from `sceneRenderMode` (backend browser/external selection): Eco = static preview, Perf = prefer external (native capture), Enhanced = browser subset renderer.
 
-- `http://127.0.0.1:3080/we-sync/diag`: internal state (`kind` / `fingerprint` / `weDir` / `lastError` / per-monitor `sceneImage` extraction results / scene renderer capabilities / status / fallback layer);
-- `lastError` says the install dir was not found → set `CONFIG.wallpaperEngineDir` manually and rebuild / reinstall;
-- Scene enhanced mode shows no dynamic footage → check `scene.available`: `false` means the renderer or assets dir is missing (`reason` is shown in `/we-sync/diag`);
-- Nothing changes on the page → refresh, and confirm the `wallpaper_share` tab exists.
+## Scene Rendering & Fallback Chain
 
-## Known limitations
+1. **Native capture (external)**: `we-capture.exe` detected and WE actively rendering → WS frame-stream live canvas (full coverage).
+2. **Browser subset render (browser)**: parse `scene.json` layer tree + transform + decoded textures / particles / puppet into a canvas.
+3. **Static textures**: extracted pkg textures as a base layer.
+4. **Preview image**: if none of the above → WE preview.
 
-- For scene wallpapers, the "real dynamic footage" depends on the render mode: the default browser subset renderer composites the layer tree + transforms + decoded textures/particles/puppet animations (shader effects / SceneScript / keyframe animations are future work); the external renderer (`sceneRendererPath`) provides true rendering but must be provided by the user (e.g. a WSL2-wrapped headless linux-wallpaperengine, GPL, standalone);
-- The reference renderer transmits full 1920×1080 RGBA frames — CPU-heavy (~24-27fps @960×540 measured locally); a real renderer should output JPEG/WebP to reduce bandwidth;
-- Multi-monitor setups use `lastselectedmonitor` (or the first monitor);
-- Visual settings live in page memory only and reset on refresh (72% / 6px / 30%).
+Full chain & per-layer implementation in **[docs/scene-fallback.md](docs/scene-fallback.md)**; pkg / texture / puppet formats in **[docs/scene-format.md](docs/scene-format.md)**, **[docs/tex-format-findings.md](docs/tex-format-findings.md)**, **[docs/mdl-skinning-findings.md](docs/mdl-skinning-findings.md)**.
 
-## Contents
+## Known Limitations & Boundaries
 
-- `package.json` — manifest: `dsh.bundle.patch` → `cordis.patch.yml`, `dsh.client` → browser half, `exports["./client"]` → prebuilt `lib/client.js`
-- `cordis.patch.yml` — the bundle patch layer (host row + dsh.client roster row)
-- `src/index.ts` — node half source (polling / HTTP routes / scene-texture extraction / HTTP Range / SceneAdapter / SceneModel routes / WebSocket frame stream)
+- **Platform**: the native capture renderer is Windows-only (uses Windows Graphics Capture); elsewhere or when capture is unavailable, scene falls back to the browser subset renderer.
+- **Desktop icons**: capture mirrors the desktop wallpaper layer, so icons are included (hide them for a clean background).
+- **Fullscreen apps**: WE pauses rendering behind fullscreen apps, so the captured frame freezes.
+- **Eye-tracking accuracy**: webcam + linear regression is ~±50–150px natively; with tight line spacing it may occasionally lock an adjacent line — mitigated by a large lens + hysteresis. Needs a camera + network to load the model; first use requires one calibration.
+- **Browser subset renderer**: a subset reimplementation of WE's engine; some complex shaders/effects may be imperfect — use Perf (native capture) for 100% coverage.
+
+## Performance Notes
+
+- Native capture: SIMD `jpeg-encoder`, ~11ms per 1080p frame; defaults to 1920×1080@30fps, tunable in `CONFIG`.
+- Eco only pastes a static preview (lowest cost); Perf / Enhanced load animation.
+- While the focus lens is active, global wallpaper blur is set to 0 (the lens layer does the blur), avoiding double-blur cost.
+
+## Project Structure
+
+- `src/index.ts` — node half: WE polling, HTTP routes, scene renderer subprocess, library scan
 - `src/scene/` — SceneAdapter modules (protocol / capability probe / renderer process / WebSocket / fallback / PKGV0001 parsing / SceneModel layer model / .tex decoding / puppet mdl parsing)
-- `src/client/` — browser half source (theme overrides / background layers / SceneCanvas / SceneModelRenderer subset renderer / ParticleRuntime / wallpaper_share panel)
-- `docs/` — format & implementation docs (`tex-format-findings.md` / `mdl-skinning-findings.md` / `scene-fallback.md`)
-- `tools/scene-renderer/` — built-in reference renderer (protocol contract implementation; real renderers replace it with the same protocol)
-- `lib/` — prebuilt artifacts (zero build for users; GitHub installs need no build allowance)
-- `dsh-wallpaper_share-0.2.0.tgz` — release tarball (attach it to GitHub Releases)
-- `install.ps1` — optional one-shot installer (uses the official `dsh plugin add` flow)
+- `src/client/` — browser half (theme overrides / background layers / SceneCanvas / SceneModelRenderer / ParticleRuntime / GazeLens / focus lens / wallpaper_share panel)
+- `native/we-capture/` — Rust native capture renderer source (Windows Graphics Capture → JPEG)
+- `bin/we-capture.exe` — shipped native capture renderer (Windows-only)
+- `docs/` — format & implementation docs (`scene-format.md` / `scene-fallback.md` / `tex-format-findings.md` / `mdl-skinning-findings.md`)
+- `tools/scene-renderer/` — built-in reference renderer (implements the protocol contract; real renderers replace it)
+- `lib/` — prebuilt artifacts (zero build for users)
+- `install.ps1` — optional one-shot installer (official `dsh plugin add`)
 - `CHANGELOG.md` — release notes
 
 ## License
 
-gplv3.
+GPL-3.0
