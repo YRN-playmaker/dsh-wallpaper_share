@@ -93,7 +93,7 @@ export const store = {
    *  模块级持久：conversation.view 是 session 作用域插槽，切会话/轨迹会重挂载面板，
    *  重挂载时直接读这里而不是重新探测，语言才不会"弹回英语"。 */
   locale: null as 'zh' | 'en' | null,
-  settings: { enabled: true, panelAlpha: 72, blur: 6, shadow: 30, monitor: '', focus: false, taskActive: false, renderMode: 'perf', gazeEnabled: false, lensCenterClear: false, gazeSnapText: true, immersive: false, approvalPending: false } as WeSyncSettings,
+  settings: { enabled: true, panelAlpha: 72, blur: 6, shadow: 30, monitor: '', focus: false, taskActive: false, renderMode: 'perf', gazeEnabled: false, lensCenterClear: false, gazeSnapText: false, immersive: false, approvalPending: false } as WeSyncSettings,
   listeners: new Set<() => void>(),
   actions: {
     applyTheme: (): void => {},
@@ -292,6 +292,8 @@ export function apply(ctx: CordisCtx): void {
   const LENS_ENTER_MS = 1400             // 入场动画时长
   const LENS_ENTER_START_MULT = 1.35     // 模糊模式入场起始半径 = 视口对角线 × 此系数（先盖满全屏）
   const SNAP_PULL = 0.7                  // 文字吸附强度（0=不吸，1=完全吸到块中心）
+  const GAZE_SMOOTH = 0.08               // 视线 EMA 平滑系数（越小越稳）
+  const GAZE_DEADZONE = 12               // 死区：注视点移动 < 此值视为抖动，忽略（冻结）
   let focusLens: HTMLDivElement | null = null
   let mouseX = 0
   let mouseY = 0
@@ -313,50 +315,6 @@ export function apply(ctx: CordisCtx): void {
     }
     return null
   }
-  // —— One Euro 滤波（Casiez 2012）：自适应低通。静止（阅读）时强平滑杀抖动，快速移动（眼跳）时轻平滑跟得上。
-  //   比固定 EMA 更适合眼动这种"大部分时间高频抖、偶尔大幅跳"的信号。
-  function makeOneEuro(minCutoff: number, beta: number, dCutoff: number): {
-    filter: (x: number, y: number, tMs: number) => [number, number]
-    reset: (x: number, y: number) => void
-  } {
-    let xPrev = 0
-    let yPrev = 0
-    let tPrev = 0
-    let dxPrev = 0
-    let dyPrev = 0
-    let fxPrev = 0
-    let fyPrev = 0
-    let init = false
-    const alpha = (cutoff: number, dt: number): number => {
-      const tau = 1 / (2 * Math.PI * cutoff)
-      return 1 / (1 + tau / dt)
-    }
-    return {
-      reset(x, y) { xPrev = x; yPrev = y; fxPrev = x; fyPrev = y; dxPrev = 0; dyPrev = 0; tPrev = performance.now(); init = true },
-      filter(x, y, tMs) {
-        if (!init) { xPrev = x; yPrev = y; fxPrev = x; fyPrev = y; tPrev = tMs; dxPrev = 0; dyPrev = 0; init = true; return [x, y] }
-        let dt = (tMs - tPrev) / 1000
-        if (dt <= 0) dt = 1 / 60
-        tPrev = tMs
-        const dxHat = (x - xPrev) / dt
-        const dyHat = (y - yPrev) / dt
-        const aD = alpha(dCutoff, dt)
-        const edx = aD * dxHat + (1 - aD) * dxPrev
-        const edy = aD * dyHat + (1 - aD) * dyPrev
-        dxPrev = edx
-        dyPrev = edy
-        const cutoff = minCutoff + beta * Math.sqrt(edx * edx + edy * edy)
-        const a = alpha(cutoff, dt)
-        fxPrev = a * x + (1 - a) * fxPrev
-        fyPrev = a * y + (1 - a) * fyPrev
-        xPrev = x
-        yPrev = y
-        return [fxPrev, fyPrev]
-      }
-    }
-  }
-  const gazeFilter = makeOneEuro(0.5, 0.01, 1.0)
-  let gazeWasActive = false
   function onLensMove(ev: MouseEvent): void {
     mouseX = ev.clientX
     mouseY = ev.clientY
@@ -365,7 +323,7 @@ export function apply(ctx: CordisCtx): void {
   // 无脸 / 离开座位时 getGaze() 返回 null，自动回落鼠标（无需额外逻辑）。
   function pumpLens(): void {
     if (focusLens === null) { lensRaf = null; return }
-    // 位置：眼动新鲜 → 文字吸附 + One Euro 滤波（杀抖动又跟得上眼跳）；否则直接跟鼠标（精确不滞后）
+    // 位置：眼动新鲜 → （可选文字吸附 +）死区 + EMA 平滑（求稳，不追眼跳）；否则直接跟鼠标
     const g = store.settings.gazeEnabled ? getGaze() : null
     if (g !== null) {
       let tx = g.x
@@ -374,14 +332,16 @@ export function apply(ctx: CordisCtx): void {
         const s = snapToText(tx, ty)
         if (s !== null) { tx = s.x; ty = s.y }
       }
-      if (!gazeWasActive) { gazeFilter.reset(lensX, lensY); gazeWasActive = true }
-      const f = gazeFilter.filter(tx, ty, performance.now())
-      lensX = f[0]
-      lensY = f[1]
+      // 死区：注视点相对当前透镜只移动一点点（< GAZE_DEADZONE）当作抖动忽略、冻结不动 → 只有大幅移动才跟随
+      if (Math.abs(tx - lensX) < GAZE_DEADZONE && Math.abs(ty - lensY) < GAZE_DEADZONE) {
+        tx = lensX
+        ty = lensY
+      }
+      lensX += (tx - lensX) * GAZE_SMOOTH
+      lensY += (ty - lensY) * GAZE_SMOOTH
     } else {
       lensX = mouseX
       lensY = mouseY
-      gazeWasActive = false
     }
     // 入场：先全屏模糊，再"汇聚"到视线处的圆。半径用字面量拼进 mask（最稳），圆心位置用 CSS 变量。
     const p = Math.min(1, (performance.now() - lensStart) / LENS_ENTER_MS)
