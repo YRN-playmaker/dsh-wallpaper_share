@@ -47,6 +47,7 @@
 
 ### 🐛 修复
 
+- **浅色主题下按钮文字不可见**：专注 / 眼动 / 文字吸附按钮（未开启态）与「节能 / 性能 / 增强」滑块（未选中态）此前硬编码 `#ffffff` 文字，浅色主题下白字白底看不见。改为基线用自适应 token（`--dsw-alias-label-primary` 等，浅色主题自动深字、选中为反色药丸），深色主题再用 `body[data-ds-dark-theme]` 覆盖回锁定设计（白字 / 选中白底黄字 / 开启白底蓝字）；眼动状态文字（跟随中 / 出错 / 加载中）同样改为随主题取色。
 - **原生捕获器 stdin 关闭后单核 100% 空转**：控制命令内层循环的 `Disconnected` 分支只置 `running=false` 而未 `break`，`stdin_reader` 线程结束丢弃发送端后 `try_recv` 会永远返回 `Disconnected`，导致主循环死转、协议路径卡死。补 `break`（生产环境父进程关管道 / 发完 `stop` 时同样受益）。
 - **静态 / 暂停壁纸被误判 stalled 反复重启**：`SceneAdapter.checkHealth` 原以「最近一帧」计时，静态或暂停的壁纸只发 `[STATUS]` 心跳、长时间无新帧，会被 4s 超时反复重启。改为取「最近帧 or 最近心跳」较大者判活（新增 `SceneRendererProcess.lastBeatAt`）。
 - **切换壁纸泄漏 renderer 进程（卡顿主因）**：`setTarget` 先 `stopProcess()` kill 旧进程并置 `this.process=null`，紧接着 `start()` 把 `this.process` 指向新进程；但旧进程的 `'exit'` 事件是**异步稍后**才触发的，`onExit` 里无条件 `this.process = null` 会把**新进程**的引用清空，使新进程沦为无人跟踪的孤儿（仍在后台满负荷编码）。每切换一次壁纸泄漏一个 → 实测累积 11 个 `we-capture.exe` 同时跑、单核全被占满 → 整个壁纸与浏览器一起卡。修复：`onExit` 绑定退出的进程实例，仅当 `this.process === proc` 时才清理 / 重启；重启 `setTimeout` 亦加 `this.process === null` 守卫。

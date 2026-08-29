@@ -520,11 +520,11 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
                     {t.gazeSnap}
                   </button>
                   {gazeStatus === 'running'
-                    ? <span style={{ fontSize: '11px', color: '#7ee2a8', alignSelf: 'center' }}>{t.gazeStatusRunning}</span>
+                    ? <span className="wesync-gaze-status is-running">{t.gazeStatusRunning}</span>
                     : gazeStatus === 'error'
-                      ? <span style={{ fontSize: '11px', color: '#fdba74', alignSelf: 'center' }}>{t.gazeStatusError}{gazeError !== '' ? '：' + gazeError : ''}</span>
+                      ? <span className="wesync-gaze-status is-error">{t.gazeStatusError}{gazeError !== '' ? '：' + gazeError : ''}</span>
                       : gazeEnabled
-                        ? <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.6)', alignSelf: 'center' }}>{t.gazeStatusLoading}</span>
+                        ? <span className="wesync-gaze-status is-loading">{t.gazeStatusLoading}</span>
                         : null}
                 </>
               )
