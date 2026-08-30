@@ -1,9 +1,8 @@
-﻿node_modules/
+node_modules/
 *.log
 # 对比分析用的克隆与独立子仓库（各自有自己的 git）
 _compare/
 dwp-spec/
-dsh-wallpaper_edit/
 dwp-runtime-web/
 dwp-registry/
 # 本地缓存 / 打包残留 / 诊断转储（不进版本库）
