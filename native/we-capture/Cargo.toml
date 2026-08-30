@@ -1,6 +1,6 @@
 [package]
 name = "we-capture"
-version = "0.1.0"
+version = "0.3.0"
 edition = "2021"
 description = "Wallpaper Engine 实时画面捕获器：用 Windows Graphics Capture 抓 WE 壁纸窗口，按 SceneAdapter 协议输出 JPEG 帧流"
 license = "MIT"
@@ -21,6 +21,7 @@ windows = { version = "0.58", features = [
   "Win32_System_WinRT_Direct3D11",
   "Win32_System_WinRT_Graphics_Capture",
   "Win32_System_Threading",
+  "Win32_Graphics_Gdi",
   "Win32_UI_WindowsAndMessaging",
   "Graphics_DirectX",
   "Graphics_DirectX_Direct3D11",

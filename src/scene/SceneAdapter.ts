@@ -42,6 +42,14 @@ export interface SceneTarget {
   kind: string
 }
 
+/** 从显示器 key（如 "Monitor2"）提取序号；无法解析返回 undefined（renderer 自行挑选） */
+function monitorIndexOf(key: string): number | undefined {
+  const m = /(\d+)/.exec(key)
+  if (m === null) return undefined
+  const n = Number(m[1])
+  return Number.isInteger(n) && n >= 1 ? n : undefined
+}
+
 export interface SceneAdapterOptions {
   config: SceneRendererConfig & {
     width: number
@@ -197,6 +205,9 @@ export class SceneAdapter {
       height: this.config.height,
       fps: this.config.fps,
       quality: this.config.quality,
+      // 目标显示器序号（WE MonitorN）：捕获型 renderer（we-capture ≥0.2.0）用它挑对应显示器上的
+      // 壁纸窗口；参考 renderer 忽略该字段。多显示器时让「背景显示器」锁定对性能模式生效。
+      monitor: monitorIndexOf(target.key),
     })
   }
 

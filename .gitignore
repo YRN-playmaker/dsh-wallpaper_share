@@ -5,3 +5,13 @@ _compare/
 dsh-wallpaper_edit/
 dwp-runtime-web/
 dwp-registry/
+# 本地缓存 / 打包残留 / 诊断转储（不进版本库）
+.pnpm-store/
+*.tgz
+tools/test-branch/
+tools/test-branch.zip
+tools/lwe-src/
+tools/*.txt
+tools/*.png
+tools/*.svg
+_dev/*.txt

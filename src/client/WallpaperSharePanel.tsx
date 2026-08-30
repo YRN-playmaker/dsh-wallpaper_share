@@ -6,6 +6,7 @@
 import { useEffect, useState } from 'react'
 import { store, type WeSyncInfo } from './index'
 import { startGaze, stopGaze, calibrate, onGazeStatus, hasCalibrationData, type GazeStatus } from './GazeLens.ts'
+import { fetchCatalog, fetchInstalled, type MarketEntry } from './market-api.ts'
 
 /* =========================================================================
  * 1. 国际化字典 (i18n Dictionary)
@@ -32,6 +33,9 @@ const DICT = {
     syncOff: '⏻ 同步关闭',
     flashSyncOn: '已开启壁纸同步',
     flashSyncOff: '已关闭壁纸同步',
+    dwpMountedHint: '已挂载 DWP 壁纸为全局背景：WE 同步已暂停、性能模式暂不可用。',
+    syncPaused: '⏻ 同步暂停（DWP）',
+    perfDisabledHint: '挂载 DWP 期间性能模式不可用',
 
     // 视觉效果与专注模式
     visualTitle: '视觉效果 · 即时生效',
@@ -72,25 +76,27 @@ const DICT = {
     blur: '背景模糊',
     shadow: '阴影深度',
 
-    // 壁纸库（原"应用启动器"，现读取全部类型并支持筛选）
-    appsTitle: '壁纸库 · 场景 / 视频 / 图片 / 应用 / 网页',
+    // 壁纸库（精简为 dwp壁纸 / we应用 两组）
+    appsTitle: '壁纸库 · dwp壁纸 / we应用',
     collapse: '收起',
     listApps: '浏览壁纸',
-    appsEmpty: '未找到壁纸（扫描 workshop + projects + 自定义目录）。点击卡片在资源管理器中打开所在文件夹。',
-    appsNoMatch: '没有匹配当前筛选 / 搜索的壁纸',
+    appsEmpty: '暂无内容。',
+    appsNoMatch: '没有匹配当前搜索的壁纸',
     openFolder: '打开文件夹：',
+    mountHint: '点击挂载为壁纸：',
+    unmountHint: '点击取消挂载：',
+    unmounted: '已取消挂载',
     noPreview: '无预览',
     loadFailed: '列表加载失败',
     openFolderFailed: '打开文件夹失败',
-    typeAll: '全部',
-    typeScene: '场景',
-    typeVideo: '视频',
-    typeImage: '图片',
-    typeApplication: '应用',
-    typeWeb: '网页',
-    typeOther: '其他',
+    mountFailed: '挂载失败',
+    typeDwp: 'dwp壁纸',
+    typeWeApp: 'we 应用',
+    mounted: '已挂载',
     searchPlaceholder: '搜索标题…',
     showMore: '显示更多',
+    dwpEmpty: '还没有已安装的 DWP 壁纸，去「wallpaper_market」拉取。',
+    weAppEmpty: '没有 WE 应用类壁纸。',
     appsCount: (total: number, matched: number) => (total === matched ? `共 ${String(total)} 个` : `共 ${String(total)} 个 · 匹配 ${String(matched)} 个`),
 
     // 壁纸读取位置（自定义目录）
@@ -126,6 +132,9 @@ const DICT = {
     syncOff: '⏻ Sync Disabled',
     flashSyncOn: 'Wallpaper sync enabled',
     flashSyncOff: 'Wallpaper sync disabled',
+    dwpMountedHint: 'A DWP wallpaper is mounted as the global background: WE sync is paused and Perf mode is unavailable.',
+    syncPaused: '⏻ Sync Paused (DWP)',
+    perfDisabledHint: 'Perf mode is unavailable while a DWP is mounted',
 
     // Visuals & Focus mode
     visualTitle: 'Visual Adjustments · Instant',
@@ -166,25 +175,27 @@ const DICT = {
     blur: 'Background Blur',
     shadow: 'Shadow Depth',
 
-    // Wallpaper library (was "App Launcher"; now all types with filtering)
-    appsTitle: 'Wallpaper Library · Scene / Video / Image / App / Web',
+    // Wallpaper library (simplified to two groups: DWP / WE apps)
+    appsTitle: 'Wallpaper Library · DWP / WE Apps',
     collapse: 'Collapse',
     listApps: 'Browse Wallpapers',
-    appsEmpty: 'No wallpapers found (scanned workshop + projects + custom dirs). Click a card to open its folder in File Explorer.',
-    appsNoMatch: 'No wallpapers match the current filter / search',
+    appsEmpty: 'Nothing here yet.',
+    appsNoMatch: 'No wallpapers match the current search',
     openFolder: 'Open folder: ',
+    mountHint: 'Click to mount as wallpaper: ',
+    unmountHint: 'Click to unmount: ',
+    unmounted: 'Unmounted',
     noPreview: 'No Preview',
     loadFailed: 'Failed to load list',
     openFolderFailed: 'Failed to open folder',
-    typeAll: 'All',
-    typeScene: 'Scene',
-    typeVideo: 'Video',
-    typeImage: 'Image',
-    typeApplication: 'App',
-    typeWeb: 'Web',
-    typeOther: 'Other',
+    mountFailed: 'Mount failed',
+    typeDwp: 'DWP',
+    typeWeApp: 'WE Apps',
+    mounted: 'Mounted',
     searchPlaceholder: 'Search titles…',
     showMore: 'Show more',
+    dwpEmpty: 'No installed DWP wallpapers yet — pull some in "wallpaper_market".',
+    weAppEmpty: 'No WE application wallpapers.',
     appsCount: (total: number, matched: number) => (total === matched ? `Total ${String(total)}` : `Total ${String(total)} · Matched ${String(matched)}`),
 
     // Wallpaper read locations (custom dirs)
@@ -250,16 +261,29 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
   const [appsOpen, setAppsOpen] = useState(false)
   const [apps, setApps] = useState<Array<{ id: string; title: string; file: string; type: string; hasPreview: boolean }>>([])
   const [appsCounts, setAppsCounts] = useState<Record<string, number>>({})
-  const [typeFilter, setTypeFilter] = useState('all')
+  const [typeFilter, setTypeFilter] = useState('dwp')
   const [search, setSearch] = useState('')
   const [visible, setVisible] = useState(60)
   const [appsError, setAppsError] = useState('')
+  const [dwpCards, setDwpCards] = useState<Array<{ id: string; name: string; thumbnail: string; version: string }>>([])
   const [dirs, setDirs] = useState<string[]>([])
   const [dirInput, setDirInput] = useState('')
   const [dirStatus, setDirStatus] = useState('')
 
+  // store 是唯一事实源：每次 notify 都把设置项镜像回本地 state。
+  // 面板只在挂载时读一次 store 的话，外部对设置的修正（显示器锁失效回退自动、眼动启动失败回拨 off）
+  // 就永远显示不出来的；React 对同值 setState 会自动跳过，2.5s 一次的轮询不会造成额外重渲染。
   useEffect(() => store.subscribe(() => {
     setInfo(store.info)
+    setEnabled(store.settings.enabled)
+    setAlpha(store.settings.panelAlpha)
+    setBlur(store.settings.blur)
+    setShadow(store.settings.shadow)
+    setMonitor(store.settings.monitor)
+    setFocus(store.settings.focus)
+    setRenderMode(store.settings.renderMode)
+    setGazeEnabled(store.settings.gazeEnabled)
+    setGazeSnapText(store.settings.gazeSnapText)
     force((x) => x + 1)
   }), [])
 
@@ -367,11 +391,35 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
     store.notify()
   }
 
-  // 壁纸库：列出全部类型壁纸（场景/视频/图片/应用/网页）；点击缩略图卡片在资源管理器中打开所在文件夹
+  // 壁纸库：两组——dwp壁纸（已装 DWP，点击挂载）/ we应用（WE application 类，点击打开文件夹）
   const onAppsToggle = async (): Promise<void> => {
     const next = !appsOpen
     setAppsOpen(next)
-    if (next) void loadApps()
+    if (next) { void loadApps(); void loadDwp() }
+  }
+
+  const loadDwp = async (): Promise<void> => {
+    try {
+      const f = (url: string, init?: { cache?: 'no-store' }) => fetch(url, init)
+      const [catalog, installed] = await Promise.all([fetchCatalog(f), fetchInstalled(f)])
+      const byId = new Map(catalog.map((e: MarketEntry) => [e.id, e]))
+      setDwpCards(installed.map((it) => {
+        const e = byId.get(it.id)
+        return { id: it.id, name: e ? (resolveLang() === 'en' ? e.name.en : e.name.zh) : it.id, thumbnail: e?.dwp.thumbnail ?? '', version: it.version }
+      }))
+    } catch { /* dwp 列表拉取失败不阻断其余 UI */ }
+  }
+
+  // 点击切换：已挂载 → 取消挂载；未挂载 → 挂载为全局背景（权威态取共享 store.settings.dwpMounted）
+  const onToggleDwp = async (id: string): Promise<void> => {
+    if (store.settings.dwpMounted === id) {
+      await store.actions.unmountDwp()
+      flash(t.unmounted)
+      return
+    }
+    const ok = await store.actions.mountDwp(id)
+    if (ok) flash(t.mountHint + id)
+    else flash(t.mountFailed)
   }
 
   const onAppOpen = (id: string): void => {
@@ -438,21 +486,13 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
     } catch { /* 忽略 */ }
   }
 
-  // 壁纸库：类型 + 标题搜索的前端筛选（数据一次性来自 /we-sync/apps 缓存）
-  const typeLabel = (tp: string): string =>
-    tp === 'scene' ? t.typeScene
-      : tp === 'video' ? t.typeVideo
-        : tp === 'image' ? t.typeImage
-          : tp === 'application' ? t.typeApplication
-            : tp === 'web' ? t.typeWeb
-              : t.typeOther
-  // 全部 / 场景 / 视频 / 图片 / 应用 恒显示（用户要求的四类筛选）；网页 / 其他 仅在有内容时出现
-  const filterTypes = ['all', 'scene', 'video', 'image', 'application']
-    .concat((appsCounts.web ?? 0) > 0 ? ['web'] : [])
-    .concat((appsCounts.other ?? 0) > 0 ? ['other'] : [])
+  // 壁纸库：两组（dwp壁纸 / we应用）+ 标题搜索前端筛选
+  const weApps = apps.filter((a) => a.type === 'application')
   const kw = search.trim().toLowerCase()
-  const filteredApps = apps.filter((a) => (typeFilter === 'all' || a.type === typeFilter) && (kw === '' || a.title.toLowerCase().includes(kw)))
+  const filteredApps = weApps.filter((a) => kw === '' || a.title.toLowerCase().includes(kw))
+  const filteredDwp = dwpCards.filter((d) => kw === '' || d.name.toLowerCase().includes(kw))
   const shownApps = filteredApps.slice(0, visible)
+  const shownDwp = filteredDwp.slice(0, visible)
 
   const wallpaper = info !== null && info.wallpaper !== null ? info.wallpaper : null
   const title = wallpaper === null
@@ -492,9 +532,10 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
               </div>
             )
           : null}
+        {store.settings.dwpMounted !== null ? <div className="wesync-dwp-banner">{t.dwpMountedHint}</div> : null}
         <div className="wesync-actions">
-          <button className="wesync-btn" onClick={onPower}>
-            {enabled ? t.syncOn : t.syncOff}
+          <button className="wesync-btn" onClick={onPower} disabled={store.settings.dwpMounted !== null}>
+            {store.settings.dwpMounted !== null ? t.syncPaused : (enabled ? t.syncOn : t.syncOff)}
           </button>
         </div>
         {status !== '' ? <div className="wesync-status">{status}</div> : null}
@@ -502,16 +543,21 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
       <div className="wesync-card">
         <div className="wesync-sub">{t.visualTitle}</div>
         <div className="wesync-seg" role="group" aria-label={t.renderModeTitle}>
-          {(['eco', 'perf', 'enhanced'] as const).map((m) => (
-            <button
-              key={m}
-              type="button"
-              className={['wesync-seg-item', renderMode === m ? 'wesync-seg-active' : ''].join(' ')}
-              onClick={() => onRenderMode(m)}
-            >
-              {m === 'eco' ? t.modeEco : m === 'perf' ? t.modePerf : t.modeEnhanced}
-            </button>
-          ))}
+          {(['eco', 'perf', 'enhanced'] as const).map((m) => {
+            const perfOff = m === 'perf' && store.settings.dwpMounted !== null
+            return (
+              <button
+                key={m}
+                type="button"
+                disabled={perfOff}
+                title={perfOff ? t.perfDisabledHint : ''}
+                className={['wesync-seg-item', renderMode === m ? 'wesync-seg-active' : ''].join(' ')}
+                onClick={() => onRenderMode(m)}
+              >
+                {m === 'eco' ? t.modeEco : m === 'perf' ? t.modePerf : t.modeEnhanced}
+              </button>
+            )
+          })}
         </div>
         <div className="wesync-actions">
           <button className={['wesync-btn', focus ? 'wesync-focusOn' : 'wesync-focusOff'].join(' ')} onClick={onFocus}>
@@ -590,34 +636,57 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
           </div>
           {appsOpen
             ? (
-                appsError !== ''
-                  ? <div className="wesync-app-empty">{appsError}</div>
-                  : apps.length === 0
-                    ? <div className="wesync-app-empty">{t.appsEmpty}</div>
-                    : (
-                        <>
-                          <div className="wesync-apps-filters">
-                            {filterTypes.map((tp) => (
-                              <button
-                                key={tp}
-                                className={['wesync-chip', typeFilter === tp ? 'wesync-chip-on' : ''].join(' ')}
-                                onClick={() => { setTypeFilter(tp); setVisible(60) }}
-                              >
-                                {(tp === 'all' ? t.typeAll : typeLabel(tp)) + ' ' + String(tp === 'all' ? (appsCounts.all ?? apps.length) : (appsCounts[tp] ?? 0))}
-                              </button>
-                            ))}
-                            <input
-                              className="wesync-app-search"
-                              placeholder={t.searchPlaceholder}
-                              value={search}
-                              onChange={(e) => { setSearch(e.target.value); setVisible(60) }}
-                            />
-                          </div>
-                          <div className="wesync-apps-count">{t.appsCount(apps.length, filteredApps.length)}</div>
-                          {filteredApps.length === 0
+                <>
+                  <div className="wesync-apps-filters">
+                    <button className={['wesync-chip', typeFilter === 'dwp' ? 'wesync-chip-on' : ''].join(' ')} onClick={() => { setTypeFilter('dwp'); setVisible(60) }}>
+                      {t.typeDwp + ' ' + String(dwpCards.length)}
+                    </button>
+                    <button className={['wesync-chip', typeFilter === 'weapp' ? 'wesync-chip-on' : ''].join(' ')} onClick={() => { setTypeFilter('weapp'); setVisible(60) }}>
+                      {t.typeWeApp + ' ' + String(weApps.length)}
+                    </button>
+                    <input
+                      className="wesync-app-search"
+                      placeholder={t.searchPlaceholder}
+                      value={search}
+                      onChange={(e) => { setSearch(e.target.value); setVisible(60) }}
+                    />
+                  </div>
+                  {typeFilter === 'dwp'
+                    ? (
+                        dwpCards.length === 0
+                          ? <div className="wesync-app-empty">{t.dwpEmpty}</div>
+                          : filteredDwp.length === 0
                             ? <div className="wesync-app-empty">{t.appsNoMatch}</div>
                             : (
                                 <>
+                                  <div className="wesync-apps-count">{t.appsCount(dwpCards.length, filteredDwp.length)}</div>
+                                  <div className="wesync-apps-grid">
+                                    {shownDwp.map((d) => (
+                                      <div key={d.id} className="wesync-app-card" title={(store.settings.dwpMounted === d.id ? t.unmountHint : t.mountHint) + d.name} onClick={() => { void onToggleDwp(d.id) }}>
+                                        <div className="wesync-app-thumbwrap">
+                                          {d.thumbnail !== ''
+                                            ? <img className="wesync-app-thumb" src={d.thumbnail} alt={d.name} loading="lazy" onError={(e) => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden' }} />
+                                            : <div className="wesync-app-thumb" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{t.noPreview}</div>}
+                                          <span className={'wesync-app-badge wesync-badge-' + (store.settings.dwpMounted === d.id ? 'video' : 'image')}>{store.settings.dwpMounted === d.id ? t.mounted : t.typeDwp}</span>
+                                        </div>
+                                        <div className="wesync-app-title">{d.name}</div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                  {filteredDwp.length > shownDwp.length
+                                    ? <button className="wesync-btn wesync-show-more" onClick={() => setVisible((v) => v + 60)}>{t.showMore + ' (+60)'}</button>
+                                    : null}
+                                </>
+                              )
+                      )
+                    : (
+                        weApps.length === 0
+                          ? <div className="wesync-app-empty">{t.weAppEmpty}</div>
+                          : filteredApps.length === 0
+                            ? <div className="wesync-app-empty">{t.appsNoMatch}</div>
+                            : (
+                                <>
+                                  <div className="wesync-apps-count">{t.appsCount(weApps.length, filteredApps.length)}</div>
                                   <div className="wesync-apps-grid">
                                     {shownApps.map((app) => (
                                       <div key={app.id} className="wesync-app-card" title={t.openFolder + app.title} onClick={() => onAppOpen(app.id)}>
@@ -625,7 +694,7 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
                                           {app.hasPreview
                                             ? <img className="wesync-app-thumb" src={'/we-sync/apps/preview?id=' + encodeURIComponent(app.id)} alt={app.title} loading="lazy" />
                                             : <div className="wesync-app-thumb" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{t.noPreview}</div>}
-                                          <span className={'wesync-app-badge wesync-badge-' + app.type}>{typeLabel(app.type)}</span>
+                                          <span className="wesync-app-badge wesync-badge-application">{t.typeWeApp}</span>
                                         </div>
                                         <div className="wesync-app-title">{app.title}</div>
                                       </div>
@@ -635,10 +704,10 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
                                     ? <button className="wesync-btn wesync-show-more" onClick={() => setVisible((v) => v + 60)}>{t.showMore + ' (+60)'}</button>
                                     : null}
                                 </>
-                              )}
-                        </>
-                      )
-            )
+                              )
+                      )}
+                </>
+              )
             : null}
         </div>
       </div>

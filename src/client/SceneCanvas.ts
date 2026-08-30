@@ -14,8 +14,10 @@ export interface SceneCanvasHandlers {
   onLiveChange?: (live: boolean) => void
 }
 
-const MAX_RECONNECT = 5
+/** 重连基础间隔（秒数 = 失败次数，线性退避） */
 const RECONNECT_DELAY_MS = 1000
+/** 重连间隔上限：renderer 崩溃自动重启 / 睡眠唤醒可能远超几秒，必须一直等到它回来 */
+const RECONNECT_DELAY_MAX_MS = 10000
 
 export class SceneCanvas {
   private el: HTMLCanvasElement | null = null
@@ -96,7 +98,12 @@ export class SceneCanvas {
   private connect(url: string): void {
     if (this.closed) return
     let ws: WebSocket
-    try { ws = new WebSocket(url) } catch { this.fail(); return }
+    try {
+      ws = new WebSocket(url)
+    } catch {
+      this.scheduleReconnect(url)
+      return
+    }
     ws.binaryType = 'arraybuffer'
     this.ws = ws
     ws.onopen = () => { this.retries = 0 }
@@ -105,20 +112,22 @@ export class SceneCanvas {
     ws.onclose = () => {
       if (this.closed) return
       this.ws = null
-      if (this.retries < MAX_RECONNECT) {
-        this.retries += 1
-        this.reconnectTimer = setTimeout(() => this.connect(url), RECONNECT_DELAY_MS)
-      } else {
-        this.fail()
-      }
+      this.setLive(false)
+      this.scheduleReconnect(url)
     }
   }
 
-  private fail(): void {
-    this.setLive(false)
-    this.closed = true
-    // 通知调用方回退（texture/preview）
-    // 注意：不在此处自毁，交给调用方 stop()
+  /** 断线后无限重连（线性退避到上限）。服务端 renderer 崩溃会自动重启并继续广播，
+   *  客户端不能因「重试耗尽」永久放弃——那会让 live 背景冻结成最后一帧直到换壁纸。 */
+  private scheduleReconnect(url: string): void {
+    if (this.closed) return
+    this.retries += 1
+    const delay = Math.min(RECONNECT_DELAY_MS * this.retries, RECONNECT_DELAY_MAX_MS)
+    if (this.reconnectTimer !== null) clearTimeout(this.reconnectTimer)
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null
+      this.connect(url)
+    }, delay)
   }
 
   private onMessage(ev: MessageEvent): void {

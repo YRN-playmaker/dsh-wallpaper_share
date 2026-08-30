@@ -10,7 +10,10 @@ import { MarketPanel } from './MarketPanel.tsx'
 import { PANEL_CSS, MARKET_CSS } from './panelStyle.ts'
 import { SceneCanvas } from './SceneCanvas.ts'
 import { SceneModelRenderer } from './SceneModelRenderer.ts'
-import { getGaze } from './GazeLens.ts'
+import { getGaze, startGaze, isGazeRunning } from './GazeLens.ts'
+import { createPersistentSettings } from './settings.ts'
+import { DwpBackgroundLayer } from './dwp-background.ts'
+import { applyDwp, unapplyDwp, fetchApplied } from './market-api.ts'
 
 export const inject = ['slots', 'theme']
 
@@ -70,6 +73,8 @@ export interface WeSyncSettings {
   immersive: boolean
   /** 是否有待用户授权的请求（黄色状态信号） */
   approvalPending: boolean
+  /** 当前挂载为 DSH 背景的 DWP id；null = 未挂载（走 WE 同步）。派生态，不落盘（服务端 applied.json 为事实源）。 */
+  dwpMounted: string | null
 }
 
 /** 专注模式：任务进行中（本版下调的全局值；鼠标圆内另按 FOCUS_LENS 加浓） */
@@ -85,6 +90,9 @@ export function effectiveVisuals(): { panelAlpha: number; blur: number; shadow: 
   return { panelAlpha: store.settings.panelAlpha, blur: store.settings.blur, shadow: store.settings.shadow }
 }
 
+/** 出厂默认值：无存档、存档损坏或字段越界时的回退基线。 */
+export const DEFAULT_SETTINGS: WeSyncSettings = { enabled: true, panelAlpha: 72, blur: 6, shadow: 30, monitor: '', focus: false, taskActive: false, renderMode: 'perf', gazeEnabled: false, gazeSnapText: true, immersive: false, approvalPending: false, dwpMounted: null }
+
 /** 包内单例 store：apply 循环更新，面板组件订阅渲染。 */
 export const store = {
   info: null as WeSyncInfo | null,
@@ -92,13 +100,19 @@ export const store = {
    *  模块级持久：conversation.view 是 session 作用域插槽，切会话/轨迹会重挂载面板，
    *  重挂载时直接读这里而不是重新探测，语言才不会"弹回英语"。 */
   locale: null as 'zh' | 'en' | null,
-  settings: { enabled: true, panelAlpha: 72, blur: 6, shadow: 30, monitor: '', focus: false, taskActive: false, renderMode: 'perf', gazeEnabled: false, gazeSnapText: true, immersive: false, approvalPending: false } as WeSyncSettings,
+  /** 用户偏好（同步开关 / 渲染模式 / 显示器锁 / 透明度·模糊·阴影 / 专注·眼动）经 localStorage 持久化：
+   *  写即存，刷新或重启 DSH 后自动恢复。实现见 settings.ts —— 包一层 Proxy，所有
+   *  `store.settings.x = v` 的既有赋值点无需改动即自动落盘；派生态（taskActive /
+   *  approvalPending）与临时视图态（immersive）不在落盘白名单内。 */
+  settings: createPersistentSettings(DEFAULT_SETTINGS),
   listeners: new Set<() => void>(),
   actions: {
     applyTheme: (): void => {},
     applyBackground: (): void => {},
     applyImmersive: (): void => {},
     repoll: (): void => {},
+    mountDwp: async (_id: string): Promise<boolean> => false,
+    unmountDwp: async (): Promise<void> => {},
   },
   subscribe(fn: () => void): () => void {
     store.listeners.add(fn)
@@ -218,6 +232,10 @@ export function apply(ctx: CordisCtx): void {
     stopSceneCanvas()
     stopSceneModelRenderer()
   }
+
+  // DWP 全局背景层（真实渲染）：与 WE 各层互斥，由 applyBackground 的 dwpMounted 分支驱动。
+  const dwpBg = new DwpBackgroundLayer()
+  function stopDwp(): void { dwpBg.unmount() }
 
   function setMedia(el: HTMLVideoElement | HTMLIFrameElement | null): void {
     if (mediaEl !== null && mediaEl !== el) {
@@ -473,6 +491,27 @@ export function apply(ctx: CordisCtx): void {
   statusObserver.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-sidebar-collapsed'] })
 
   function applyBackground(): void {
+    // DWP 挂载优先：接管背景层，停掉所有 WE 层，忽略 WE info（避免同步 / 性能模式与 DWP 抢背景）。
+    if (store.settings.dwpMounted !== null) {
+      const lensActive = store.settings.focus
+      const blurPx = lensActive ? 0 : Math.round(effectiveVisuals().blur)
+      const scale = 1 + blurPx / 400
+      const shadowAlpha = (effectiveVisuals().shadow / 100) * 0.60
+      stopSceneLayers()
+      setMedia(null)
+      styleTag.textContent =
+        'html { background-color: #0d0e12; }' +
+        'body::after { content: ""; position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: -1; ' +
+        'background: linear-gradient(rgba(6,8,12,' + shadowAlpha.toFixed(3) + '), rgba(6,8,12,' + (shadowAlpha * 0.85).toFixed(3) + ')); }'
+      void dwpBg.mount(store.settings.dwpMounted)
+        .then(() => dwpBg.applyVisuals(blurPx, scale))
+        .catch((e: unknown) => { console.error('[dwp] 背景挂载失败：', e) })
+      applyImmersive()
+      applyFocusLens()
+      return
+    }
+    // 非 DWP：先撤掉可能存在的 DWP 层，再走 WE 管线
+    stopDwp()
     const info = store.info
     const visuals = effectiveVisuals()
     const enabled = store.settings.enabled
@@ -586,6 +625,12 @@ export function apply(ctx: CordisCtx): void {
       const res = await fetch('/we-sync/state' + monitorQuery, { cache: 'no-store' })
       if (!res.ok) return
       const info = await res.json() as WeSyncInfo
+      // 存档里的显示器锁可能已经过期（拔掉 / 改名了）：不在当前列表中就回退"自动跟随"，
+      // 否则面板下拉框会选到一个不存在的项。node 半的 effectiveKey 本就会兜底，这里只是让 UI 说实话。
+      if (store.settings.monitor !== '' && Array.isArray(info.monitors) && info.monitors.length > 0 &&
+          !info.monitors.some((m) => m.key === store.settings.monitor)) {
+        store.settings.monitor = ''
+      }
       const changed = typeof info.hash === 'string' && info.hash !== lastHash
       const portChanged = typeof info.webPort === 'number' && info.webPort !== lastWebPort
       store.info = info
@@ -604,6 +649,37 @@ export function apply(ctx: CordisCtx): void {
   store.actions.applyImmersive = applyImmersive
   store.actions.repoll = () => { lastHash = ''; void poll() }
 
+  // —— DWP 挂载 / 卸载：真实渲染为全局背景，并处理与 WE 的冲突（关同步、禁性能、恢复）——
+  let dwpPrevEnabled = true   // 挂载前的同步开关值，卸载时恢复
+  store.actions.mountDwp = async (id: string): Promise<boolean> => {
+    const r = await applyDwp((url, init) => fetch(url, init), id)
+    if (!r.ok) return false
+    if (store.settings.dwpMounted === null) dwpPrevEnabled = store.settings.enabled
+    store.settings.dwpMounted = id
+    store.settings.enabled = false                                              // 冲突①：关 WE 同步，避免抢背景
+    if (store.settings.renderMode === 'perf') store.settings.renderMode = 'enhanced'  // 冲突②：性能(捕获 WE 桌面)→增强
+    store.notify()
+    applyBackground()
+    return true
+  }
+  store.actions.unmountDwp = async (): Promise<void> => {
+    await unapplyDwp((url, init) => fetch(url, init))
+    store.settings.dwpMounted = null
+    store.settings.enabled = dwpPrevEnabled                                     // 恢复同步
+    store.notify()
+    applyBackground()
+  }
+  // 刷新 / 重启后恢复：服务端 applied.json 为准，重新挂载并重申冲突处理
+  void fetchApplied((url, init) => fetch(url, init)).then((applied) => {
+    if (applied === null) return
+    dwpPrevEnabled = true   // 刷新后无从得知挂载前的同步值，按"开"恢复（常见情形）
+    store.settings.dwpMounted = applied.id
+    store.settings.enabled = false
+    if (store.settings.renderMode === 'perf') store.settings.renderMode = 'enhanced'
+    store.notify()
+    applyBackground()
+  }).catch(() => { /* node 半未就绪，忽略 */ })
+
   ctx.effect(() => () => {
     styleTag.remove()
     panelStyleTag.remove()
@@ -614,6 +690,7 @@ export function apply(ctx: CordisCtx): void {
     document.removeEventListener('keydown', onImmersiveKey)
     document.removeEventListener('click', onDocClick, true)
     stopSceneLayers()
+    stopDwp()
     setMedia(null)
     if (themeDisposer !== null) { themeDisposer(); themeDisposer = null }
   })
@@ -642,6 +719,16 @@ export function apply(ctx: CordisCtx): void {
 
   applyTheme()
   applyBackground()
+
+  // 眼动开关同样持久化，但摄像头是"活"的会话态：刷新后得重新拉起。用户此前已授权（同源权限浏览器会记住），
+  // 这里只是恢复他离开时的状态。起不来（无摄像头 / 被拒绝 / CDN 不可达）就把开关拨回 off —— 绝不让面板
+  // 显示一个假的"已开启"而透镜其实在跟鼠标。
+  if (store.settings.gazeEnabled) {
+    void startGaze().then(() => {
+      if (!isGazeRunning()) store.settings.gazeEnabled = false
+      store.notify()
+    })
+  }
 
   slotsService.inject('conversation.view', () => slotsService.register(
     { name: 'conversation.view', id: 'wallpaper_share', order: 20, label: 'wallpaper_share' },

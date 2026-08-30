@@ -97,6 +97,9 @@ export function apply(ctx: CordisCtx): void {
     previews: {} as Record<string, PreviewInfo>,
     lastError: '',
     weDir: '',
+    /** 客户端经 WS ?monitor= 锁定的 scene 显示器 key（'' = 自动跟随最新变化）。
+     *  刷新/换壁纸时 syncSceneTarget 必须尊重它，不能悄悄重置为 auto。 */
+    sceneLock: '',
   }
 
   /** Scene renderer 编排器（在 detectWeDir 成功后实例化） */
@@ -619,10 +622,11 @@ export function apply(ctx: CordisCtx): void {
     return { key: monitor.key, file: monitor.file, kind: monitor.kind }
   }
 
-  /** 让 renderer 跟随当前生效的 scene 显示器（在 monitors 重建后调用） */
+  /** 让 renderer 跟随当前生效的 scene 显示器（在 monitors 重建后调用）。
+   *  优先尊重客户端锁定的显示器（key 失效时 effectiveKey 自动回退 latest/首个）。 */
   function syncSceneTarget(): void {
     if (sceneAdapter === null) return
-    sceneAdapter.setTarget(sceneTargetFor(effectiveKey('')))
+    sceneAdapter.setTarget(sceneTargetFor(effectiveKey(state.sceneLock)))
   }
 
   /** 汇总某台显示器的 scene renderer 状态（供 /we-sync/state 与 /we-sync/diag） */
@@ -1291,7 +1295,9 @@ export function apply(ctx: CordisCtx): void {
   }))
 
   /** scene 帧流 WebSocket：SceneCanvas 连到此路由接收二进制帧。
-   *  连接时按 ?monitor= 锁定渲染目标（空 = 跟随生效显示器）。 */
+   *  连接时按 ?monitor= 锁定渲染目标（空 = 跟随生效显示器）。
+   *  锁定是服务端状态：此后 refresh/换壁纸不会把它重置回 auto，
+   *  直到客户端以不带 monitor 的连接重新接入。 */
   disposers.push(webServer.registerUpgrade({
     path: '/we-sync/scene/stream',
     handler(req, socket, head) {
@@ -1299,9 +1305,8 @@ export function apply(ctx: CordisCtx): void {
         try { (socket as { destroy(): void }).destroy() } catch { /* 忽略 */ }
         return
       }
-      const key = monitorFromQuery(req)
-      const target = sceneTargetFor(key !== '' ? key : effectiveKey(''))
-      if (target !== null) sceneAdapter.setTarget(target)
+      state.sceneLock = monitorFromQuery(req)
+      syncSceneTarget()
       sceneAdapter.hub.handleUpgrade(
         req as unknown as import('node:http').IncomingMessage,
         socket as unknown as import('node:stream').Duplex,

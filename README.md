@@ -54,15 +54,17 @@ https://github.com/user-attachments/assets/4461d385-de62-42be-8420-7edce5606f44
 - **视觉效果滑块**：面板透明度 0–100% / 背景模糊 0–30px / 阴影深度 0–100%，即时生效
 - **后台任务可视化**：收纳侧边栏时，用圆形指示感知任务进度（绿 = 空闲 / 蓝 = 进行中 / 橙 = 需介入）
 - **同步开关**：一键启停
+- **设置持久化**：同步开关、渲染模式、显示器锁、三档滑块、专注 / 眼动等偏好写入 `localStorage`（键 `we-sync.settings`），刷新或重启 DSH 后自动恢复；沉浸模式等临时视图态与任务状态一律不落盘
 - **自诊断路由** `/we-sync/diag`（仅本机可访问，含 scene renderer 状态与纹理提取结果）
 
 ## 原生 scene 捕获渲染器
 
 - **原理**：WE 的 DX11 渲染窗口是 Progman 子窗口、WGC 不接受子窗口，故捕获其顶层根 Progman / WorkerW，BGRA→JPEG 按外部渲染器协议输出到 stdout。因为镜像的是 **WE 自身的渲染结果**，无需在 JS 端复刻对面那套 ~500KB 软渲染引擎，效果 100% 覆盖。
+- **多显示器**：顶层根窗横跨整个虚拟桌面，直接输出会把所有显示器的壁纸拼在一帧里。捕获器按锁定的那块 WPE 子窗矩形，用 `CopySubresourceRegion` + `D3D11_BOX` 只回读目标屏区域再编码（换算经 `ClientToScreen` / `GetClientRect` 归一化，DPI 缩放非 100% 同样正确）→ 输出严格是单块屏。
 - **打包**：`bin/we-capture.exe`（约 540KB，Windows-only）随 npm 包发布；Rust 源码在 `native/we-capture/`（`cargo build --release` 可重建，含 `--selftest` 诊断模式）。
 - **自动发现**：DSH 侧 `probeRenderer` 自动发现随包 `bin/we-capture.exe`（或本地 `native/we-capture/target/release/`）；`sceneRenderMode='auto'` 检测到原生渲染器即走 external（性能档），否则回退 browser。
 - **编码**：JPEG 编码器用 SIMD 的 `jpeg-encoder`，1080p 编码仅约 11ms；默认按原生 1920×1080 全清晰度输出，4K / 高刷屏可在 `CONFIG` 下调分辨率省 CPU。
-- **边界**：捕获会把桌面图标一并抓入（建议隐藏图标）；WE 全屏应用时默认暂停渲染 → 画面定格；镜像当前激活显示器的壁纸；WE 未运行 / 找不到窗口时自动回退浏览器渲染。
+- **边界**：捕获会把桌面图标一并抓入（建议隐藏图标）；WE 全屏应用时默认暂停渲染 → 画面定格；只镜像目标显示器（未锁定时取面积最大的那块 WPE 窗所在屏）；WE 未运行 / 找不到窗口时自动回退浏览器渲染。
 
 ## 专注透镜与眼动追踪
 
@@ -83,7 +85,7 @@ dsh plugin --profile web add github:YRN-playmaker/dsh-wallpaper_share
 #   从 GitHub 安装（仓库自带预构建 lib/，不需要构建许可）
 dsh plugin --profile web add dsh-wallpaper_share
 #   从 npm 安装
-dsh plugin --profile web add ./dsh-wallpaper_share-26.8.291.tgz
+dsh plugin --profile web add ./dsh-wallpaper_share-26.8.30.tgz
 #   本地 tarball 安装
 ```
 
@@ -108,6 +110,15 @@ dsh plugin --profile web add github:YRN-playmaker/dsh-wallpaper_share#test
 
 > 也可以在本仓库根目录直接 `pnpm install && pnpm build`（`tsdown` 独立构建，不依赖 DSH checkout）。
 > 原生捕获器：`cd native/we-capture && cargo build --release`（需 `x86_64-pc-windows-gnu` 或 `-msvc` 工具链），产物拷到 `bin/we-capture.exe`。
+>
+> ⚠️ **中文用户名机器上的 gnu 工具链构建**：MinGW 的 ld 不支持非 ASCII 路径，若 Windows 用户名含中文（如 `C:\Users\倪哥儿`），标准库明明存在也会报 `cannot find crt2.o / libstd-*.rlib / -lkernel32`。解决：给 `.rustup` 和 `.cargo` 各建一个纯 ASCII 路径的目录联接，再用 `--sysroot` 覆盖：
+> ```text
+> mklink /J C:\Users\Public\rustup-ji "C:\Users\<中文用户名>\.rustup"
+> mklink /J C:\Users\Public\cargo-ji  "C:\Users\<中文用户名>\.cargo"
+> set CARGO_HOME=C:\Users\Public\cargo-ji
+> set RUSTFLAGS=--sysroot=C:/Users/Public/rustup-ji/toolchains/stable-x86_64-pc-windows-gnu
+> cargo build --release
+> ```
 
 ## 配置
 
@@ -221,15 +232,17 @@ The slider at the top of the panel controls how the wallpaper is presented:
 - **Visual sliders**: panel opacity 0–100% / background blur 0–30px / shadow depth 0–100%, live
 - **Background task indicator**: a circular cue when the sidebar is collapsed (green idle / blue running / orange needs attention)
 - **Sync toggle**: one-click on/off
+- **Settings persistence**: sync toggle, render mode, monitor lock, the three visual sliders, focus and eye-tracking prefs are stored in `localStorage` (key `we-sync.settings`) and restored after a refresh or DSH restart; transient view state such as immersive mode and runtime-derived flags are deliberately not stored
 - **Self-diagnostic route** `/we-sync/diag` (localhost only; scene renderer status & texture extraction results)
 
 ## Native Scene Capture Renderer
 
 - **How**: WE's DX11 window is a child of Progman and WGC rejects child windows, so it captures the top-level Progman / WorkerW root, converts BGRA→JPEG and emits frames over stdout via the external-renderer protocol. Because it mirrors **WE's own rendering**, no ~500KB JS reimplementation is needed and effects are 100% covered.
+- **Multi-monitor**: that top-level root spans the entire virtual desktop, so emitting it raw would stitch every monitor's wallpaper into one frame. The capture renderer crops to the locked WPE child window's rect via `CopySubresourceRegion` + `D3D11_BOX` before encoding (mapping through `ClientToScreen` / `GetClientRect`, so it stays correct under non-100% DPI scaling) → output is strictly a single monitor.
 - **Packaging**: `bin/we-capture.exe` (~540KB, Windows-only) ships in the npm package; Rust source in `native/we-capture/` (`cargo build --release`, with a `--selftest` diagnostic mode).
 - **Auto-discovery**: DSH's `probeRenderer` finds the bundled `bin/we-capture.exe` (or local `native/we-capture/target/release/`); `sceneRenderMode='auto'` uses external (Perf) when detected, else browser.
 - **Encoding**: SIMD `jpeg-encoder`, ~11ms per 1080p frame; defaults to native 1920×1080, can be downscaled in `CONFIG` for 4K / high-refresh to save CPU.
-- **Boundaries**: captures desktop icons too (hide them for a clean bg); WE pauses rendering behind fullscreen apps → frame freezes; mirrors the active monitor's wallpaper; falls back to browser when WE isn't running.
+- **Boundaries**: captures desktop icons too (hide them for a clean bg); WE pauses rendering behind fullscreen apps → frame freezes; mirrors only the target monitor (largest WPE window when unlocked); falls back to browser when WE isn't running.
 
 ## Focus Lens & Eye Tracking
 
@@ -250,7 +263,7 @@ dsh plugin --profile web add github:YRN-playmaker/dsh-wallpaper_share
 #   install from GitHub (repo ships prebuilt lib/, no build permission needed)
 dsh plugin --profile web add dsh-wallpaper_share
 #   install from npm
-dsh plugin --profile web add ./dsh-wallpaper_share-26.8.291.tgz
+dsh plugin --profile web add ./dsh-wallpaper_share-26.8.30.tgz
 #   install from a local tarball
 ```
 

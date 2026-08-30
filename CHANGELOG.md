@@ -1,5 +1,34 @@
 # Changelog
 
+## 26.8.30-T - 2026-08-30
+
+### ✨ 新增功能
+
+- **DWP 壁纸格式支持**：全新 `dwp/1.0` 协议（`dsh-wallpaper_edit` 定义）—— 纯文本 / solid / 粒子 / mesh(puppet) 图层 + 12 种混合模式 + 3 种动画 + 11 效果的白名单，确定性渲染（同 (文档, t, seed) 逐帧一致）。
+- **内置壁纸市场 `wallpaper_market`**：浏览 / 搜索 / 安装 / 更新 / 卸载 DWP 包；付费内容经 402 护栏拒绝（不下载不写盘）；`dwp-registry` 纯数据仓库（分片 YAML → catalog + CI 校验 + 商业模型硬校验）。
+- **DWP 真实渲染为全局背景**：挂载后 DWP 通过 WebGL2（低配 Canvas2D 降级）铺满 DSH 桌面，同时关闭 WE 同步 / 禁用性能模式避免冲突；刷新后自动恢复挂载。
+- **壁纸库精简为 `dwp壁纸 / we应用`**：删除场景 / 视频 / 图片 / 网页搜索，DWP 卡片点击即挂载（已挂载再点取消挂载）。
+- **原生 scene 渲染器 `we-capture.exe`**（真·GPU 捕获，效果 100% 覆盖）：通过 Windows Graphics Capture 抓取 WE 正在渲染的桌面窗口，输出 JPEG 到 stdout，所有 GLSL / SceneScript / 关键帧 / 粒子效果全覆盖。多显示器环境仅回读目标屏区域（`CopySubresourceRegion` + `D3D11_BOX`），DPI 缩放非 100% 时同样正确。
+- **面板设置持久化**：`Proxy` 包裹 `store.settings`，任何写入自动落盘 `localStorage`（250ms 尾随合并写 + 页面隐藏前补写）；读取时逐字段校验类型与范围，损坏存档不崩面板。
+
+### 🐛 修复
+
+- **性能模式多显示器只捕获目标屏**（`we-capture` 0.2.0 → 0.3.0）：WGC 不接受子窗口，捕获器抓的是 WPE 壁纸窗的顶层根（Progman / WorkerW），而根窗在多显示器下横跨整个虚拟桌面，帧里把所有显示器的壁纸拼在一起，输出全坏。修复后按 `monitor_hint` 选中的那块 WPE 子窗矩形，用 `CopySubresourceRegion` + `D3D11_BOX` 只回读该屏区域再编码。
+- **面板设置完全不持久化**：`store.settings` 此前是纯内存对象，DSH 刷新或重启后全部弹回默认值。新增 `src/client/settings.ts` 持久化层。
+- **DWP 文本渲染不可见**：`parseFont` 保留完整 CSS 简写（含字号），但执行器又前缀 `sizePx` 导致 `"220px 700 220px 'Segoe UI'"` 非法 CSS，浏览器回退 10px 默认字体，时钟文字看似未显示（深蓝底 ≈ 黑屏）。修复：执行器直接喂 `ctx.font = run.font`。
+- **DWP quad 着色器编译失败**：`gl_Position = mat3 * vec3(...)` 结果为 vec3 但需要 vec4，真实 GLSL 编译器拒绝编译，整屏黑。修复：`gl_Position = vec4(c.xy, 0.0, c.z)`。
+- **DWP RAF 循环无错误护栏**：单帧抛错（如 shader 编译失败）后循环静默冻结，画布永久黑屏。修复：try/catch 包裹，`console.error` 打错误信息后停循环。
+
+### 🔧 细节
+
+- **只存"用户偏好"**：`taskActive` / `approvalPending` / `immersive` 刻意不落盘（刷新后恢复聊天标题栏与输入框非预期行为）。
+- **显示器锁自动失效**：存档里的锁定 key 若已不在当前显示器列表，轮询时自动回退"自动跟随"。
+- **眼动开关恢复但不假装**：眼动持久化，刷新后自动重拉摄像头；启动失败（无摄像头 / 被拒 / CDN 不可达）则拨回 off。
+- **面板以 store 为单一事实源**：订阅 `store.notify()` 时把设置项镜像回本地 state。
+- **DWP 壁纸库挂载采用共享态**：徽章 / 标题读取 `store.settings.dwpMounted`（而非本地 `appliedId`），市场标签页挂载后库里也及时反映。
+
+---
+
 ## 26.8.291 - 2026-08-29
 
 ### ✨ 新增功能

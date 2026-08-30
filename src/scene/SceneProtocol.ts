@@ -48,6 +48,9 @@ export interface SceneRenderRequest {
   fps: number
   /** JPEG/WebP 质量（0..100），对 rgba/bgra 无意义 */
   quality?: number
+  /** 目标显示器序号（来自 WE 的 MonitorN key，N 从 1 开始）。
+   *  捕获型 renderer 用它挑选对应显示器上的 WE 壁纸窗口；省略或超范围 → 由 renderer 自选。 */
+  monitor?: number
 }
 
 /** Node → renderer 的运行时控制命令（换行分隔 JSON，每条一行） */

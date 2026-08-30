@@ -26,11 +26,11 @@ use windows::Graphics::Capture::{
 };
 use windows::Graphics::DirectX::Direct3D11::IDirect3DDevice;
 use windows::Graphics::DirectX::DirectXPixelFormat;
-use windows::Win32::Foundation::{BOOL, HMODULE, HWND, LPARAM, RECT};
+use windows::Win32::Foundation::{BOOL, HMODULE, HWND, LPARAM, POINT, RECT};
 use windows::Win32::Graphics::Direct3D::{D3D_DRIVER_TYPE_HARDWARE, D3D_FEATURE_LEVEL};
 use windows::Win32::Graphics::Direct3D11::{
     D3D11CreateDevice, ID3D11Device, ID3D11DeviceContext, ID3D11Texture2D,
-    D3D11_CPU_ACCESS_READ, D3D11_CREATE_DEVICE_BGRA_SUPPORT, D3D11_MAPPED_SUBRESOURCE,
+    D3D11_BOX, D3D11_CPU_ACCESS_READ, D3D11_CREATE_DEVICE_BGRA_SUPPORT, D3D11_MAPPED_SUBRESOURCE,
     D3D11_MAP_READ, D3D11_SDK_VERSION, D3D11_TEXTURE2D_DESC, D3D11_USAGE_STAGING,
 };
 use windows::Win32::Graphics::Dxgi::IDXGIDevice;
@@ -39,20 +39,23 @@ use windows::Win32::System::WinRT::Direct3D11::{
     CreateDirect3D11DeviceFromDXGIDevice, IDirect3DDxgiInterfaceAccess,
 };
 use windows::Win32::System::WinRT::Graphics::Capture::IGraphicsCaptureItemInterop;
+use windows::Win32::Graphics::Gdi::{
+    ClientToScreen, EnumDisplayMonitors, GetMonitorInfoW, HDC, HMONITOR, MONITORINFO,
+};
 use windows::Win32::UI::WindowsAndMessaging::{
-    EnumChildWindows, FindWindowExW, GetAncestor, GetClassNameW, GetWindowRect, IsWindowVisible,
-    GA_ROOT,
+    EnumChildWindows, FindWindowExW, GetAncestor, GetClassNameW, GetClientRect, GetWindowRect,
+    IsWindowVisible, GA_ROOT,
 };
 
 /// 版本自报行（SceneAdapter 读取 [VERSION]）
-const VERSION: &str = "we-capture-0.1.0";
+const VERSION: &str = "we-capture-0.3.0";
 /// 帧格式：0 = JPEG
 const FMT_JPEG: u8 = 0;
 
 /// 来自 stdin 的控制命令
 #[derive(Debug, Clone)]
 enum Cmd {
-    Load { fps: u32, quality: u32, width: u32, height: u32 },
+    Load { fps: u32, quality: u32, width: u32, height: u32, monitor: u32 },
     Pause,
     Resume,
     Resize { width: u32, height: u32 },
@@ -72,6 +75,9 @@ struct LoadCmd {
     width: u32,
     #[serde(default)]
     height: u32,
+    /// 目标显示器序号（WE 的 MonitorN，1 起；0 = 未指定，自动挑最大窗口）
+    #[serde(default)]
+    monitor: u32,
 }
 
 fn main() {
@@ -109,10 +115,10 @@ fn main() {
     // 等待第一条 load
     loop {
         match ctrl_rx.recv() {
-            Ok(Cmd::Load { fps, quality, width, height }) => {
+            Ok(Cmd::Load { fps, quality, width, height, monitor }) => {
                 let stdout = io::stdout();
                 let mut sink = stdout.lock();
-                run_capture(fps, quality, width, height, &ctrl_rx, &mut sink, None, None);
+                run_capture(fps, quality, width, height, &ctrl_rx, &mut sink, None, None, monitor);
                 // run_capture 返回即该 scene 结束；回到等待下一条 load
             }
             Ok(Cmd::Stop) => break,
@@ -149,6 +155,7 @@ fn selftest(secs: u64, out: &str, hwnd: Option<isize>, out_w: u32, out_h: u32) {
         &mut sink,
         Some(deadline),
         hwnd.map(|h| HWND(h as *mut core::ffi::c_void)),
+        0,
     );
     let _ = sink.flush();
     eprintln!("[we-capture] selftest 完成");
@@ -186,6 +193,7 @@ fn parse_cmd(line: &str) -> Option<Cmd> {
             quality: if v.quality == 0 { 80 } else { v.quality },
             width: v.width,
             height: v.height,
+            monitor: v.monitor,
         },
         "pause" => Cmd::Pause,
         "resume" => Cmd::Resume,
@@ -209,15 +217,21 @@ fn run_capture(
     sink: &mut dyn Write,
     deadline: Option<Instant>,
     force_hwnd: Option<HWND>,
+    monitor_hint: u32,
 ) {
-    // 1. 找 WE 壁纸窗口（或强制指定）
-    let hwnd = match force_hwnd.or_else(find_we_window) {
-        Some(h) => h,
-        None => {
-            eprintln!("[we-capture] 未找到 Wallpaper Engine 壁纸窗口（WE 是否在运行？）→ 退出捕获，浏览器将回退");
-            return;
-        }
+    // 1. 找 WE 壁纸窗口（或强制指定）：优先锁定 monitor_hint 对应显示器上的窗口。
+    //    返回捕获目标（顶层根窗）与壁纸子窗的屏幕矩形（裁剪用）。
+    let found = match force_hwnd {
+        Some(h) => FoundWindow { root: h, rect: None },
+        None => match find_we_window(monitor_hint) {
+            Some(f) => f,
+            None => {
+                eprintln!("[we-capture] 未找到 Wallpaper Engine 壁纸窗口（WE 是否在运行？）→ 退出捕获，浏览器将回退");
+                return;
+            }
+        },
     };
+    let hwnd = found.root;
 
     // 2. D3D11 设备
     let (device, context) = match create_d3d11() {
@@ -256,6 +270,34 @@ fn run_capture(
     eprintln!(
         "[we-capture] 捕获窗口 hwnd={:?} size={}x{}",
         hwnd.0, item_size.Width, item_size.Height
+    );
+
+    // 4b. 计算裁剪区域（帧坐标系，相对捕获窗口客户区原点）：
+    //     多显示器时顶层根窗（Progman/WorkerW）横跨整个虚拟桌面，若整帧输出会把所有显示器
+    //     的壁纸拼在一起；此处把目标壁纸子窗的屏幕矩形换算成帧内偏移，只输出目标显示器。
+    let (crop_x, crop_y, crop_w, crop_h) = match found.rect {
+        Some(rc) => {
+            // 捕获窗口客户区原点（屏幕坐标）
+            let mut origin = POINT { x: 0, y: 0 };
+            let mut client = RECT::default();
+            unsafe {
+                let _ = ClientToScreen(hwnd, &mut origin);
+                let _ = GetClientRect(hwnd, &mut client);
+            }
+            let cw = (client.right - client.left).max(0) as i32;
+            let ch = (client.bottom - client.top).max(0) as i32;
+            let sx = if cw > 0 { item_size.Width as f64 / cw as f64 } else { 1.0 };
+            let sy = if ch > 0 { item_size.Height as f64 / ch as f64 } else { 1.0 };
+            let x = (((rc.left - origin.x).max(0) as f64) * sx) as u32;
+            let y = (((rc.top - origin.y).max(0) as f64) * sy) as u32;
+            let w = (((rc.right - rc.left).max(0) as f64) * sx) as u32;
+            let h = (((rc.bottom - rc.top).max(0) as f64) * sy) as u32;
+            (x, y, w, h)
+        }
+        None => (0, 0, item_size.Width as u32, item_size.Height as u32),
+    };
+    eprintln!(
+        "[we-capture] 裁剪区域 x={crop_x} y={crop_y} w={crop_w} h={crop_h}（多显示器仅输出目标屏）"
     );
 
     // 5. 帧池 + 会话
@@ -355,7 +397,7 @@ fn run_capture(
                     drop(frame);
                     continue;
                 }
-                match process_frame(&frame, &device, &context, quality, out_w, out_h, &mut perf) {
+                match process_frame(&frame, &device, &context, quality, out_w, out_h, crop_x, crop_y, crop_w, crop_h, &mut perf) {
                     Ok((w, h, jpeg)) => {
                         write_frame(w, h, &jpeg, sink);
                         frame_no += 1;
@@ -409,7 +451,7 @@ struct Perf {
     n: u32,
 }
 
-/// 取一帧 → 回读 BGRA →（可选盒式降采样）转 RGB → JPEG 编码
+/// 取一帧 → 按裁剪区域回读 BGRA →（可选盒式降采样）转 RGB → JPEG 编码
 fn process_frame(
     frame: &windows::Graphics::Capture::Direct3D11CaptureFrame,
     device: &ID3D11Device,
@@ -417,6 +459,10 @@ fn process_frame(
     quality: u32,
     out_w: u32,
     out_h: u32,
+    crop_x: u32,
+    crop_y: u32,
+    crop_w: u32,
+    crop_h: u32,
     perf: &mut Perf,
 ) -> Result<(u32, u32, Vec<u8>), String> {
     let t0 = Instant::now();
@@ -429,19 +475,27 @@ fn process_frame(
     let nw = desc.Width;
     let nh = desc.Height;
 
-    // 目标尺寸：请求小于原生则降采样（编码耗时≈像素数，降分辨率是最大杠杆），否则 1:1
-    let (ow, oh) = if out_w > 0 && out_h > 0 && (out_w < nw || out_h < nh) {
-        (out_w.min(nw), out_h.min(nh))
+    // 裁剪区域（帧坐标系）clamp 到帧内
+    let cx = crop_x.min(nw);
+    let cy = crop_y.min(nh);
+    let cw = crop_w.min(nw - cx).max(1);
+    let ch = crop_h.min(nh - cy).max(1);
+
+    // 目标尺寸：请求小于裁剪区则降采样，否则 1:1
+    let (ow, oh) = if out_w > 0 && out_h > 0 && (out_w < cw || out_h < ch) {
+        (out_w.min(cw), out_h.min(ch))
     } else {
-        (nw, nh)
+        (cw, ch)
     };
 
-    // staging（CPU 可读）
+    // staging（CPU 可读），尺寸 = 裁剪区（避免搬回整个多显示器桌面）
     let mut sdesc = desc;
     sdesc.Usage = D3D11_USAGE_STAGING;
     sdesc.BindFlags = 0;
     sdesc.CPUAccessFlags = D3D11_CPU_ACCESS_READ.0 as u32;
     sdesc.MiscFlags = 0;
+    sdesc.Width = cw;
+    sdesc.Height = ch;
     let mut staging: Option<ID3D11Texture2D> = None;
     unsafe {
         device
@@ -452,7 +506,16 @@ fn process_frame(
 
     let mut mapped = D3D11_MAPPED_SUBRESOURCE::default();
     unsafe {
-        context.CopyResource(&staging, &texture);
+        // 只拷贝裁剪区域，避免把整个多显示器桌面搬回 CPU
+        let src_box = D3D11_BOX {
+            left: cx,
+            top: cy,
+            front: 0,
+            right: cx + cw,
+            bottom: cy + ch,
+            back: 1,
+        };
+        context.CopySubresourceRegion(&staging, 0, 0, 0, 0, &texture, 0, Some(&src_box));
         context
             .Map(&staging, 0, D3D11_MAP_READ, 0, Some(&mut mapped))
             .map_err(|e| e.to_string())?;
@@ -462,15 +525,15 @@ fn process_frame(
     let t1 = Instant::now();
     let src = mapped.pData as *const u8;
     let pitch = mapped.RowPitch as usize;
-    let (nwz, nhz, owz, ohz) = (nw as usize, nh as usize, ow as usize, oh as usize);
+    let (cwz, chz, owz, ohz) = (cw as usize, ch as usize, ow as usize, oh as usize);
     let mut rgb = vec![0u8; owz * ohz * 3];
     unsafe {
-        if owz == nwz && ohz == nhz {
-            // 1:1 BGRA → RGB
-            for y in 0..nhz {
+        if owz == cwz && ohz == chz {
+            // 1:1 BGRA → RGB（裁剪区与输出同尺寸）
+            for y in 0..chz {
                 let row = src.add(y * pitch);
-                let drow = y * nwz * 3;
-                for x in 0..nwz {
+                let drow = y * cwz * 3;
+                for x in 0..cwz {
                     let s = row.add(x * 4);
                     let d = drow + x * 3;
                     rgb[d] = *s.add(2); // R
@@ -481,12 +544,12 @@ fn process_frame(
         } else {
             // 盒式降采样：每个目标像素取对应源区域均值（画质优于最近邻，开销与 1:1 相当）
             for oy in 0..ohz {
-                let y0 = oy * nhz / ohz;
-                let y1 = ((oy + 1) * nhz / ohz).max(y0 + 1).min(nhz);
+                let y0 = oy * chz / ohz;
+                let y1 = ((oy + 1) * chz / ohz).max(y0 + 1).min(chz);
                 let drow = oy * owz * 3;
                 for ox in 0..owz {
-                    let x0 = ox * nwz / owz;
-                    let x1 = ((ox + 1) * nwz / owz).max(x0 + 1).min(nwz);
+                    let x0 = ox * cwz / owz;
+                    let x1 = ((ox + 1) * cwz / owz).max(x0 + 1).min(cwz);
                     let (mut sr, mut sg, mut sb, mut cnt) = (0u32, 0u32, 0u32, 0u32);
                     for sy in y0..y1 {
                         let row = src.add(sy * pitch);
@@ -573,40 +636,37 @@ fn capture_item_for_window(hwnd: HWND) -> windows::core::Result<GraphicsCaptureI
     }
 }
 
+/// 查找结果：WGC 只能捕获顶层窗口（Progman/WorkerW），但多显示器时该顶层窗覆盖整个
+/// 虚拟桌面；故同时返回目标壁纸子窗的屏幕矩形，供 run_capture 裁剪到目标显示器。
+struct FoundWindow {
+    /// WGC 捕获目标：目标壁纸子窗的顶层祖先（Progman/WorkerW）
+    root: HWND,
+    /// 目标壁纸子窗在屏幕坐标系中的矩形（裁剪区域）；None = 不裁剪（整帧输出）
+    rect: Option<RECT>,
+}
+
 /// 查找 Wallpaper Engine 的壁纸窗口，并返回其**顶层祖先**（Progman/WorkerW）。
 /// WE 的渲染窗（WPEDesktopDX11Window）是桌面的子窗口，WGC 只接受顶层窗口，故取其 GA_ROOT。
-fn find_we_window() -> Option<HWND> {
+/// 一个候选壁纸窗：WPE* 渲染子窗 + 它的屏幕矩形（≈ 所在显示器的矩形）
+struct WeWindow {
+    hwnd: HWND,
+    rect: RECT,
+    area: i64,
+    cx: i32,
+    cy: i32,
+}
+
+fn find_we_window(monitor_hint: u32) -> Option<FoundWindow> {
     unsafe {
         // 只在桌面顶层（Progman / 各 WorkerW）下查找 WE 的渲染子窗。
         // 关键：绝不对任意第三方顶层窗做 EnumChildWindows——那会因目标线程不泵消息而永久挂起。
         // Progman/WorkerW 属 explorer，消息循环正常，枚举安全。
-        let mut best: Option<(HWND, i64)> = None;
+        let mut kids_all: Vec<HWND> = Vec::new();
         let mut visit = |parent: HWND| {
             let mut kids: Vec<HWND> = Vec::new();
             let ptr = &mut kids as *mut Vec<HWND> as isize;
             let _ = EnumChildWindows(parent, Some(enum_collect), LPARAM(ptr));
-            for h in kids {
-                if h.0.is_null() || !IsWindowVisible(h).as_bool() {
-                    continue;
-                }
-                let mut cls = [0u16; 64];
-                let n = GetClassNameW(h, &mut cls).max(0) as usize;
-                let name = String::from_utf16_lossy(&cls[..n.min(64)]);
-                if !name.starts_with("WPE") {
-                    continue; // 只认 WE 渲染窗（WPEDesktopDX11Window 等）
-                }
-                let mut rc = RECT::default();
-                if GetWindowRect(h, &mut rc).is_err() {
-                    continue;
-                }
-                let area = (rc.right - rc.left).max(0) as i64 * (rc.bottom - rc.top).max(0) as i64;
-                if area < 100_000 {
-                    continue;
-                }
-                if best.map(|(_, a)| area > a).unwrap_or(true) {
-                    best = Some((h, area));
-                }
-            }
+            kids_all.extend(kids);
         };
         if let Ok(pm) = FindWindowExW(HWND::default(), HWND::default(), w!("Progman"), PCWSTR::null()) {
             visit(pm);
@@ -616,14 +676,99 @@ fn find_we_window() -> Option<HWND> {
             visit(wv);
             ww = FindWindowExW(HWND::default(), wv, w!("WorkerW"), PCWSTR::null());
         }
-        best.map(|(h, _)| {
-            let root = GetAncestor(h, GA_ROOT);
-            if root.0.is_null() {
-                h
-            } else {
-                root
+
+        let mut candidates: Vec<WeWindow> = Vec::new();
+        for h in kids_all {
+            if h.0.is_null() || !IsWindowVisible(h).as_bool() {
+                continue;
             }
-        })
+            let mut cls = [0u16; 64];
+            let n = GetClassNameW(h, &mut cls).max(0) as usize;
+            let name = String::from_utf16_lossy(&cls[..n.min(64)]);
+            if !name.starts_with("WPE") {
+                continue; // 只认 WE 渲染窗（WPEDesktopDX11Window 等）
+            }
+            let mut rc = RECT::default();
+            if GetWindowRect(h, &mut rc).is_err() {
+                continue;
+            }
+            let area = (rc.right - rc.left).max(0) as i64 * (rc.bottom - rc.top).max(0) as i64;
+            if area < 100_000 {
+                continue;
+            }
+            candidates.push(WeWindow { hwnd: h, rect: rc, area, cx: (rc.left + rc.right) / 2, cy: (rc.top + rc.bottom) / 2 });
+        }
+        if candidates.is_empty() {
+            return None;
+        }
+
+        // 指定了目标显示器（WE MonitorN ≈ Windows 显示器设置编号 N）：
+        // 选中心落在该显示器矩形内的壁纸窗；找不到再回退「面积最大」。
+        if monitor_hint >= 1 {
+            let monitors = enum_monitor_rects();
+            if let Some(mr) = monitors.get((monitor_hint - 1) as usize) {
+                let on_target = candidates
+                    .iter()
+                    .filter(|w| w.cx >= mr.left && w.cx < mr.right && w.cy >= mr.top && w.cy < mr.bottom)
+                    .max_by_key(|w| w.area);
+                match on_target {
+                    Some(w) => return Some(FoundWindow { root: root_or_self(w.hwnd), rect: Some(w.rect) }),
+                    None => eprintln!(
+                        "[we-capture] 显示器 {monitor_hint} 上没有 WE 壁纸窗口 → 回退到面积最大的窗口"
+                    ),
+                }
+            } else {
+                eprintln!(
+                    "[we-capture] 显示器序号 {monitor_hint} 超出范围（共 {} 台）→ 回退到面积最大的窗口",
+                    monitors.len()
+                );
+            }
+        }
+
+        // 兜底 / 未指定：面积最大
+        candidates
+            .iter()
+            .max_by_key(|w| w.area)
+            .map(|w| FoundWindow { root: root_or_self(w.hwnd), rect: Some(w.rect) })
+    }
+}
+
+/// 枚举系统显示器的矩形（EnumDisplayMonitors 顺序，通常与 Windows 显示器设置的编号一致）
+fn enum_monitor_rects() -> Vec<RECT> {
+    let mut out: Vec<RECT> = Vec::new();
+    unsafe {
+        let ptr = &mut out as *mut Vec<RECT> as isize;
+        let _ = EnumDisplayMonitors(
+            HDC::default(),
+            None,
+            Some(enum_monitor_collect),
+            LPARAM(ptr),
+        );
+    }
+    out
+}
+
+unsafe extern "system" fn enum_monitor_collect(
+    hmonitor: HMONITOR,
+    _hdc: HDC,
+    _rect: *mut RECT,
+    lparam: LPARAM,
+) -> BOOL {
+    let out = &mut *(lparam.0 as *mut Vec<RECT>);
+    let mut info = MONITORINFO {
+        cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+        ..Default::default()
+    };
+    if GetMonitorInfoW(hmonitor, &mut info).as_bool() {
+        out.push(info.rcMonitor);
+    }
+    true.into()
+}
+
+fn root_or_self(hwnd: HWND) -> HWND {
+    unsafe {
+        let root = GetAncestor(hwnd, GA_ROOT);
+        if root.0.is_null() { hwnd } else { root }
     }
 }
 
