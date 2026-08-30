@@ -11,6 +11,7 @@
 import { createReadStream, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
 import { execFile, execFileSync } from 'node:child_process'
 import { createServer } from 'node:http'
+import { homedir } from 'node:os'
 import type { AddressInfo } from 'node:net'
 import type { Writable } from 'node:stream'
 import { SceneAdapter, type SceneTarget } from './scene/SceneAdapter.ts'
@@ -18,6 +19,8 @@ import { sceneFingerprint, isNativeRenderer } from './scene/SceneCapabilities.ts
 import { buildSceneModel, type SceneModel } from './scene/SceneModel.ts'
 import { parseScenePkg, type ParsedPkg } from './scene/ScenePkg.ts'
 import { decodeTex, texMimeOf, texMipToPng } from './scene/SceneTex.ts'
+import { MarketClient } from './market/pull.ts'
+import { createMarketRoutes } from './market/routes.ts'
 
 /** 最小化的 Cordis 上下文结构（独立构建不依赖 @deepseek-ai/cordis 的类型包） */
 interface CordisCtx {
@@ -59,6 +62,10 @@ const CONFIG = {
   effectStrengthScale: 0.6,
   /** puppet 网格蒙皮渲染（部件按顶点网格渲染；buildMeshCanvas 已与参考 v2 渲染逐像素一致） */
   puppetMeshRender: true,
+  /** DWP market 注册表 catalog.json 地址（dwp-registry 构建产物；可换镜像源） */
+  dwpMarketCatalogUrl: 'https://raw.githubusercontent.com/YRN-playmaker/dwp-registry/main/data/catalog.json',
+  /** DWP market 本地存储目录（installed.json + packages/）；留空 = ~/.dsh-dwp-market */
+  dwpMarketDir: '',
 }
 
 interface Req { url?: string; method?: string; headers?: { range?: string } }
@@ -1300,6 +1307,14 @@ export function apply(ctx: CordisCtx): void {
       )
     },
   }))
+
+  /** DWP market：注册表拉取 + 本地安装管理（读 dwp-registry catalog.json，下载校验 sha512 后装到本地）。
+   *  控制面路由供 client 半的"壁纸市场"UI 调用；付费包返回 402 + 销售页，由 UI 打开创作者平台。 */
+  const marketDir = CONFIG.dwpMarketDir || (homedir() + '/.dsh-dwp-market')
+  const market = new MarketClient({ dir: marketDir })
+  for (const route of createMarketRoutes({ market, catalogUrl: CONFIG.dwpMarketCatalogUrl })) {
+    disposers.push(webServer.register(route))
+  }
 
   /** 壁纸源服务器：把当前 web 壁纸目录作为独立源伺服（127.0.0.1 临时端口）。
    *  Spine/WebGL 类壁纸在 iframe 里需要"自己的同源"才能渲染（贴图不 tainted、

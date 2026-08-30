@@ -24,7 +24,8 @@
   "scripts": {
     "build": "tsdown",
     "bundle": "tsdown",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --test --experimental-test-isolation=none \"src/market/test/*.test.ts\""
   },
   "license": "GPL-3.0",
   "keywords": [
