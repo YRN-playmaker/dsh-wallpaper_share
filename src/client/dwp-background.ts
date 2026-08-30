@@ -39,7 +39,9 @@ export class DwpBackgroundLayer {
     this.mountingId = id
     const canvas = this.ensureCanvas()
     try {
-      const handle = await mountDwp(canvas, id)
+      const handle = await mountDwp(canvas, id, {
+        onDegrade: (d) => { if (d.length) console.warn('[dwp] 降级/告警：', d.join(', ')) },
+      })
       // 挂载期间可能被 unmount / 换 id 取代：此时丢弃这次结果
       if (this.mountingId !== id) { handle.dispose(); return }
       this.handle = handle

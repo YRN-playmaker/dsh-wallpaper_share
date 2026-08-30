@@ -5,7 +5,7 @@
  * 逻辑与 demo（dwp-runtime-web/demo）同源，复用同一 mount() → 像素一致。
  */
 import { mount, collectAssetRefs, type Handle, type PackageFiles } from 'dwp-web';
-import type { Scene, VarValue } from 'dwp-core';
+import type { Scene, Manifest, VarValue } from 'dwp-core';
 
 type FetchFn = (url: string, init?: RequestInit) => Promise<Response>;
 
@@ -26,6 +26,13 @@ export async function mountDwp(canvas: HTMLCanvasElement, id: string, opts: Moun
   if (!sceneRes.ok) throw new Error(`DWP scene 拉取失败 (${sceneRes.status})`);
   const scene = (await sceneRes.json()) as Scene;
 
+  // manifest 尽力而为（params 默认值等）；拉不到不阻断（compile 允许 manifest 缺省）
+  let manifest: Manifest | undefined
+  try {
+    const mres = await fetchFn(`${base}/manifest?id=${encodeURIComponent(id)}`, { cache: 'no-store' })
+    if (mres.ok) manifest = (await mres.json()) as Manifest
+  } catch { /* 无 manifest：走 scene 内联变量 */ }
+
   const files: PackageFiles = new Map();
   for (const ref of collectAssetRefs(scene)) {
     const r = await fetchFn(`${base}/file?id=${encodeURIComponent(id)}&name=${encodeURIComponent(ref.path)}`);
@@ -34,6 +41,7 @@ export async function mountDwp(canvas: HTMLCanvasElement, id: string, opts: Moun
 
   return mount(canvas, {
     scene,
+    manifest,
     files,
     params: opts.params,
     autoplay: opts.autoplay,
