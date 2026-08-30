@@ -9,7 +9,7 @@ import { useEffect, useRef, useState } from 'react'
 import { store } from './index'
 import {
   fetchCatalog, fetchInstalled, buildCards, searchCards, collectTags,
-  install, uninstall, applyDwp, unapplyDwp, fetchApplied,
+  install, uninstall, fetchApplied,
   type MarketCard, type Fetch, type AppliedInfo,
 } from './market-api.ts'
 import { mountDwp } from './dwp-stage.ts'
@@ -104,15 +104,18 @@ export function MarketPanel() {
     const r = await uninstall((url, init) => fetch(url, init), id)
     setBusy((b) => { const n = { ...b }; delete n[id]; return n })
     if (applied?.id === id) { setApplied(null); setPreviewId('') }
-    if (r.ok) { void reload(); flashMsg(t.flashUninstalled) } else flashMsg(t.flashFailed)
+    if (r.ok) {
+      if (store.settings.dwpMounted === id) await store.actions.unmountDwp()   // 冲突：卸载正挂载的包先撤背景，避免引用已删文件
+      void reload(); flashMsg(t.flashUninstalled)
+    } else flashMsg(t.flashFailed)
   }
   const doApply = async (id: string): Promise<void> => {
-    const r = await applyDwp((url, init) => fetch(url, init), id)
-    if (r.ok) { setApplied({ id, version: '', appliedAt: new Date().toISOString() }); setPreviewId(id); flashMsg(t.flashApplied) }
-    else flashMsg(t.flashFailed + (r.error ? ': ' + r.error : ''))
+    const ok = await store.actions.mountDwp(id)
+    if (ok) { setApplied({ id, version: '', appliedAt: new Date().toISOString() }); setPreviewId(id); flashMsg(t.flashApplied) }
+    else flashMsg(t.flashFailed)
   }
   const doUnapply = async (): Promise<void> => {
-    await unapplyDwp((url, init) => fetch(url, init))
+    await store.actions.unmountDwp()
     setApplied(null); setPreviewId(''); setStageMode('')
   }
 

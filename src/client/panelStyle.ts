@@ -39,6 +39,17 @@ export const PANEL_CSS = `
   margin-top: 10px;
 }
 
+.wesync-dwp-banner {
+  font-size: 12px;
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-bg-layer-2);
+  border: 1px solid var(--dsw-alias-border, rgba(255,255,255,0.08));
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-top: 10px;
+  line-height: 1.5;
+}
+
 .wesync-actions {
   display: flex;
   gap: 8px;
@@ -119,6 +130,11 @@ export const PANEL_CSS = `
 
 .wesync-seg-item:hover:not(.wesync-seg-active) {
   background: var(--dsw-alias-bg-overlay);
+}
+
+.wesync-seg-item:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
 }
 
 .wesync-seg-active {
