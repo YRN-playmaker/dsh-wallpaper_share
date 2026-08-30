@@ -454,3 +454,22 @@ body[data-ds-dark-theme] .wesync-gaze-status.is-error { color: #fdba74; }
   color: var(--dsw-alias-label-secondary);
 }
 `
+
+/** wallpaper_market 标签页专有样式（与 PANEL_CSS 一起注入，复用 wesync- 基础类）。 */
+export const MARKET_CSS = `
+.wesync-market { display: flex; flex-direction: column; gap: 12px; }
+.wesync-market-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.wesync-market-title { font-size: 16px; font-weight: 600; color: var(--dsw-alias-label-primary); }
+.wesync-market-sub { font-size: 12px; color: var(--dsw-alias-label-secondary); margin-top: 2px; }
+.wesync-market-flash {
+  font-size: 12px; padding: 6px 10px; border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-primary);
+  border: 1px solid var(--dsw-alias-border, rgba(255,255,255,0.08));
+}
+.wesync-market-card { display: flex; flex-direction: column; }
+.wesync-market-meta { font-size: 11px; color: var(--dsw-alias-label-secondary); margin-top: 2px; min-height: 14px; }
+.wesync-market-actions { margin-top: 8px; display: flex; gap: 6px; }
+.wesync-market-install, .wesync-market-uninstall { flex: 1; font-size: 12px; padding: 6px 8px; }
+.wesync-market-uninstall { opacity: 0.8; }
+.wesync-market-note { font-size: 11px; color: var(--dsw-alias-label-tertiary, var(--dsw-alias-label-secondary)); opacity: 0.7; text-align: center; }
+`
