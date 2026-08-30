@@ -5,7 +5,7 @@
 ### ✨ 新增功能
 
 - **DWP 壁纸格式支持**：全新 `dwp/1.0` 协议（`dsh-wallpaper_edit` 定义）—— 纯文本 / solid / 粒子 / mesh(puppet) 图层 + 12 种混合模式 + 3 种动画 + 11 效果的白名单，确定性渲染（同 (文档, t, seed) 逐帧一致）。
-- **内置壁纸市场 `wallpaper_market`**：浏览 / 搜索 / 安装 / 更新 / 卸载 DWP 包；付费内容经 402 护栏拒绝（不下载不写盘）；`dwp-registry` 纯数据仓库（分片 YAML → catalog + CI 校验 + 商业模型硬校验）。
+- **内置壁纸市场 `wallpaper_market`**：浏览 / 搜索 / 安装 / 更新 / 卸载 DWP 包；；`dwp-registry` 纯数据仓库（分片 YAML → catalog + CI 校验 + 商业模型硬校验）。
 - **DWP 真实渲染为全局背景**：挂载后 DWP 通过 WebGL2（低配 Canvas2D 降级）铺满 DSH 桌面，同时关闭 WE 同步 / 禁用性能模式避免冲突；刷新后自动恢复挂载。
 - **壁纸库精简为 `dwp壁纸 / we应用`**：删除场景 / 视频 / 图片 / 网页搜索，DWP 卡片点击即挂载（已挂载再点取消挂载）。
 - **原生 scene 渲染器 `we-capture.exe`**（真·GPU 捕获，效果 100% 覆盖）：通过 Windows Graphics Capture 抓取 WE 正在渲染的桌面窗口，输出 JPEG 到 stdout，所有 GLSL / SceneScript / 关键帧 / 粒子效果全覆盖。多显示器环境仅回读目标屏区域（`CopySubresourceRegion` + `D3D11_BOX`），DPI 缩放非 100% 时同样正确。
