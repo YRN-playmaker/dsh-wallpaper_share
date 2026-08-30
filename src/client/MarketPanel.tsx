@@ -21,24 +21,22 @@ function lang(): Lang {
 
 const DICT: Record<Lang, Record<string, string>> = {
   zh: {
-    title: '壁纸市场', subtitle: '浏览并拉取 DWP 壁纸（当前仅免费内容）',
+    title: '壁纸市场', subtitle: '浏览并拉取 DWP 壁纸',
     refresh: '刷新', search: '搜索名称 / 作者…', all: '全部',
     install: '安装', installing: '安装中…', update: '更新', installed: '已安装', uninstall: '卸载',
     empty: '目录为空', loading: '加载中…', noMatch: '无匹配结果',
     loadFailed: '目录加载失败（node 半 market 路由未就绪？）',
     by: '作者', installedAt: '已装',
     flashInstalled: '已安装', flashUpdated: '已更新', flashUninstalled: '已卸载', flashFailed: '操作失败',
-    note: '付费壁纸暂未开放',
   },
   en: {
-    title: 'Wallpaper Market', subtitle: 'Browse and pull DWP wallpapers (free content only for now)',
+    title: 'Wallpaper Market', subtitle: 'Browse and pull DWP wallpapers',
     refresh: 'Refresh', search: 'Search name / author…', all: 'All',
     install: 'Install', installing: 'Installing…', update: 'Update', installed: 'Installed', uninstall: 'Uninstall',
     empty: 'Catalog is empty', loading: 'Loading…', noMatch: 'No matches',
     loadFailed: 'Failed to load catalog (node market route not ready?)',
     by: 'by', installedAt: 'installed',
     flashInstalled: 'Installed', flashUpdated: 'Updated', flashUninstalled: 'Uninstalled', flashFailed: 'Operation failed',
-    note: 'Paid wallpapers not available yet',
   },
 }
 
@@ -140,7 +138,6 @@ export function MarketPanel() {
                     })}
                   </div>
                 )}
-      <div className="wesync-market-note">{t.note}</div>
     </div>
   )
 }
