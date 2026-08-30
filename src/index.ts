@@ -21,6 +21,8 @@ import { parseScenePkg, type ParsedPkg } from './scene/ScenePkg.ts'
 import { decodeTex, texMimeOf, texMipToPng } from './scene/SceneTex.ts'
 import { MarketClient } from './market/pull.ts'
 import { createMarketRoutes } from './market/routes.ts'
+import { createDwpServeRoutes } from './market/serve.ts'
+import { ApplyState } from './market/apply.ts'
 
 /** 最小化的 Cordis 上下文结构（独立构建不依赖 @deepseek-ai/cordis 的类型包） */
 interface CordisCtx {
@@ -1313,6 +1315,13 @@ export function apply(ctx: CordisCtx): void {
   const marketDir = CONFIG.dwpMarketDir || (homedir() + '/.dsh-dwp-market')
   const market = new MarketClient({ dir: marketDir })
   for (const route of createMarketRoutes({ market, catalogUrl: CONFIG.dwpMarketCatalogUrl })) {
+    disposers.push(webServer.register(route))
+  }
+
+  /** DWP 渲染面伺服：把已装 .dwp 解包，按需提供 scene/manifest/资源 + 管理"当前应用"。
+   *  client 半用 @dwp/web 的 mount() 拉这些端点组装背景层。 */
+  const dwpApply = new ApplyState(marketDir)
+  for (const route of createDwpServeRoutes({ store: market.store, apply: dwpApply })) {
     disposers.push(webServer.register(route))
   }
 

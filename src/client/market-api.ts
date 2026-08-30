@@ -104,3 +104,29 @@ export async function uninstall(fetchFn: Fetch = defaultFetch, id: string): Prom
   if (!res.ok) { const b = await res.json().catch(() => ({})) as { error?: string }; return { ok: false, error: b.error ?? `HTTP ${res.status}` }; }
   return { ok: true };
 }
+
+/** "当前应用的 DWP"（渲染面）。 */
+export interface AppliedInfo { id: string; version: string; appliedAt: string }
+
+/** 应用某个已装 DWP 为壁纸（GET /apply?id=）。 */
+export async function applyDwp(fetchFn: Fetch = defaultFetch, id: string): Promise<InstallResult> {
+  const res = await fetchFn('/we-sync/dwp/apply?id=' + encodeURIComponent(id), { cache: 'no-store' });
+  const body = await res.json().catch(() => ({})) as { error?: string };
+  if (!res.ok) return { ok: false, error: body.error ?? `HTTP ${res.status}` };
+  return { ok: true };
+}
+
+/** 取消应用（GET /unapply）。 */
+export async function unapplyDwp(fetchFn: Fetch = defaultFetch): Promise<InstallResult> {
+  const res = await fetchFn('/we-sync/dwp/unapply', { cache: 'no-store' });
+  if (!res.ok) { const b = await res.json().catch(() => ({})) as { error?: string }; return { ok: false, error: b.error ?? `HTTP ${res.status}` }; }
+  return { ok: true };
+}
+
+/** 查询当前应用的 DWP（GET /applied）。 */
+export async function fetchApplied(fetchFn: Fetch = defaultFetch): Promise<AppliedInfo | null> {
+  const res = await fetchFn('/we-sync/dwp/applied', { cache: 'no-store' });
+  if (!res.ok) return null;
+  const body = await res.json() as { applied?: AppliedInfo | null };
+  return body.applied ?? null;
+}

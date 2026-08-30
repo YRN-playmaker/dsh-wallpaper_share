@@ -469,7 +469,13 @@ export const MARKET_CSS = `
 .wesync-market-card { display: flex; flex-direction: column; }
 .wesync-market-meta { font-size: 11px; color: var(--dsw-alias-label-secondary); margin-top: 2px; min-height: 14px; }
 .wesync-market-actions { margin-top: 8px; display: flex; gap: 6px; }
-.wesync-market-install, .wesync-market-uninstall { flex: 1; font-size: 12px; padding: 6px 8px; }
+.wesync-market-install, .wesync-market-uninstall, .wesync-market-apply { flex: 1; font-size: 12px; padding: 6px 8px; }
 .wesync-market-uninstall { opacity: 0.8; }
-.wesync-market-note { font-size: 11px; color: var(--dsw-alias-label-tertiary, var(--dsw-alias-label-secondary)); opacity: 0.7; text-align: center; }
+.wesync-market-apply { background: var(--dsw-alias-accent, rgba(80,140,255,0.18)); }
+.wesync-market-stage { position: relative; border-radius: 10px; overflow: hidden; border: 1px solid var(--dsw-alias-border, rgba(255,255,255,0.08)); background: #000; }
+.wesync-market-canvas { display: block; width: 100%; aspect-ratio: 16 / 9; }
+.wesync-market-stage-empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 12px; color: var(--dsw-alias-label-secondary); pointer-events: none; }
+.wesync-market-stage-bar { display: flex; align-items: center; gap: 8px; padding: 6px 10px; font-size: 11px; color: var(--dsw-alias-label-secondary); background: var(--dsw-alias-bg-layer-2); }
+.wesync-market-stage-info { margin-left: auto; opacity: 0.8; }
+.wesync-market-unapply { font-size: 11px; padding: 4px 8px; }
 `
