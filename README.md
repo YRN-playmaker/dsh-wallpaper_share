@@ -16,9 +16,9 @@
 </div>
 
 <div align="center">
-  <img alt="dsh-wallpaper_share 面板实拍" src="docs/screenshots/gui-overview.png" />
+  <video src="https://github.com/user-attachments/assets/4461d385-de62-42be-8420-7edce5606f44"
+         muted autoplay loop playsinline controls width="100%"></video>
 </div>
-
 把 Wallpaper Engine 当前显示的壁纸实时同步为 DeepSeek Harness Web 界面的背景，并提供 `wallpaper_share` 标签页用于调整渲染模式、视觉效果、专注模式与壁纸库。支持场景壁纸的完整动效与应用壁纸的导入。
 
 > **纯显示同步**：只读取 WE 状态，不控制 / 不修改桌面壁纸（换壁纸请在 WE 内操作）。
