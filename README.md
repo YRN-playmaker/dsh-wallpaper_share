@@ -1,5 +1,4 @@
 # dsh-wallpaper_share
-# Wallpaper Engine ↔ DeepSeek Harness 壁纸同步
 
 <!-- Hero -->
 <div align="center">
