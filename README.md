@@ -202,17 +202,14 @@ dsh plugin --profile web add github:YRN-playmaker/dsh-wallpaper_share#test
 - **沉浸模式仅隐藏输入栏**：`applyImmersive()` 的 CSS 选择器 `[data-phase] > header` 期望 `<header>` 标签，但当前 ConversationRoot 渲染为 `<div>`，选择器失配；对话消息区未被隐藏。修复：改为 `[data-conversation-scroll]`。
 - **⏻ 同步按钮图标不显示**：U+23FB 符号在 DSH 字体栈 `--dsw-font-family`（不含 Segoe UI Symbol）中无法渲染。修复：给 `.wesync-btn` 增加 `font-family: 'Segoe UI Symbol', 'Segoe UI Emoji'`。
 
-### 内部逻辑缺陷（已于 26.9.3-rc 修复，详见 CHANGELOG）
-
-- ~~**路径穿越漏洞（安全）**~~：已修复——`webRelPath()` URL 解码 + 拒绝 `..` / 绝对路径，`/we-sync/wallpaper/` 与 sourceServer 两处统一防护。
-- ~~**`poll()` 轮询永久锁死**~~：已修复——`!res.ok` 分支先复位 `polling=false` 再返回，非 200 响应不再卡死轮询。
-- ~~**DWP 渲染循环遇异常停摆**~~：已修复——GL 异常一次性降级 Canvas2D（换新 canvas 元素原位替换），失败时跳过该帧节流告警、循环继续。
-- ~~**`decode()` RAW 帧无长度校验**~~：已修复——先校验 `w*h*4` 长度并截断，不足即跳过坏帧。
-
 ### 环境限制
 
 - **预览图不显示**：市场卡片缩略图指向 `raw.githubusercontent.com`，当前环境不可达。图片加载失败后 `onError` 隐藏显示。
 - **WE 安装目录不存在**：自动检测到 `F:\SteamLibrary\...\wallpaper_engine` 但目录不存在，壁纸同步不可用（市场功能不受影响）。
+
+### 构建与维护（不影响已发布包）
+
+- **`dwp-runtime-web/` 未纳入版本控制**：DWP 渲染运行时（`@dwp/web`）通过 `tsdown` 的本地路径 alias 在构建时内联进 `lib/client.js`，而该目录被 `.gitignore` 忽略、也不是 npm 依赖。**终端用户从 GitHub / npm 装的是已内联的预构建 `lib/`，不受影响、DWP 正常可用**；但**干净 clone 后 `pnpm build` 会因缺该目录而构建失败或静默产出坏包**——即"重新构建"目前只在存有 `dwp-runtime-web/` 的机器上可复现。计划：多人维护 / 上 CI 前，将其纳入 pnpm workspace 或改为 git-tag 依赖，并把 alias 兜底改为"缺目录即报错"。
 
 ## 📄 License
 
@@ -401,17 +398,14 @@ dsh plugin --profile web add github:YRN-playmaker/dsh-wallpaper_share#test
 - **Immersive mode only hides the input bar**: `applyImmersive()` targets `[data-phase] > header`, but ConversationRoot renders a `<div>` there, so the selector misses and the transcript stays visible. Fix: target `[data-conversation-scroll]` instead.
 - **The ⏻ sync-toggle glyph does not render**: U+23FB has no glyph in DSH's `--dsw-font-family` (no Segoe UI Symbol). Fix: add `font-family: 'Segoe UI Symbol', 'Segoe UI Emoji'` to `.wesync-btn`.
 
-### Internal logic defects (fixed in 26.9.3-rc, see CHANGELOG)
-
-- ~~**Path traversal (security)**~~: fixed — `webRelPath()` URL-decodes and rejects `..` / absolute paths; both `/we-sync/wallpaper/` and the source server are guarded.
-- ~~**`poll()` permanently deadlocks**~~: fixed — the `!res.ok` branch now resets `polling = false` before returning, so a non-200 response no longer stops sync forever.
-- ~~**DWP render loop freezes on runtime errors**~~: fixed — a GL exception triggers a one-time Canvas2D fallback (fresh canvas element swapped in place); on failure the frame is skipped with throttled warnings and the loop continues.
-- ~~**`decode()` RAW frames lack length validation**~~: fixed — payload length is checked and truncated to `w*h*4` first; short frames are skipped.
-
 ### Environment limits
 
 - **Market thumbnails do not load**: catalog thumbnails point at `raw.githubusercontent.com`, unreachable in some environments; the `onError` handler hides them.
 - **Wallpaper Engine directory missing**: auto-detection found `F:\SteamLibrary\...\wallpaper_engine` but the directory does not exist, so wallpaper sync is unavailable (the market feature is unaffected).
+
+### Build & maintenance (does not affect shipped packages)
+
+- **`dwp-runtime-web/` is not version-controlled**: the DWP render runtime (`@dwp/web`) is inlined into `lib/client.js` at build time via a `tsdown` local-path alias, but that directory is `.gitignore`d and is not an npm dependency. **End users installing from GitHub / npm get the prebuilt, already-inlined `lib/` and are unaffected — DWP works normally**; however, **a clean `git clone` + `pnpm build` fails or silently produces a broken bundle because the directory is missing** — rebuilding is currently only reproducible on a machine that has `dwp-runtime-web/`. Plan: before multi-maintainer / CI, fold it into a pnpm workspace or switch to a git-tag dependency, and make the alias fallback fail loudly when the directory is absent.
 
 ## 📄 License
 
