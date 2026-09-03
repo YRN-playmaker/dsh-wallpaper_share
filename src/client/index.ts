@@ -16,6 +16,9 @@ import { applyDwp, unapplyDwp, fetchApplied } from './market-api.ts'
 
 export const inject = ['slots', 'theme']
 
+/** 插件版本：构建期由 tsdown 的 define 从 package.json 注入（未注入的裸跑为 'dev'）。 */
+export const PLUGIN_VERSION: string = process.env.DSH_WESYNC_VERSION ?? 'dev'
+
 export interface WeSyncMonitor {
   key: string
   file: string
@@ -148,10 +151,18 @@ interface LocaleService {
   subscribe(fn: () => void): () => void
 }
 
-/** 最小化的 Cordis 上下文结构（独立构建不依赖 @deepseek-ai/cordis 的类型包） */
-interface CordisCtx {
+/** 最小化的 Cordis 上下文结构（独立构建不依赖 @deepseek-ai/dsh-cordis 的类型包） */
+interface CordisScope {
   get(name: string): unknown
   effect(callback: () => (() => void) | void): void
+}
+
+interface CordisCtx extends CordisScope {
+  /**
+   * 等列出的服务就绪后再跑回调，服务变化时卸载并重跑（cordis 原生能力）。
+   * 用于宿主稍后才提供的服务（如 sessions），避免 apply 期一次性取空。
+   */
+  inject(deps: readonly string[], callback: (scope: CordisScope) => void): unknown
 }
 
 export function apply(ctx: CordisCtx): void {
@@ -159,8 +170,15 @@ export function apply(ctx: CordisCtx): void {
   const slots = ctx.get('slots') as unknown as SlotsService | undefined
   if (theme === undefined || slots === undefined) return
 
-  const sessions = ctx.get('sessions') as unknown as SessionsService | undefined
-  const workspaces = ctx.get('workspaces') as unknown as WorkspacesService | undefined
+  // sessions / 工作区导航都"用到时再取"，不在 apply 期一次性缓存：
+  // 0.1.2 起 ctx.get 是严格查找（只认已激活的 provider fiber），宿主可能还没
+  // 提供，取到 undefined 就会把 orb 任务色和"新建会话"永久钉死。
+  // 订阅那条走 ctx.inject（见下方「任务状态检测」），点击类走这里的即时查找。
+  const sessionsNow = (): SessionsService | undefined =>
+    ctx.get('sessions') as unknown as SessionsService | undefined
+  /** 0.1.2 起 startSession 在 uiWorkspace 上；workspaces 上的同名方法已移除，留作老宿主兜底。 */
+  const workspaceNav = (): WorkspacesService | undefined =>
+    (ctx.get('uiWorkspace') ?? ctx.get('workspaces')) as unknown as WorkspacesService | undefined
 
   // 界面语言：从 DSH locale 服务同步到模块级 store.locale（权威源，含持久化的用户偏好）。
   // 不注入 'locale'（ctx.get 软依赖）：老宿主没有该服务时保持 null，面板回退 DOM 探测。
@@ -287,8 +305,16 @@ export function apply(ctx: CordisCtx): void {
 
   function applyImmersive(): void {
     const on = store.settings.immersive
+    // 选择器按 0.1.2 的真实 DOM 走：会话头部被插槽渲染包进 [data-slot="…"] 里，
+    // 不再是 [data-phase] 的直接子 <header>（旧选择器静默失配 → 只隐藏了输入栏）；
+    // 正文与输入栏同在 [data-conversation-scroll] 内。旧宿主的两条写法一并保留。
     immersiveStyleTag.textContent = on
-      ? '[data-phase] > header, [data-composer-seat] { opacity: 0 !important; pointer-events: none !important; transition: opacity 0.3s ease !important; }'
+      ? [
+        '[data-slot="conversation.session.header"]',
+        '[data-phase] > header',
+        '[data-conversation-scroll]',
+        '[data-composer-seat]',
+      ].join(', ') + ' { opacity: 0 !important; pointer-events: none !important; transition: opacity 0.3s ease !important; }'
       : ''
     if (mediaEl instanceof HTMLIFrameElement) {
       // 沉浸时置顶，但不遮住侧边栏（左缘 56px rail），保留侧边栏与球形按钮可点
@@ -445,11 +471,12 @@ export function apply(ctx: CordisCtx): void {
   orbBtn.addEventListener('click', () => {
     if (!store.settings.immersive) {
       // 进入沉浸前：若当前不是新会话页面，先切到新会话
-      const snap = sessions?.list.getSnapshot()
+      const snap = sessionsNow()?.list.getSnapshot()
       const id = snap?.current
       const isBlank = id === undefined || (snap != null && snap.byId[id]?.blank === true)
-      if (!isBlank && typeof workspaces?.startSession === 'function') {
-        workspaces.startSession()
+      const nav = workspaceNav()
+      if (!isBlank && typeof nav?.startSession === 'function') {
+        nav.startSession()
       }
     }
     store.settings.immersive = !store.settings.immersive
@@ -700,8 +727,12 @@ export function apply(ctx: CordisCtx): void {
     return () => clearInterval(timer)
   })
 
-  // 任务状态检测：订阅 sessions 列表快照，任意会话（跨工作区）running = 任务进行中
-  if (sessions !== undefined) {
+  // 任务状态检测：订阅 sessions 列表快照，任意会话（跨工作区）running = 任务进行中。
+  // 必须走 ctx.inject：'sessions' 由宿主在插件 apply 之后才提供，直接 ctx.get 会拿到
+  // undefined，导致 orb 一直显示空闲绿、专注模式的"任务中"浓淡也不切换。
+  ctx.inject(['sessions'], (scope) => {
+    const sessions = scope.get('sessions') as unknown as SessionsService | undefined
+    if (sessions === undefined) return
     const updateTaskState = (): void => {
       const snapshot = sessions.list.getSnapshot()
       const active = snapshot != null && Object.values(snapshot.byId).some((s) => s.running === true)
@@ -712,9 +743,9 @@ export function apply(ctx: CordisCtx): void {
         store.notify()
       }
     }
-    ctx.effect(() => sessions.list.subscribe(updateTaskState))
+    scope.effect(() => sessions.list.subscribe(updateTaskState))
     updateTaskState()
-  }
+  })
 
   applyTheme()
   applyBackground()

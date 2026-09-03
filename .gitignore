@@ -7,6 +7,7 @@ dwp-runtime-web/
 dwp-registry/
 # 本地缓存 / 打包残留 / 诊断转储（不进版本库）
 .pnpm-store/
+.npm-cache-tmp/
 *.tgz
 tools/test-branch/
 tools/test-branch.zip

@@ -1,5 +1,34 @@
 # Changelog
 
+## 26.9.4 - 2026-09-04
+
+### 🔗 Harness 0.1.2 适配
+
+`0.1.2-alpha.2` 的破坏性变更导致四项静默失效，已全部修复并对照 `0.1.2-rc.1` 宿主实现核对。
+
+- **沉浸模式「新建会话」静默失效**：`workspaces.startSession` 在 0.1.2 移除，改取 `ctx.get('uiWorkspace')?.startSession()`，老宿主回退 `workspaces`。
+- **orb 任务色不更新**：`sessions` 改由 `ctx.inject(['sessions'], …)` 在宿主提供后再挂载订阅。原先 apply 期一次性 `ctx.get` 会取到 `undefined`，orb 恒为空闲绿，专注模式的「任务中 / 空闲」浓淡也随之失效。
+- **沉浸模式只隐藏输入栏**：会话头部改按 `[data-slot="conversation.session.header"]` 命中（插槽渲染新增包裹层，旧 `[data-phase] > header` 静默失配），正文与输入栏改按 `[data-conversation-scroll]` 整体隐藏；旧选择器保留以兼容老宿主。
+- **⏻（U+23FB）显示为豆腐块**：`.wesync-btn` 字体栈改为 `var(--dsw-font-family), 'Segoe UI Symbol', 'Segoe UI Emoji', 'Noto Sans Symbols 2', sans-serif`，中英文仍走宿主字体，仅该字形落到符号字体。
+- 服务查找一律延迟到使用时，`0.1.0-rc.6` ~ `0.1.2-alpha.1` 行为不变。
+
+### ✨ 新增功能
+
+- **面板显示插件版本号**：标题行右缘以低权重小字显示 `v<version>`（`user-select: all`，一键整段选中便于反馈问题）。值由 `tsdown` 的 `define` 在构建期从 `package.json` 注入，不把 package.json 打进浏览器产物；`PLUGIN_VERSION` 同时从 client 半导出，供后续 diag / 设置页复用。**改版本号后必须重新构建**，否则 UI 仍显示旧值。
+
+### 🔧 细节
+
+- **wallpaper_share 标签页禁用正文宽度拖拽**：与轨迹页表现一致，隐藏会话正文两侧的拖拽把手（`PANEL_CSS` 新增 `body:has(.wesync-panel) [data-width-handle] { display: none }`，仅本标签页挂载时生效）。刻意不借用宿主的 `data-conversation-composer-overlay` 标记——那会连带把面板改成全出血 + 悬浮输入框布局。
+- **面板副标题去冗余**：副标题原为 `wallpaper.type · 静态预览有无 · 显示器名 · Scene[通路] …`，其中类型与 `Scene[...]` 语义重复、静态预览属内部产物、显示器名与上方下拉框 `<output>` 冗余，三段删除，非场景壁纸不再渲染该行；仅保留场景壁纸的渲染通路（`场景 · 预览图 / 捕获 live Nfps / 浏览器模型渲染 / 回退：<原因>`，用词与三档按钮一致），它是该状态在 UI 里的唯一出口。
+
+### 📚 文档
+
+- **README 信息架构重排**：新增置顶的「⚡ 30 秒上手」（装完会看到什么）、`🧭 面板导览`（三张卡片逐项 + 版本号 / 副标题 / 禁用拖拽三项本轮变化）、`🌌 沉浸模式与任务指示`（此前完全未记载：orb 颜色优先级、进入前自动新建会话、隐藏范围、web 壁纸可交互、三种退出方式、不落盘）；「Scene 渲染与回退」补上原生捕获器原理与多显示器裁剪，并指向面板副标题作为排障入口。
+- **`README.zh-CN.md` 改为纯中文镜像**：原先两份 README 各自都含中英双语、内容互相漂移，是过期的根因。现 `README.md` 为双语主文档（顶部加了指向 zh-CN 的链接），`README.zh-CN.md` 只保留中文并与主文档逐节对齐。
+- **修正过期事实**：三档名 `节能 / 性能 / 增强` → `预览 / 捕获 / 完整`（与面板按钮一致）；实机验证版本 `0.1.0-rc.6` → `0.1.2-rc.1`；orb 第三态颜色 `橙 = 需介入` → `黄 = 等待授权`（代码为 `#eab308`）；`文字行锁定` → `文字吸附`（UI 按钮文字）；补 `设置持久化`（英文段此前缺失）与「同步暂停（DWP）」第三态；安装示例 tarball 与徽章版本同步为 `26.9.4`。
+
+---
+
 ## 26.9.3-rc - 2026-08-30
 
 ### 🐛 修复

@@ -18,6 +18,29 @@ export const PANEL_CSS = `
   border: 1px solid var(--dsw-alias-border-l1);
 }
 
+/* 标题行：壁纸名吃掉剩余宽度并省略号，版本号贴右缘、刻意低视觉权重
+   （它是排障信息，不参与任何决策，不该占副标题那个位置）。
+   user-select: all 让版本号一键整段选中，方便截图/复述。 */
+.wesync-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.wesync-head .wesync-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.wesync-ver {
+  flex: none;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-caption);
+  font-variant-numeric: tabular-nums;
+  user-select: all;
+}
+
 .wesync-title {
   font-size: 15px;
   font-weight: 600;
@@ -108,7 +131,10 @@ export const PANEL_CSS = `
   color: var(--dsw-alias-label-primary);
   cursor: pointer;
   font-size: 13px;
-  font-family: inherit;
+  /* ⏻（U+23FB）不在宿主 --dsw-font-family 里（该栈无 Segoe UI Symbol），
+     纯 font-family: inherit 会渲染成豆腐块。这里显式列出宿主字体再补符号字体：
+     中英文仍走宿主字体，只有 ⏻ 落到符号字体（字体回退按字形逐个匹配）。 */
+  font-family: var(--dsw-font-family), 'Segoe UI Symbol', 'Segoe UI Emoji', 'Noto Sans Symbols 2', sans-serif;
   white-space: nowrap;
 }
 
@@ -532,4 +558,14 @@ body[data-ds-dark-theme] .wesync-gaze-status.is-error { color: #fdba74; }
 .wesync-market-actions { margin-top: 8px; display: flex; gap: 6px; }
 .wesync-market-install, .wesync-market-uninstall { flex: 1; font-size: 12px; padding: 6px 8px; }
 .wesync-market-uninstall { opacity: 0.8; }
+
+/* 禁用会话正文两侧的「拖拽调整宽度」把手，与轨迹页表现一致。
+   harness 只在检测到 composer-overlay 标记时隐藏这对把手（见
+   ui-conversation ConversationRoot.module.css），而本面板不接管
+   composer，套用那个标记会连带改成全出血 + 悬浮输入框布局。
+   所以这里按自家根类名精确命中：仅当 wallpaper_share 标签页挂载时
+   隐藏把手，切回对话 / 轨迹页不影响 harness 自己的宽度拖拽。 */
+body:has(.wesync-panel) [data-width-handle] {
+  display: none;
+}
 `

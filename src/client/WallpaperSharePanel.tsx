@@ -4,7 +4,7 @@
  * 样式类名由 PANEL_CSS 在 apply 阶段注入，不依赖 CSS Modules。
  */
 import { useEffect, useState } from 'react'
-import { store, type WeSyncInfo } from './index'
+import { store, PLUGIN_VERSION, type WeSyncInfo } from './index'
 import { startGaze, stopGaze, calibrate, onGazeStatus, hasCalibrationData, type GazeStatus } from './GazeLens.ts'
 import { fetchCatalog, fetchInstalled, buildCards, searchCards, collectTags, install, uninstall, type MarketEntry, type MarketCard } from './market-api.ts'
 
@@ -17,11 +17,12 @@ const DICT = {
     noWallpaper: 'Wallpaper Engine 尚未应用壁纸',
     webNoPreview: '当前为网页壁纸（无本地预览）',
     applyHint: '在 Wallpaper Engine 中应用壁纸后，此处会同步显示',
-    staticSynced: ' · 已同步静态预览',
-    noStaticPreview: ' · 无静态预览图',
-    monitorPrefix: ' · 显示器 ',
-    modelRender: 'model 渲染',
-    fallbackPrefix: 'fallback:',
+    // 副标题只留场景渲染通路（别处看不到的唯一诊断出口）
+    sceneEco: '场景 · 预览图',
+    sceneExternal: '场景 · 捕获 live',
+    sceneModel: '场景 · 浏览器模型渲染',
+    sceneFallback: '场景 · 回退：',
+    versionTitle: '插件版本',
 
     // 显示器
     bgMonitor: '背景显示器',
@@ -126,11 +127,12 @@ const DICT = {
     noWallpaper: 'Wallpaper Engine has no active wallpaper',
     webNoPreview: 'Current wallpaper is Web type (no local preview)',
     applyHint: 'Apply a wallpaper in Wallpaper Engine to sync here',
-    staticSynced: ' · Static preview synced',
-    noStaticPreview: ' · No static preview',
-    monitorPrefix: ' · Monitor ',
-    modelRender: 'model render',
-    fallbackPrefix: 'fallback:',
+    // Subtitle keeps only the scene render path (the one diagnostic found nowhere else)
+    sceneEco: 'Scene · preview image',
+    sceneExternal: 'Scene · capture live',
+    sceneModel: 'Scene · browser model render',
+    sceneFallback: 'Scene · fallback: ',
+    versionTitle: 'Plugin version',
 
     // Monitor
     bgMonitor: 'Background Monitor',
@@ -561,22 +563,33 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
   const title = wallpaper === null
     ? (info !== null && info.kind === 'web' ? t.webNoPreview : t.noWallpaper)
     : wallpaper.title
+  // 副标题只保留"别处看不到"的那一条：场景壁纸当前走哪条渲染通路。
+  // 原先拼的 wallpaper.type 与 Scene[...] 语义重复、静态预览有无属内部产物、
+  // 显示器名在多显示器时上方下拉框的 <output> 已经显示 —— 三段全部删除，
+  // 非场景壁纸因此不再显示副标题（整行不渲染，而不是留一行空字）。
+  const scene = info !== null && info.source.kind === 'scene' ? info.scene : null
   const subtitle = wallpaper === null
     ? t.applyHint
-    : wallpaper.type +
-      (info !== null && info.kind === 'image' ? t.staticSynced : t.noStaticPreview) +
-      (info !== null && info.monitor !== '' ? t.monitorPrefix + info.monitor : '') +
-      (info !== null && info.source.kind === 'scene' && info.scene !== null
-        ? ' · Scene[' + (renderMode === 'eco' ? 'eco' : info.scene.live === true ? 'external' : 'browser') + '] ' + (info.scene.live ? 'live ' + String(info.scene.status?.fps ?? '?') + 'fps' : (info.scene.model === true ? t.modelRender : t.fallbackPrefix + info.scene.fallback))
-        : '')
+    : scene === null
+      ? ''
+      : renderMode === 'eco'
+        ? t.sceneEco
+        : scene.live === true
+          ? t.sceneExternal + ' ' + String(scene.status?.fps ?? '?') + 'fps'
+          : scene.model === true
+            ? t.sceneModel
+            : t.sceneFallback + scene.fallback
 
   const monitors = info !== null && Array.isArray(info.monitors) && info.monitors.length > 1 ? info.monitors : null
 
   return (
     <div className="wesync-panel">
       <div className="wesync-card">
-        <div className="wesync-title">{title}</div>
-        <div className="wesync-sub">{subtitle}</div>
+        <div className="wesync-head">
+          <div className="wesync-title">{title}</div>
+          <span className="wesync-ver" title={t.versionTitle}>{'v' + PLUGIN_VERSION}</span>
+        </div>
+        {subtitle !== '' ? <div className="wesync-sub">{subtitle}</div> : null}
         {monitors !== null
           ? (
               <div className="wesync-row">

@@ -1,7 +1,7 @@
 {
   "name": "dsh-wallpaper_share",
   "description": "Sync active Wallpaper Engine wallpapers(image/video/scence/app)to DeepSeek Harness Web UI as a customizable dynamic background.",
-  "version": "26.9.3-rc",
+  "version": "26.9.4",
   "type": "module",
   "main": "lib/index.js",
   "exports": {
