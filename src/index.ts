@@ -11,6 +11,7 @@
 import { createReadStream, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
 import { execFile, execFileSync } from 'node:child_process'
 import { createServer } from 'node:http'
+import { posix } from 'node:path'
 import { homedir } from 'node:os'
 import type { AddressInfo } from 'node:net'
 import type { Writable } from 'node:stream'
@@ -743,6 +744,20 @@ export function apply(ctx: CordisCtx): void {
     },
   }))
 
+  /** 解析 web 壁纸目录下的相对子路径（安全）：
+   *  URL 解码 + 反斜杠归一 + 拒绝绝对路径与任何 `..` 段；非法返回 null。
+   *  rel 只含普通文件名/子目录段 → 拼进 dir 后不可能逃逸（无需再做 resolve）。 */
+  function webRelPath(raw: string, prefix: string): string | null {
+    if (!raw.startsWith(prefix)) return null
+    let rel = raw.slice(prefix.length).split('?')[0]
+    try { rel = decodeURIComponent(rel) } catch { return null }
+    rel = rel.replace(/\\/g, '/')
+    if (rel.startsWith('/')) return null
+    const parts = rel.split('/')
+    if (parts.some((p) => p === '..')) return null
+    return parts.join('/')
+  }
+
   disposers.push(webServer.register({
     kind: 'prefix',
     path: '/we-sync/wallpaper',
@@ -755,7 +770,12 @@ export function apply(ctx: CordisCtx): void {
         return
       }
       const dir = normalize(dirOf(monitor.sourceFile))
-      const rel = (req.url ?? '').split('?')[0].replace(/^\/we-sync\/wallpaper\//, '')
+      const rel = webRelPath(req.url ?? '', '/we-sync/wallpaper/')
+      if (rel === null) {
+        res.statusCode = 403
+        res.end('forbidden')
+        return
+      }
       const target = normalize(dir + '/' + rel)
       if (!target.startsWith(dir + '/') || target.length <= dir.length + 1) {
         res.statusCode = 403
@@ -1345,7 +1365,13 @@ export function apply(ctx: CordisCtx): void {
         return
       }
       const dir = normalize(dirOf(monitor.sourceFile))
-      const rel = (req.url ?? '').split('?')[0].replace(/^\/+/, '')
+      // 路径穿越防护：与 /we-sync/wallpaper 同款（URL 解码 + 拒绝 .. / 绝对路径）
+      const rel = webRelPath(req.url ?? '', '/')
+      if (rel === null) {
+        res.statusCode = 403
+        res.end('forbidden')
+        return
+      }
       const target = normalize(dir + '/' + rel)
       if (!target.startsWith(dir + '/') || target.length <= dir.length + 1) {
         res.statusCode = 403

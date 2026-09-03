@@ -151,10 +151,12 @@ export class SceneCanvas {
     } else if (format === 1) {
       promise = createImageBitmap(new Blob([payload as BlobPart], { type: 'image/webp' }))
     } else if (format === 2 || format === 3) {
-      let px = new Uint8ClampedArray(payload.buffer.slice(payload.byteOffset, payload.byteOffset + payload.byteLength))
-      if (format === 3) {
-        px = this.bgraToRgba(payload)
-      }
+      // RAW / BGRA 像素帧：payload 必须 ≥ w*h*4，否则 renderer 帧错位 / 残留缓冲
+      // 会同步抛 RangeError（ImageData 构造），这里先校验、截断并跳过坏帧。
+      const need = w * h * 4
+      if (payload.length < need) return
+      const slice = payload.subarray(0, need)
+      const px = format === 3 ? this.bgraToRgba(slice) : new Uint8ClampedArray(slice.buffer.slice(slice.byteOffset, slice.byteOffset + need))
       promise = createImageBitmap(new ImageData(px, w, h))
     } else {
       return

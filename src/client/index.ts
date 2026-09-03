@@ -6,8 +6,7 @@
  * 多显示器：?monitor= 锁定某台；不传则跟随"最近变化"的一台。
  */
 import { WallpaperSharePanel } from './WallpaperSharePanel.tsx'
-import { MarketPanel } from './MarketPanel.tsx'
-import { PANEL_CSS, MARKET_CSS } from './panelStyle.ts'
+import { PANEL_CSS } from './panelStyle.ts'
 import { SceneCanvas } from './SceneCanvas.ts'
 import { SceneModelRenderer } from './SceneModelRenderer.ts'
 import { getGaze, startGaze, isGazeRunning } from './GazeLens.ts'
@@ -211,7 +210,7 @@ export function apply(ctx: CordisCtx): void {
 
   const panelStyleTag = document.createElement('style')
   panelStyleTag.dataset.plugin = 'dsh-wallpaper_share'
-  panelStyleTag.textContent = PANEL_CSS + MARKET_CSS
+  panelStyleTag.textContent = PANEL_CSS
   document.head.appendChild(panelStyleTag)
 
   // 增强模式媒体层：视频或 iframe（性能模式不创建）
@@ -623,7 +622,7 @@ export function apply(ctx: CordisCtx): void {
     try {
       const monitorQuery = store.settings.monitor !== '' ? '?monitor=' + encodeURIComponent(store.settings.monitor) : ''
       const res = await fetch('/we-sync/state' + monitorQuery, { cache: 'no-store' })
-      if (!res.ok) return
+      if (!res.ok) { polling = false; return }
       const info = await res.json() as WeSyncInfo
       // 存档里的显示器锁可能已经过期（拔掉 / 改名了）：不在当前列表中就回退"自动跟随"，
       // 否则面板下拉框会选到一个不存在的项。node 半的 effectiveKey 本就会兜底，这里只是让 UI 说实话。
@@ -733,12 +732,5 @@ export function apply(ctx: CordisCtx): void {
   slotsService.inject('conversation.view', () => slotsService.register(
     { name: 'conversation.view', id: 'wallpaper_share', order: 20, label: 'wallpaper_share' },
     WallpaperSharePanel,
-  ))
-
-  // wallpaper_market：独立标签页，浏览 dwp-registry 目录 + 拉取安装（免费 only）。
-  // 与 wallpaper_share 分工：市场管"拉取"，share 管"已拉内容的管理"。
-  slotsService.inject('conversation.view', () => slotsService.register(
-    { name: 'conversation.view', id: 'wallpaper_market', order: 21, label: 'wallpaper_market' },
-    MarketPanel,
   ))
 }

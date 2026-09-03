@@ -50,7 +50,8 @@ https://github.com/user-attachments/assets/4461d385-de62-42be-8420-7edce5606f44
 - **原生 scene 捕获渲染器**：随包内置 Rust 编写的 `we-capture.exe`，用 Windows Graphics Capture 抓取 WE 正在渲染的桌面，镜像 WE 自身输出 → GLSL / SceneScript / 关键帧 / 粒子等**所有 WE 效果天然全覆盖**
 - **专注透镜**：叠加一个圆心清晰、圆外模糊的阅读窗；默认跟随鼠标，开专注即生效
 - **眼动追踪（实验）**：可选，用摄像头推断注视点让透镜跟随视线；9 点校准、文字行锁定、抗抖动
-- **壁纸库**：读取全部类型壁纸（场景 / 视频 / 图片 / 应用 / 网页），带类型筛选、标题搜索、缩略图与计数
+- **壁纸库 · 本地 / 市场**：壁纸库按**本地**与**市场**两大分类浏览。本地一栏管理已装内容——`dwp壁纸`（点击即挂载为全局背景，已挂载再点取消）与 `we应用`（点击打开所在文件夹），带标题搜索、缩略图与计数；市场一栏浏览 `dwp-registry` 目录，支持名称 / 作者搜索、标签筛选与**安装 / 更新 / 卸载**
+- **DWP 壁纸与全局背景渲染**：`dwp/1.0` 协议包（纯文本 / solid / 粒子 / mesh 图层 + 12 种混合模式 + 3 种动画 + 11 种效果，确定性渲染）；挂载后经 WebGL2 真实渲染为 DSH 全局背景（低配 Canvas2D 降级），同时暂停 WE 同步避免冲突，刷新后自动恢复
 - **视觉效果滑块**：面板透明度 0–100% / 背景模糊 0–30px / 阴影深度 0–100%，即时生效
 - **后台任务可视化**：收纳侧边栏时，用圆形指示感知任务进度（绿 = 空闲 / 蓝 = 进行中 / 橙 = 需介入）
 - **同步开关**：一键启停
@@ -85,7 +86,7 @@ dsh plugin --profile web add github:YRN-playmaker/dsh-wallpaper_share
 #   从 GitHub 安装（仓库自带预构建 lib/，不需要构建许可）
 dsh plugin --profile web add dsh-wallpaper_share
 #   从 npm 安装
-dsh plugin --profile web add ./dsh-wallpaper_share-26.8.30.tgz
+dsh plugin --profile web add ./dsh-wallpaper_share-26.9.3-rc.tgz
 #   本地 tarball 安装
 ```
 
@@ -219,7 +220,8 @@ The slider at the top of the panel controls how the wallpaper is presented:
 - **Native scene capture renderer**: bundled Rust `we-capture.exe` uses Windows Graphics Capture to grab WE's rendered desktop, mirroring WE's own output → GLSL / SceneScript / keyframes / particles **all covered natively**
 - **Focus lens**: a center-clear, edge-blurred reading window; follows the mouse by default
 - **Eye tracking (experimental)**: optional; uses the webcam to follow your gaze; 9-point calibration, text-line lock, anti-jitter
-- **Wallpaper library**: reads all types (scene / video / image / application / web) with type filters, title search, thumbnails and counts
+- **Wallpaper library · Local / Market**: the library is split into **Local** and **Market** categories. Local manages what's installed — `dwp壁纸` (click to mount as the global background, click again to unmount) and `we应用` (click to open its folder), with title search, thumbnails and counts; Market browses the `dwp-registry` catalog with name / author search, tag filters and **install / update / uninstall**
+- **DWP wallpapers & global-background rendering**: `dwp/1.0` protocol packages (text / solid / particle / mesh layers + 12 blend modes + 3 animations + 11 effects, deterministic rendering); mounting renders them as the DSH global background via WebGL2 (Canvas2D fallback on weak GPUs) while pausing WE sync to avoid conflicts, auto-restored after a refresh
 - **Visual sliders**: panel opacity 0–100% / background blur 0–30px / shadow depth 0–100%, live
 - **Background task indicator**: a circular cue when the sidebar is collapsed (green idle / blue running / orange needs attention)
 - **Sync toggle**: one-click on/off
@@ -252,7 +254,7 @@ dsh plugin --profile web add github:YRN-playmaker/dsh-wallpaper_share
 #   install from GitHub (repo ships prebuilt lib/, no build permission needed)
 dsh plugin --profile web add dsh-wallpaper_share
 #   install from npm
-dsh plugin --profile web add ./dsh-wallpaper_share-26.8.30.tgz
+dsh plugin --profile web add ./dsh-wallpaper_share-26.9.3-rc.tgz
 #   install from a local tarball
 ```
 

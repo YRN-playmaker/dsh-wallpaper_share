@@ -39,15 +39,10 @@ export const PANEL_CSS = `
   margin-top: 10px;
 }
 
-.wesync-dwp-banner {
+.wesync-sync-hint {
   font-size: 12px;
-  color: var(--dsw-alias-label-primary);
-  background: var(--dsw-alias-bg-layer-2);
-  border: 1px solid var(--dsw-alias-border, rgba(255,255,255,0.08));
-  border-radius: 8px;
-  padding: 8px 10px;
-  margin-top: 10px;
-  line-height: 1.5;
+  color: var(--dsw-alias-label-secondary);
+  align-self: center;
 }
 
 .wesync-actions {
@@ -55,6 +50,54 @@ export const PANEL_CSS = `
   gap: 8px;
   margin-top: 12px;
   flex-wrap: wrap;
+}
+
+/* 专注模式按钮 + 它的子集弹出层（眼动追踪 / 校准视线 / 文字吸附）：
+   悬停时横向（从左往右）弹出介绍文字；点击专注模式确认后，一行三个子按钮实体出现。 */
+.wesync-focuswrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.wesync-focus-flyout {
+  position: absolute;
+  left: 100%;
+  top: 50%;
+  margin-left: 10px;
+  transform: translateY(-50%);
+  z-index: 30;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  width: max-content;
+  padding: 8px;
+  border-radius: 10px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  background: var(--dsw-alias-bg-layer-2);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+  transform-origin: left center;
+  animation: wesync-flyout-in 0.18s ease-out;
+}
+
+@keyframes wesync-flyout-in {
+  from { opacity: 0; transform: translateY(-50%) translateX(-12px); }
+  to   { opacity: 1; transform: translateY(-50%) translateX(0); }
+}
+
+/* 介绍文字（悬停预览态）：一行灰字，不可交互 */
+.wesync-focus-intro {
+  white-space: nowrap;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12.5px;
+  line-height: 1.5;
+  padding: 0 2px;
+}
+
+.wesync-focus-flyout .wesync-gaze-status {
+  margin: 2px 6px 2px;
+  font-size: 12px;
 }
 
 .wesync-btn {
@@ -66,6 +109,7 @@ export const PANEL_CSS = `
   cursor: pointer;
   font-size: 13px;
   font-family: inherit;
+  white-space: nowrap;
 }
 
 .wesync-btn:hover:not(:disabled) {
@@ -307,7 +351,14 @@ body[data-ds-dark-theme] .wesync-gaze-status.is-error { color: #fdba74; }
   padding: 10px 2px;
 }
 
-/* 壁纸库：类型筛选 chips + 标题搜索 */
+/* 壁纸库：本地 / 市场 分类行 + 类型筛选 chips + 标题搜索 */
+.wesync-apps-cats {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
 .wesync-apps-filters {
   display: flex;
   flex-wrap: wrap;
@@ -469,14 +520,8 @@ body[data-ds-dark-theme] .wesync-gaze-status.is-error { color: #fdba74; }
   font-size: 12px;
   color: var(--dsw-alias-label-secondary);
 }
-`
 
-/** wallpaper_market 标签页专有样式（与 PANEL_CSS 一起注入，复用 wesync- 基础类）。 */
-export const MARKET_CSS = `
-.wesync-market { display: flex; flex-direction: column; gap: 12px; }
-.wesync-market-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
-.wesync-market-title { font-size: 16px; font-weight: 600; color: var(--dsw-alias-label-primary); }
-.wesync-market-sub { font-size: 12px; color: var(--dsw-alias-label-secondary); margin-top: 2px; }
+/* 壁纸库「市场」一栏：flash 提示 + 卡片元信息 + 安装/卸载按钮 */
 .wesync-market-flash {
   font-size: 12px; padding: 6px 10px; border-radius: 8px;
   background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-primary);
@@ -485,13 +530,6 @@ export const MARKET_CSS = `
 .wesync-market-card { display: flex; flex-direction: column; }
 .wesync-market-meta { font-size: 11px; color: var(--dsw-alias-label-secondary); margin-top: 2px; min-height: 14px; }
 .wesync-market-actions { margin-top: 8px; display: flex; gap: 6px; }
-.wesync-market-install, .wesync-market-uninstall, .wesync-market-apply { flex: 1; font-size: 12px; padding: 6px 8px; }
+.wesync-market-install, .wesync-market-uninstall { flex: 1; font-size: 12px; padding: 6px 8px; }
 .wesync-market-uninstall { opacity: 0.8; }
-.wesync-market-apply { background: var(--dsw-alias-accent, rgba(80,140,255,0.18)); }
-.wesync-market-stage { position: relative; border-radius: 10px; overflow: hidden; border: 1px solid var(--dsw-alias-border, rgba(255,255,255,0.08)); background: #000; }
-.wesync-market-canvas { display: block; width: 100%; aspect-ratio: 16 / 9; }
-.wesync-market-stage-empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 12px; color: var(--dsw-alias-label-secondary); pointer-events: none; }
-.wesync-market-stage-bar { display: flex; align-items: center; gap: 8px; padding: 6px 10px; font-size: 11px; color: var(--dsw-alias-label-secondary); background: var(--dsw-alias-bg-layer-2); }
-.wesync-market-stage-info { margin-left: auto; opacity: 0.8; }
-.wesync-market-unapply { font-size: 11px; padding: 4px 8px; }
 `

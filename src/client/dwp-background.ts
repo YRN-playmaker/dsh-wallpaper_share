@@ -15,7 +15,14 @@ export class DwpBackgroundLayer {
   /** 当前正在挂载或已挂载的 DWP id（'' = 无）。 */
   currentId(): string { return this.mountedId !== '' ? this.mountedId : this.mountingId }
 
+  /** 当前 DOM 中的舞台 canvas（mount 内部 GL→Canvas2D 降级会换新元素，按 data-dwp-stage 定位）。 */
+  private liveCanvas(): HTMLCanvasElement | null {
+    return document.querySelector('canvas[data-dwp-stage="1"]') as HTMLCanvasElement | null
+  }
+
   private ensureCanvas(): HTMLCanvasElement {
+    const live = this.liveCanvas()
+    if (live !== null) { this.canvas = live; return live }
     if (this.canvas === null) {
       const c = document.createElement('canvas')
       c.style.position = 'fixed'
@@ -55,9 +62,10 @@ export class DwpBackgroundLayer {
 
   /** 套用与 WE 层一致的视觉（模糊 + 轻微放大，避免模糊边缘露底）。 */
   applyVisuals(blurPx: number, scale: number): void {
-    if (this.canvas === null) return
-    this.canvas.style.filter = blurPx > 0 ? 'blur(' + blurPx + 'px)' : 'none'
-    this.canvas.style.transform = 'scale(' + scale.toFixed(3) + ')'
+    const c = this.liveCanvas() ?? this.canvas
+    if (c === null) return
+    c.style.filter = blurPx > 0 ? 'blur(' + blurPx + 'px)' : 'none'
+    c.style.transform = 'scale(' + scale.toFixed(3) + ')'
   }
 
   private disposeHandle(): void {
@@ -69,6 +77,8 @@ export class DwpBackgroundLayer {
   /** 卸载：停渲染 + 移除画布。 */
   unmount(): void {
     this.disposeHandle()
-    if (this.canvas !== null) { this.canvas.remove(); this.canvas = null }
+    const c = this.liveCanvas() ?? this.canvas
+    if (c !== null) c.remove()
+    this.canvas = null
   }
 }
