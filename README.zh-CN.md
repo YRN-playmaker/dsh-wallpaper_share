@@ -89,10 +89,6 @@ https://github.com/user-attachments/assets/4461d385-de62-42be-8420-7edce5606f44
 | 🟣 **alpha（新版本）** | 适配harness为alpha架构的推荐版本 | `dsh plugin --profile web add dsh-wallpaper_share@alpha` |
 | 🟡 **test（测试版本）** | 用于测试的版本，可能有未完成功能 | `dsh plugin --profile web add dsh-wallpaper_share@test` |
 
-- **小白**：只需上面第一条默认命令，无需了解 tag——`latest` 始终指向当前主流 Harness 环境最稳的推荐版本（当前为现有架构的推荐版；未来 alpha 架构成为主流时 `latest` 会跟随切换）。
-- **老炮**：按需在包名后加 `@tag` 拉取对应档位；从 GitHub 安装同理切换分支：`github:YRN-playmaker/dsh-wallpaper_share`（main = latest）／ `#test`（test）／ `#alpha`（alpha，随 alpha 架构发布后开放）。
-- **当前 npm 已发布的 tag**：`latest` / `test`；`rc`、`alpha` 随对应版本线发布后开放。
-
 ```bash
 # 任选其一：
 dsh plugin --profile web add github:YRN-playmaker/dsh-wallpaper_share
@@ -266,10 +262,6 @@ The slider at the top of the panel controls how the wallpaper is presented:
 | 🔵 **rc (stable)** | Recommended build for a Harness on the rc architecture; new features are adapted more slowly | `dsh plugin --profile web add dsh-wallpaper_share@rc` |
 | 🟣 **alpha (new)** | Recommended build for a Harness on the alpha architecture | `dsh plugin --profile web add dsh-wallpaper_share@alpha` |
 | 🟡 **test (testing)** | For testing only; may contain unfinished features | `dsh plugin --profile web add dsh-wallpaper_share@test` |
-
-- **Beginners**: use the first default command only — no need to know about tags. `latest` always points to the recommended build for the current mainstream Harness (today that is the current architecture's build; when the alpha architecture becomes mainstream, `latest` will follow it).
-- **Power users**: append `@tag` to pull the tier you need; the GitHub equivalent switches branches: `github:YRN-playmaker/dsh-wallpaper_share` (main = latest) / `#test` (test) / `#alpha` (alpha, opens when the alpha line ships).
-- **npm tags currently published**: `latest` / `test`; `rc` and `alpha` open when their version lines ship.
 
 ```bash
 # pick one:

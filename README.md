@@ -113,10 +113,6 @@ scene 壁纸在捕获 / 完整档下的渲染优先级与回退链：
 | 🟣 **alpha（新版本）** | 适配harness为alpha架构的推荐版本  | `dsh plugin --profile web add dsh-wallpaper_share@alpha` |
 | 🟡 **test（测试版本）** | 用于测试的版本，可能有未完成功能 | `dsh plugin --profile web add dsh-wallpaper_share@test` |
 
-- **小白**：只需上面第一条默认命令，无需了解 tag——`latest` 始终指向当前主流 Harness 环境最稳的推荐版本（当前为现有架构的推荐版；未来 alpha 架构成为主流时 `latest` 会跟随切换）。
-- **老炮**：按需在包名后加 `@tag` 拉取对应档位；从 GitHub 安装同理切换分支：`github:YRN-playmaker/dsh-wallpaper_share`（main = latest）／ `#test`（test）／ `#alpha`（alpha，随 alpha 架构发布后开放）。
-- **当前 npm 已发布的 tag**：`latest` / `test`；`rc`、`alpha` 随对应版本线发布后开放。
-
 ```bash
 # 任选其一：
 dsh plugin --profile web add github:YRN-playmaker/dsh-wallpaper_share
@@ -142,15 +138,6 @@ dsh plugin --profile web add github:YRN-playmaker/dsh-wallpaper_share#test
 
 > 也可以在本仓库根目录直接 `pnpm install && pnpm build`（`tsdown` 独立构建，不依赖 DSH checkout）。
 > 原生捕获器：`cd native/we-capture && cargo build --release`（需 `x86_64-pc-windows-gnu` 或 `-msvc` 工具链），产物拷到 `bin/we-capture.exe`。
->
-> ⚠️ **中文用户名机器上的 gnu 工具链构建**：MinGW 的 ld 不支持非 ASCII 路径，若 Windows 用户名含中文（如 `C:\Users\倪哥儿`），标准库明明存在也会报 `cannot find crt2.o / libstd-*.rlib / -lkernel32`。解决：给 `.rustup` 和 `.cargo` 各建一个纯 ASCII 路径的目录联接，再用 `--sysroot` 覆盖：
-> ```text
-> mklink /J C:\Users\Public\rustup-ji "C:\Users\<中文用户名>\.rustup"
-> mklink /J C:\Users\Public\cargo-ji  "C:\Users\<中文用户名>\.cargo"
-> set CARGO_HOME=C:\Users\Public\cargo-ji
-> set RUSTFLAGS=--sysroot=C:/Users/Public/rustup-ji/toolchains/stable-x86_64-pc-windows-gnu
-> cargo build --release
-> ```
 
 ## ⚙️ 配置
 
@@ -325,10 +312,6 @@ Full chain & per-layer implementation in **[docs/scene-fallback.md](docs/scene-f
 | 🟣 **alpha (new)** | Recommended build for a Harness on the alpha architecture | `dsh plugin --profile web add dsh-wallpaper_share@alpha` |
 | 🟡 **test (testing)** | For testing only; may contain unfinished features | `dsh plugin --profile web add dsh-wallpaper_share@test` |
 
-- **Beginners**: use the first default command only — no need to know about tags. `latest` always points to the recommended build for the current mainstream Harness (today that is the current architecture's build; when the alpha architecture becomes mainstream, `latest` will follow it).
-- **Power users**: append `@tag` to pull the tier you need; the GitHub equivalent switches branches: `github:YRN-playmaker/dsh-wallpaper_share` (main = latest) / `#test` (test) / `#alpha` (alpha, opens when the alpha line ships).
-- **npm tags currently published**: `latest` / `test`; `rc` and `alpha` open when their version lines ship.
-
 ```bash
 # pick one:
 dsh plugin --profile web add github:YRN-playmaker/dsh-wallpaper_share
@@ -354,15 +337,6 @@ dsh plugin --profile web add github:YRN-playmaker/dsh-wallpaper_share#test
 
 > You can also run `pnpm install && pnpm build` at this repo root (`tsdown` builds standalone, no DSH checkout needed).
 > Native capture: `cd native/we-capture && cargo build --release` (needs an `x86_64-pc-windows-gnu` or `-msvc` toolchain); copy the output to `bin/we-capture.exe`.
->
-> ⚠️ **gnu toolchain on machines with a non-ASCII username**: MinGW's ld rejects non-ASCII paths, so a Chinese Windows username (e.g. `C:\Users\倪哥儿`) reports `cannot find crt2.o / libstd-*.rlib / -lkernel32` even though the stdlib exists. Fix: create pure-ASCII directory junctions for `.rustup` and `.cargo`, then override `--sysroot`:
-> ```text
-> mklink /J C:\Users\Public\rustup-ji "C:\Users\<chinese-username>\.rustup"
-> mklink /J C:\Users\Public\cargo-ji  "C:\Users\<chinese-username>\.cargo"
-> set CARGO_HOME=C:\Users\Public\cargo-ji
-> set RUSTFLAGS=--sysroot=C:/Users/Public/rustup-ji/toolchains/stable-x86_64-pc-windows-gnu
-> cargo build --release
-> ```
 
 ## ⚙️ Configuration
 
