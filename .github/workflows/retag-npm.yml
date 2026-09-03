@@ -1,0 +1,39 @@
+# 一次性/维护用：给已发布的版本挂或改 dist-tag。
+# 触发：Actions 页面手动 Run workflow，填两个输入框。
+# 凭证：仓库 secret NPM_TOKEN。
+name: Retag npm dist-tag
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 已发布的版本号（如 26.9.3-rc）
+        required: true
+        type: string
+      tag:
+        description: 要挂的 dist-tag（如 rc / test / latest）
+        required: true
+        type: choice
+        options: [rc, test, latest]
+
+permissions:
+  contents: read
+
+jobs:
+  retag:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      - name: Add dist-tag
+        run: npm dist-tag add dsh-wallpaper_share@$INPUTS_VERSION $TAG
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          INPUTS_VERSION: ${{ inputs.version }}
+          TAG: ${{ inputs.tag }}
+
+      - name: Show result
+        run: npm view dsh-wallpaper_share dist-tags
