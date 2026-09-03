@@ -320,10 +320,10 @@ Full chain & per-layer implementation in **[docs/scene-fallback.md](docs/scene-f
 
 | Tier | Who it's for | Install command |
 | --- | --- | --- |
-| 🟢 **Latest (beginner)** | Just grab the recommended build for the current mainstream Harness | `dsh plugin --profile web add dsh-wallpaper_share` |
-| 🔵 **rc (release candidate)** | Want new features for the current architecture early, OK with minor issues | `dsh plugin --profile web add dsh-wallpaper_share@rc` |
-| 🟣 **alpha (future architecture)** | On the Harness alpha architecture / want to adapt to it early | `dsh plugin --profile web add dsh-wallpaper_share@alpha` |
-| 🟡 **test (in development)** | Early access / testing, some features may be unfinished | `dsh plugin --profile web add dsh-wallpaper_share@test` |
+| 🟢 **Beginner (latest)** | Don't fuss over versions — just grab the recommended build for the current mainstream Harness | `dsh plugin --profile web add dsh-wallpaper_share` |
+| 🔵 **rc (stable)** | Recommended build for a Harness on the rc architecture; new features are adapted more slowly | `dsh plugin --profile web add dsh-wallpaper_share@rc` |
+| 🟣 **alpha (new)** | Recommended build for a Harness on the alpha architecture | `dsh plugin --profile web add dsh-wallpaper_share@alpha` |
+| 🟡 **test (testing)** | For testing only; may contain unfinished features | `dsh plugin --profile web add dsh-wallpaper_share@test` |
 
 - **Beginners**: use the first default command only — no need to know about tags. `latest` always points to the recommended build for the current mainstream Harness (today that is the current architecture's build; when the alpha architecture becomes mainstream, `latest` will follow it).
 - **Power users**: append `@tag` to pull the tier you need; the GitHub equivalent switches branches: `github:YRN-playmaker/dsh-wallpaper_share` (main = latest) / `#test` (test) / `#alpha` (alpha, opens when the alpha line ships).
