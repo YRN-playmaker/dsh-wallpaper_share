@@ -11,10 +11,9 @@ on:
         required: true
         type: string
       tag:
-        description: 要挂的 dist-tag（如 rc / test / latest）
+        description: 要挂的 dist-tag（如 1.0.1-rc / rc / test / latest）
         required: true
-        type: choice
-        options: [rc, test, latest]
+        type: string
 
 permissions:
   contents: read
