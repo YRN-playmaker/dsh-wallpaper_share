@@ -61,6 +61,8 @@ dsh plugin --profile web add dsh-wallpaper_share   # 或见下方「安装」选
 
 需要 WE 正在运行且已应用壁纸；否则背景留空、面板显示"尚未应用壁纸"。诊断入口：`http://127.0.0.1:3080/we-sync/diag`（仅本机可访问；端口以启动日志为准，默认 3080）。
 
+> **零配置**：无需 API Key、无需注册、无需任何额外配置，安装即用。（注意：开头「无敏感信息」是隐私声明——代码中不含 Steam 用户名 / 令牌，并非需要你提供这些信息。）
+
 ## ✨ 功能一览
 
 - **实时同步**：在 WE 切换壁纸后，页面背景约 2 秒内自动跟随
@@ -158,6 +160,21 @@ scene 壁纸在捕获 / 完整档下的渲染优先级与回退链：
 | 🟢 **小白** | 不纠结版本，直接拉当前主流 Harness 环境的推荐版 | `dsh plugin --profile web add dsh-wallpaper_share` |
 | 🔵 **rc（稳定版本）** | 适配 harness 为 rc 架构的推荐版本，新功能适配较慢 | `dsh plugin --profile web add dsh-wallpaper_share@rc` |
 | 🟡 **test（测试版本）** | 用于测试的版本，可能有未完成功能 | `dsh plugin --profile web add dsh-wallpaper_share@test` |
+
+### 🔧 其他安装方式
+
+```bash
+# 从 Git 克隆（仓库自带预构建 lib/，克隆后无需构建）：
+git clone https://github.com/YRN-playmaker/dsh-wallpaper_share.git
+cd dsh-wallpaper_share
+pnpm pack                                        # 打包为 dsh-wallpaper_share-<version>.tgz
+dsh plugin --profile web add ./dsh-wallpaper_share-<version>.tgz
+```
+
+```bash
+# 作为 npm 依赖引入（可选）：
+pnpm add dsh-wallpaper_share
+```
 
 ```bash
 # 任选其一：
@@ -311,6 +328,8 @@ You get three things:
 
 WE must be running with a wallpaper applied; otherwise the background stays empty and the panel says so. Diagnostics: `http://127.0.0.1:3080/we-sync/diag` (localhost only; use the port printed at startup — 3080 by default).
 
+> **Zero-config**: no API Key, no signup, no extra setup of any kind — install and go. (Note: the no-sensitive-data notice at the top is a privacy statement — the code contains no Steam username or token; you are never asked to provide one.)
+
 ## ✨ Features
 
 - **Real-time sync**: the page background follows WE's current wallpaper within ~2s
@@ -409,6 +428,21 @@ When the sidebar is **collapsed**, a 34px round light appears on the left edge (
 | 🔵 **rc (stable)** | Recommended build for a Harness on the rc architecture; new features are adapted more slowly | `dsh plugin --profile web add dsh-wallpaper_share@rc` |
 | 🟣 **alpha (new)** | Recommended build for a Harness on the alpha architecture | `dsh plugin --profile web add dsh-wallpaper_share@alpha` |
 | 🟡 **test (testing)** | For testing only; may contain unfinished features | `dsh plugin --profile web add dsh-wallpaper_share@test` |
+
+### 🔧 Other install methods
+
+```bash
+# From a Git clone (repo ships prebuilt lib/, no build needed):
+git clone https://github.com/YRN-playmaker/dsh-wallpaper_share.git
+cd dsh-wallpaper_share
+pnpm pack                                        # → dsh-wallpaper_share-<version>.tgz
+dsh plugin --profile web add ./dsh-wallpaper_share-<version>.tgz
+```
+
+```bash
+# As an npm dependency (optional):
+pnpm add dsh-wallpaper_share
+```
 
 ```bash
 # pick one:
