@@ -100,6 +100,7 @@ const DICT = {
     pageSettings: '设置',
     pageLibrary: '壁纸库',
     pageHint: '滚动切页 · 用力滚才翻页',
+    pageGapHint: '继续滚动翻页 · 轻滑弹回',
     mounted: '已挂载',
     searchPlaceholder: '搜索标题…',
     showMore: '显示更多',
@@ -281,6 +282,7 @@ const DICT = {
     pageSettings: 'Settings',
     pageLibrary: 'Library',
     pageHint: 'Scroll to flip · keep scrolling firmly to turn the page',
+    pageGapHint: 'Keep scrolling to flip · release to bounce back',
     mounted: 'Mounted',
     searchPlaceholder: 'Search titles…',
     showMore: 'Show more',
@@ -423,13 +425,20 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
   const [gazeSnapText, setGazeSnapText] = useState(store.settings.gazeSnapText)
   const [needsCalib, setNeedsCalib] = useState(false)
   useEffect(() => onGazeStatus((s, err) => { setGazeStatus(s); setGazeError(err) }), [])
-  // —— 双页一体滚动：设置 ⇄ 壁纸库纵向叠放，一个原生滚动搞定 ——
+  // —— 双页虚拟滚动：一套滚轮全接管（设置 ⇄ 壁纸库）——
+  const CHARGE_THRESHOLD = 600 // deltaY 累积阻力阈值（常规轻滑不翻页）
+  const CHARGE_DECAY_MS = 250 // 停止滚动多久后清零弹回
+  const PULL_RATIO = 0.07 // 未突破阈值时的最大拉扯位移（视口高度比）
   // 不拦截 wheel：面板自身是滚动容器（scroll-snap 页界吸附防误触——页内任意位置
   // 都能停住，只有越过页底半屏才吸附翻到下一页）；右侧页签 scrollspy 跟随当前页。
   const [page, setPage] = useState<'settings' | 'library'>('settings')
   const appsOpen = page === 'library'
-  const pagesRef = useRef<HTMLDivElement | null>(null)
-  const libraryRef = useRef<HTMLDivElement | null>(null)
+  const viewportRef = useRef<HTMLDivElement | null>(null)
+  const trackRef = useRef<HTMLDivElement | null>(null)
+  const settingsRef = useRef<HTMLDivElement | null>(null)
+  const gapRef = useRef<HTMLDivElement | null>(null)
+  const progSetRef = useRef<HTMLSpanElement | null>(null)
+  const progLibRef = useRef<HTMLSpanElement | null>(null)
   const libLoadedRef = useRef(false)
   const pageRef = useRef<'settings' | 'library'>('settings')
   pageRef.current = page
@@ -438,23 +447,189 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
     libLoadedRef.current = true
     void loadApps(); void loadDwp(); void loadMarket(); void loadLauncher()
   }
-  /** scrollspy：以滚动视口中心线判定当前页；首次进入壁纸库页时懒加载数据 */
-  const onPagesScroll = (): void => {
-    const el = pagesRef.current
-    const lib = libraryRef.current
-    if (el === null || lib === null) return
-    const center = el.scrollTop + el.clientHeight * 0.5
-    const next = center >= lib.offsetTop ? 'library' : 'settings'
-    if (next !== pageRef.current) setPage(next)
-    if (next === 'library') loadLibraryData()
+  // 虚拟滚动几何：设置页域 [0, boundary]；壁纸库域 [libTop, maxPos]；pos 恒 clamp 在当前页域内
+  const geoRef = useRef({ maxPos: 0, boundary: 0, libTop: 0 })
+  const posRef = useRef(0)
+  const velRef = useRef(0) // 页内惯性速度
+  const accRef = useRef(0) // 蓄力动量累加
+  const pullRef = useRef(0) // 拉扯位移（弹性渲染值）
+  const pullTargetRef = useRef(0)
+  const phaseRef = useRef<'idle' | 'charge' | 'anim'>('idle')
+  const animRef = useRef<{ from: number; to: number; start: number; target: 'settings' | 'library' } | null>(null)
+  const decayTimerRef = useRef<number | null>(null)
+  const measure = (): void => {
+    const vp = viewportRef.current
+    const track = trackRef.current
+    const s = settingsRef.current
+    const gap = gapRef.current
+    if (vp === null || track === null || s === null || gap === null) return
+    const vpH = vp.clientHeight
+    const libTop = Math.max(0, s.offsetHeight + gap.offsetHeight)
+    const maxPos = Math.max(0, track.scrollHeight - vpH)
+    geoRef.current = {
+      maxPos,
+      libTop: Math.min(libTop, maxPos),
+      boundary: Math.min(Math.max(0, s.offsetHeight - vpH), maxPos),
+    }
   }
-  /** 页签点击：原生平滑滚动到对应页顶（无自定义动画） */
+  const resetProgress = (): void => {
+    if (progSetRef.current !== null) progSetRef.current.style.transform = 'scaleX(0)'
+    if (progLibRef.current !== null) progLibRef.current.style.transform = 'scaleX(0)'
+  }
+  const cancelCharge = (): void => {
+    accRef.current = 0
+    pullTargetRef.current = 0
+    resetProgress()
+  }
+  const disarmDecay = (): void => {
+    if (decayTimerRef.current !== null) { window.clearTimeout(decayTimerRef.current); decayTimerRef.current = null }
+  }
+  /** 蓄力翻页：引擎动画滚过断层到相邻页顶，到达后再切页签高亮 */
+  const flipTo = (target: 'settings' | 'library'): void => {
+    const g = geoRef.current
+    phaseRef.current = 'anim'
+    cancelCharge()
+    disarmDecay()
+    const to = target === 'library' ? g.libTop : 0
+    animRef.current = { from: posRef.current, to, start: performance.now(), target }
+    if (target === 'library') loadLibraryData()
+  }
+  // 一套滚轮全接管（passive:false）：输入框/下拉框放行原生，其余进动量引擎
+  useEffect(() => {
+    const vp = viewportRef.current
+    if (vp === null) return
+    const onWheel = (e: WheelEvent): void => {
+      const tag = (e.target as HTMLElement | null)?.tagName
+      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return
+      if (e.ctrlKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return
+      e.preventDefault()
+      if (phaseRef.current === 'anim') return
+      let dy = e.deltaY
+      if (e.deltaMode === 1) dy *= 40
+      else if (e.deltaMode === 2) dy *= 800
+      if (dy === 0) return
+      const g = geoRef.current
+      const dir: 1 | -1 = dy > 0 ? 1 : -1
+      const cur = pageRef.current
+      const pageTop = cur === 'library' ? g.libTop : 0
+      const pageBottom = cur === 'library' ? g.maxPos : g.boundary
+      // 方向感知的页界判定：只有「朝页界滚」才算到达边界
+      // （页顶往下滚 / 页底往上滚都还是正常页内滚动）
+      const atBoundary = (dir === 1 && posRef.current >= pageBottom - 0.5) || (dir === -1 && posRef.current <= pageTop + 0.5)
+      // 蓄力中反向滚 → 立即取消蓄力回归滚动；同向则继续累加
+      if (phaseRef.current === 'charge' && pullTargetRef.current !== 0 && ((dir === 1 && pullTargetRef.current > 0) || (dir === -1 && pullTargetRef.current < 0))) {
+        phaseRef.current = 'idle'
+        cancelCharge()
+        disarmDecay()
+      }
+      const charging = phaseRef.current === 'charge' && pullTargetRef.current !== 0
+      if (!charging && !atBoundary) {
+        // 页内正常滚动：跟手 + 惯性（pos 由页域 clamp）
+        disarmDecay()
+        velRef.current = dy * 0.4
+        posRef.current = Math.max(pageTop, Math.min(pageBottom, posRef.current + dy))
+        return
+      }
+      const canFlip = (dir === 1 && cur === 'settings') || (dir === -1 && cur === 'library')
+      if (phaseRef.current !== 'charge') { phaseRef.current = 'charge'; accRef.current = 0 }
+      if (!canFlip) {
+        // 边界橡皮筋：无相邻页，向滚动反方向回拉（页顶上滚=内容下坠），不累积
+        pullTargetRef.current = Math.max(-14, Math.min(14, -dy * 0.12))
+        accRef.current = 0
+        resetProgress()
+      } else {
+        // 蓄力：动量累加突破阈值翻页
+        accRef.current += dy
+        const ratio = Math.min(1, Math.abs(accRef.current) / CHARGE_THRESHOLD)
+        const maxPull = vp.clientHeight * PULL_RATIO
+        pullTargetRef.current = dir * ratio * maxPull * -1 // 下滚拉扯=内容上移（负）
+        const prog = (dir === 1 ? progLibRef : progSetRef).current
+        if (prog !== null) prog.style.transform = 'scaleX(' + ratio.toFixed(3) + ')'
+        const other = (dir === 1 ? progSetRef : progLibRef).current
+        if (other !== null) other.style.transform = 'scaleX(0)'
+        if (Math.abs(accRef.current) >= CHARGE_THRESHOLD) {
+          flipTo(dir === 1 ? 'library' : 'settings')
+          return
+        }
+      }
+      // 超时归零衰减：250ms 无输入 → 清空动量、页面平滑弹回
+      disarmDecay()
+      decayTimerRef.current = window.setTimeout(() => {
+        decayTimerRef.current = null
+        cancelCharge()
+        phaseRef.current = 'idle'
+      }, CHARGE_DECAY_MS)
+    }
+    vp.addEventListener('wheel', onWheel, { passive: false })
+    // 尺寸跟踪：壁纸库懒加载/内容变化后重算几何，并 clamp 当前位置
+    const ro = new ResizeObserver(() => {
+      measure()
+      const g = geoRef.current
+      posRef.current = Math.max(0, Math.min(g.maxPos, posRef.current))
+    })
+    if (trackRef.current !== null) ro.observe(trackRef.current)
+    window.addEventListener('resize', measure)
+    return () => {
+      vp.removeEventListener('wheel', onWheel)
+      ro.disconnect()
+      window.removeEventListener('resize', measure)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+  // rAF 主循环：翻页缓动 / 惯性积分 / 拉扯弹性，全部直写 DOM（不走 React 渲染）
+  useEffect(() => {
+    let raf = 0
+    const tick = (): void => {
+      raf = requestAnimationFrame(tick)
+      const track = trackRef.current
+      if (track === null) return
+      const g = geoRef.current
+      const a = animRef.current
+      if (phaseRef.current === 'anim' && a !== null) {
+        const t = Math.min(1, (performance.now() - a.start) / 340)
+        const ease = 1 - Math.pow(1 - t, 3)
+        posRef.current = a.from + (a.to - a.from) * ease
+        pullRef.current *= 0.7
+        if (t >= 1) {
+          posRef.current = a.to
+          pullRef.current = 0
+          animRef.current = null
+          phaseRef.current = 'idle'
+          if (pageRef.current !== a.target) setPage(a.target)
+        }
+      } else {
+        // 惯性衰减
+        if (Math.abs(velRef.current) > 0.4) {
+          posRef.current += velRef.current
+          velRef.current *= 0.9
+          const cur = pageRef.current
+          const pageTop = cur === 'library' ? g.libTop : 0
+          const pageBottom = cur === 'library' ? g.maxPos : g.boundary
+          posRef.current = Math.max(pageTop, Math.min(pageBottom, posRef.current))
+        } else {
+          velRef.current = 0
+        }
+        // 拉扯弹性跟随（idle 时即弹回动画）
+        pullRef.current += (pullTargetRef.current - pullRef.current) * 0.22
+        if (Math.abs(pullRef.current) < 0.4 && pullTargetRef.current === 0) pullRef.current = 0
+      }
+      track.style.transform = 'translate3d(0,' + (-posRef.current + pullRef.current).toFixed(2) + 'px,0)'
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [])
+  /** 页签点击：引擎动画滚到对应页顶 */
   const scrollToPage = (target: 'settings' | 'library'): void => {
-    const el = pagesRef.current
-    const lib = libraryRef.current
-    if (el === null) return
-    const top = target === 'library' && lib !== null ? lib.offsetTop : 0
-    el.scrollTo({ top, behavior: 'smooth' })
+    if (phaseRef.current === 'anim') return
+    measure()
+    if (target === pageRef.current) {
+      const g = geoRef.current
+      const top = target === 'library' ? g.libTop : 0
+      phaseRef.current = 'anim'
+      animRef.current = { from: posRef.current, to: top, start: performance.now(), target }
+      return
+    }
+    flipTo(target)
   }
   const [libTab, setLibTab] = useState<'local' | 'market' | 'launcher'>('local')
   const [apps, setApps] = useState<Array<{ id: string; title: string; file: string; type: string; hasPreview: boolean; source?: string }>>([])
@@ -976,8 +1151,9 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
 
   return (
     <div className="wesync-panel">
-      <div className="wesync-pages" ref={pagesRef} onScroll={onPagesScroll}>
-        <div className="wesync-page">
+      <div className="wesync-pages" ref={viewportRef}>
+        <div className="wesync-pages-track" ref={trackRef}>
+        <div className="wesync-page" ref={settingsRef}>
       <div className="wesync-card">
         <div className="wesync-head">
           <div className="wesync-title">{title}</div>
@@ -1143,8 +1319,13 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
       </div>
         <div className="wesync-page-hint" style={{ textAlign: 'center' }}>{t.pageHint}</div>
         </div>
-        <div className="wesync-page" ref={libraryRef}>
-          {/* 壁纸库页：独立卡片，向下滚进入（scroll-snap 吸附页顶） */}
+        <div className="wesync-page-gap" ref={gapRef}>
+          <span className="wesync-page-gap-line" />
+          <span className="wesync-page-hint">{t.pageGapHint}</span>
+          <span className="wesync-page-gap-line" />
+        </div>
+        <div className="wesync-page">
+          {/* 壁纸库页：独立卡片，蓄力翻页滚过断层进入 */}
           <div className="wesync-card">
             <div className="wesync-apps">
             <div className="wesync-apps-head">
@@ -1454,31 +1635,33 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
                                   )
                                 })()
                               )}
-                          {/* 启动确认弹层：每次启动都要求用户手势确认（安全边界） */}
-                          {lConfirm !== null
-                            ? (
-                                <div className="wesync-confirm-mask" onClick={() => setLConfirm(null)}>
-                                  <div className="wesync-confirm" onClick={(e) => { e.stopPropagation() }}>
-                                    <div className="wesync-confirm-title">{t.launcherConfirmTitle}</div>
-                                    <div className="wesync-confirm-body">
-                                      {t.launcherConfirmBody}
-                                      <code className="wesync-confirm-path">{lConfirm.file}</code>
-                                    </div>
-                                    <div className="wesync-confirm-actions">
-                                      <button className="wesync-btn" onClick={() => setLConfirm(null)}>{t.launcherConfirmCancel}</button>
-                                      <button className="wesync-btn wesync-market-install" onClick={() => { void onConfirmGo() }}>{t.launcherConfirmGo}</button>
-                                    </div>
-                                  </div>
-                                </div>
-                              )
-                            : null}
+                          {/* 启动确认弹层已上移到轨道外：transform 祖先会劫持 fixed 定位 */}
                         </>
                       )}
             </div>
           </div>
         </div>
+        </div>
       </div>
-      {/* 右缘页签：scrollspy 跟随当前页，点击原生平滑滚到对应页 */}
+      {/* 启动确认弹层：挂在轨道外（transform 祖先会劫持 fixed 定位且视口会裁剪它） */}
+      {lConfirm !== null
+        ? (
+            <div className="wesync-confirm-mask" onClick={() => setLConfirm(null)}>
+              <div className="wesync-confirm" onClick={(e) => { e.stopPropagation() }}>
+                <div className="wesync-confirm-title">{t.launcherConfirmTitle}</div>
+                <div className="wesync-confirm-body">
+                  {t.launcherConfirmBody}
+                  <code className="wesync-confirm-path">{lConfirm.file}</code>
+                </div>
+                <div className="wesync-confirm-actions">
+                  <button className="wesync-btn" onClick={() => setLConfirm(null)}>{t.launcherConfirmCancel}</button>
+                  <button className="wesync-btn wesync-market-install" onClick={() => { void onConfirmGo() }}>{t.launcherConfirmGo}</button>
+                </div>
+              </div>
+            </div>
+          )
+        : null}
+      {/* 右缘页签：当前页高亮 + 蓄力进度条（引擎直写，不走 React），点击翻页 */}
       <div className="wesync-pager">
         <button
           className={['wesync-pager-dot', page === 'settings' ? 'wesync-pager-dot-on' : ''].join(' ')}
@@ -1486,6 +1669,7 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
           onClick={() => scrollToPage('settings')}
         >
           <span className="wesync-pager-label">{t.pageSettings}</span>
+          <span className="wesync-pager-progress" ref={progSetRef} />
         </button>
         <button
           className={['wesync-pager-dot', page === 'library' ? 'wesync-pager-dot-on' : ''].join(' ')}
@@ -1493,6 +1677,7 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
           onClick={() => scrollToPage('library')}
         >
           <span className="wesync-pager-label">{t.pageLibrary}</span>
+          <span className="wesync-pager-progress" ref={progLibRef} />
         </button>
       </div>
     </div>

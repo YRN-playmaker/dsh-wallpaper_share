@@ -11,31 +11,43 @@ export const PANEL_CSS = `
   box-sizing: border-box;
 }
 
-/* ── 双页一体滚动：设置 ⇄ 壁纸库纵向叠放，一个原生滚动搞定 ──────────
-   页界 scroll-snap 吸附：滚过页底半屏才吸附翻页（防误触——页内任意位置停下都会被
-   拉回整页对齐，不会因轻滑而意外切页）；滚动条隐藏，滚轮/触摸板/拖动全部原生可用。 */
+/* ── 双页虚拟滚动：一套滚轮全接管（设置 ⇄ 壁纸库）──────────────────
+   视口 overflow hidden 禁原生滚动，wheel 全部进动量引擎：页内跟手+惯性阻尼，
+   页界蓄力（拉扯 ≤7% 视口 + 动量累加，突破 600 翻页，250ms 无输入弹回）。
+   轨道 transform 直写，两页之间留断层（.wesync-page-gap）。 */
 .wesync-pages {
   flex: 1;
   min-width: 0;
   max-height: min(100vh - 32px, 980px);
-  overflow-y: auto;
-  scroll-snap-type: y mandatory;
-  scrollbar-width: none;
-  display: flex;
-  flex-direction: column;
+  overflow: hidden;
+  position: relative;
 }
 
-.wesync-pages::-webkit-scrollbar { display: none; }
+.wesync-pages-track {
+  will-change: transform;
+}
 
 .wesync-page {
-  flex: 0 0 auto;
   display: flex;
   flex-direction: column;
   gap: 16px;
   min-width: 0;
   padding: 24px 0 24px 24px;
-  scroll-snap-align: start;
-  scroll-snap-stop: always;
+}
+
+/* 页间断层：只在蓄力拉扯/翻页动画经过时露出，提示「继续滚动翻页」 */
+.wesync-page-gap {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 24px 10px 24px;
+  opacity: 0.75;
+}
+
+.wesync-page-gap-line {
+  flex: 1;
+  height: 1px;
+  background: var(--dsw-alias-border-l1);
 }
 
 .wesync-page-hint {
@@ -44,7 +56,7 @@ export const PANEL_CSS = `
   white-space: nowrap;
 }
 
-/* ── 右缘页签：scrollspy 跟随当前页，点击原生平滑滚到对应页 ───────── */
+/* ── 右缘页签：当前页高亮 + 蓄力进度条（醒目、可点击兜底）────────── */
 .wesync-pager {
   flex: 0 0 auto;
   width: 56px;
@@ -90,6 +102,18 @@ export const PANEL_CSS = `
 .wesync-pager-dot-on .wesync-pager-label {
   color: rgba(250, 204, 21, 0.95);
   font-weight: 600;
+}
+
+.wesync-pager-progress {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 100%;
+  background: rgba(234, 179, 8, 0.3);
+  transform-origin: left center;
+  transform: scaleX(0);
+  pointer-events: none;
 }
 
 .wesync-card {
@@ -419,8 +443,6 @@ body[data-ds-dark-theme] .wesync-gaze-status.is-error { color: #fdba74; }
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 8px;
-  max-height: 420px;
-  overflow-y: auto;
   padding: 2px;
 }
 
@@ -585,8 +607,6 @@ body[data-ds-dark-theme] .wesync-gaze-status.is-error { color: #fdba74; }
   display: flex;
   flex-direction: column;
   gap: 6px;
-  max-height: 140px;
-  overflow-y: auto;
 }
 
 .wesync-dir-item {
