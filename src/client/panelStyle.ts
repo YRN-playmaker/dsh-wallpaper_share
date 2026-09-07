@@ -5,10 +5,93 @@ export const PANEL_CSS = `
 .wesync-panel {
   padding: 24px;
   display: flex;
+  flex-direction: row;
+  gap: 10px;
+  max-width: 724px;
+  box-sizing: border-box;
+  position: relative;
+}
+
+/* ── 双页翻滚（设置 ⇄ 壁纸库）────────────────────────────────────── */
+.wesync-pages {
+  flex: 1;
+  min-width: 0;
+}
+
+.wesync-page {
+  display: flex;
   flex-direction: column;
   gap: 16px;
-  max-width: 660px;
-  box-sizing: border-box;
+  min-width: 0;
+}
+
+.wesync-page-hidden { display: none; }
+.wesync-page-leave-down { animation: wesync-page-leave-down 0.24s cubic-bezier(0.55, 0, 0.85, 0.36) forwards; }
+.wesync-page-enter-down { animation: wesync-page-enter-down 0.3s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+.wesync-page-leave-up { animation: wesync-page-leave-up 0.24s cubic-bezier(0.55, 0, 0.85, 0.36) forwards; }
+.wesync-page-enter-up { animation: wesync-page-enter-up 0.3s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+@keyframes wesync-page-leave-down { to { transform: translateY(-36px); opacity: 0; } }
+@keyframes wesync-page-enter-down { from { transform: translateY(36px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+@keyframes wesync-page-leave-up { to { transform: translateY(36px); opacity: 0; } }
+@keyframes wesync-page-enter-up { from { transform: translateY(-36px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+/* ── 右侧页签栏：当前页 + 蓄力进度（醒目、可点击兜底）────────────── */
+.wesync-pager {
+  flex: 0 0 auto;
+  width: 64px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 12px;
+}
+
+.wesync-pager-dot {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 30px;
+  padding: 6px 4px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--dsw-alias-bg-layer-1) 82%, transparent);
+  border: 1px solid var(--dsw-alias-border-l1);
+  color: var(--dsw-alias-label-caption);
+  cursor: pointer;
+  opacity: 0.55;
+  overflow: hidden;
+  transition: opacity 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.wesync-pager-dot:hover { opacity: 0.9; }
+
+.wesync-pager-dot-on {
+  opacity: 1;
+  border-color: rgba(234, 179, 8, 0.85);
+  box-shadow: 0 0 10px rgba(234, 179, 8, 0.35);
+}
+
+.wesync-pager-label {
+  font-size: 11px;
+  line-height: 1.2;
+  white-space: nowrap;
+  text-align: center;
+}
+
+.wesync-pager-dot-on .wesync-pager-label {
+  color: rgba(250, 204, 21, 0.95);
+  font-weight: 600;
+}
+
+.wesync-pager-progress {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 100%;
+  background: rgba(234, 179, 8, 0.3);
+  transform-origin: left center;
+  transform: scaleX(0);
+  pointer-events: none;
 }
 
 .wesync-card {
@@ -327,6 +410,13 @@ body[data-ds-dark-theme] .wesync-gaze-status.is-error { color: #fdba74; }
   color: var(--dsw-alias-label-secondary);
 }
 
+/* 壁纸库页头右侧：切页操作提示 */
+.wesync-page-hint {
+  font-size: 11px;
+  color: var(--dsw-alias-label-caption);
+  white-space: nowrap;
+}
+
 .wesync-apps-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
@@ -468,9 +558,6 @@ body[data-ds-dark-theme] .wesync-gaze-status.is-error { color: #fdba74; }
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding-bottom: 12px;
-  margin-bottom: 12px;
-  border-bottom: 1px solid var(--dsw-alias-border-l1);
 }
 
 .wesync-dir-row {
