@@ -15,10 +15,6 @@
   🌏 <a href="#中文"><b>中文</b></a> · <a href="#english">English</a> · 纯中文长文见 <a href="README.zh-CN.md"><code>README.zh-CN.md</code></a>
 </div>
 
-<div align="center">
-  <video src="https://github.com/user-attachments/assets/4461d385-de62-42be-8420-7edce5606f44"
-         muted autoplay loop playsinline controls width="100%"></video>
-</div>
 
 把 Wallpaper Engine 当前显示的壁纸实时同步为 DeepSeek Harness Web 界面的背景，并提供 `wallpaper_share` 标签页用于调整渲染模式、视觉效果、专注模式与壁纸库。支持场景壁纸的完整动效与应用壁纸的导入。
 
