@@ -140,6 +140,10 @@ const DICT = {
     launcherAuthClear: '清除',
     launcherAuthSaved: '139 登录态已保存',
     launcherAuthNeed: '139 原始文件下载需要登录态，请在下方粘贴 Authorization',
+    launcherAuthNeedShort: '该 139 链接需要登录态：',
+    launcherAuthOpenBtn: '一键打开 139 并登录',
+    launcherAuthWaiting: '等待登录态同步…（登录后自动检测，最多 10 分钟）',
+    launcherAuthSynced: '✔ 已同步 139 登录态，可以安装了',
     launcherShareCode: '该 139 分享需要提取码：请在提取码框填入后重试',
     launcherShareCodeWrong: '139 提取码错误，请核对后重试',
     launcherShareFail: '139 分享解析失败（详情见括号内服务端信息）',
@@ -295,6 +299,10 @@ const DICT = {
     launcherAuthClear: 'Clear',
     launcherAuthSaved: '139 authorization saved',
     launcherAuthNeed: '139 original-file download needs an Authorization — paste it below',
+    launcherAuthNeedShort: 'This 139 link needs a login state:',
+    launcherAuthOpenBtn: 'Open 139 & sign in',
+    launcherAuthWaiting: 'Waiting for login sync… (auto-detected after sign-in, up to 10 min)',
+    launcherAuthSynced: '✔ 139 login synced — ready to install',
     launcherShareCode: 'This 139 share needs a passcode — enter it in the passcode box and retry',
     launcherShareCodeWrong: 'Wrong 139 passcode — check it and retry',
     launcherShareFail: '139 share resolve failed (see server detail in brackets)',
@@ -405,6 +413,7 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
   const [lAuth, setLAuth] = useState('') // 139 Authorization 输入
   const [lAuthPresent, setLAuthPresent] = useState('') // 已配置的掩码账号（'' = 未配置）
   const [lAuthBusy, setLAuthBusy] = useState(false)
+  const [lAuthWaiting, setLAuthWaiting] = useState(false) // A1 一键登录：已打开 139 页，轮询等待助手同步
   const [lBusy, setLBusy] = useState(false)
   const [lFlash, setLFlash] = useState('')
   const [lSearch, setLSearch] = useState('')
@@ -610,6 +619,32 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
     } catch { /* launcher 路由未就绪不阻断 */ }
   }
   const flashL = (msg: string): void => { setLFlash(msg); window.setTimeout(() => setLFlash(''), 3000) }
+
+  // ── A1 一键登录：检测到 139 链接且未配置登录态 → 出「一键打开 139」按钮，
+  //    新标签打开 yun.139.com（用户手势内 window.open，浏览器允许），期间 2s 轮询
+  //    /139auth；油猴助手一旦同步成功 → 绿灯提示。最多等 10 分钟。 ──────────
+  const is139Share = (u: string): boolean => /yun\.139\.com\/shareweb\/#\/w\/i\//i.test(u.trim())
+
+  const onOpen139Login = async (): Promise<void> => {
+    window.open('https://yun.139.com/', '_blank', 'noopener')
+    setLAuthWaiting(true)
+    setLAuthOpen(true)
+    const started = Date.now()
+    // 最多等 10 分钟（够用户慢慢输账号密码）；每 2s 查一次本机登录态
+    while (Date.now() - started < 600000) {
+      await new Promise((r) => setTimeout(r, 2000))
+      try {
+        const a = await get139Auth((url, init) => fetch(url, init))
+        if (a.present) {
+          setLAuthPresent(a.account)
+          setLAuthWaiting(false)
+          flashL(t.launcherAuthSynced)
+          return
+        }
+      } catch { /* 服务暂时不可达，继续等 */ }
+    }
+    setLAuthWaiting(false)
+  }
 
   /** canvas 预览卡：渐变底 + 首字母徽章 + 标题（服务端兜底卡无文字，客户端版优先）。 */
   const makeLauncherCard = (title: string): string => {
@@ -1166,6 +1201,22 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
                               {lBusy ? t.launcherInstalling : t.launcherInstall}
                             </button>
                           </div>
+                          {/* A1 一键登录：139 链接 + 未配置登录态 → 一键打开登录页并自动等待同步 */}
+                          {is139Share(lUrl) && lAuthPresent === ''
+                            ? (
+                                <div className="wesync-dir-row" style={{ alignItems: 'center' }}>
+                                  <span style={{ flex: '0 0 auto', fontSize: 12, opacity: 0.75 }}>
+                                    {t.launcherAuthNeedShort}
+                                  </span>
+                                  <button className="wesync-btn" disabled={lAuthWaiting} onClick={() => { void onOpen139Login() }}>
+                                    {t.launcherAuthOpenBtn}
+                                  </button>
+                                  {lAuthWaiting
+                                    ? <span style={{ fontSize: 12, opacity: 0.7 }}>{t.launcherAuthWaiting}</span>
+                                    : null}
+                                </div>
+                              )
+                            : null}
                           {/* 139 登录态（需要时自动展开 / 已配置常驻显示状态） */}
                           {lAuthOpen || lAuthPresent !== ''
                             ? (
