@@ -559,6 +559,53 @@ body[data-ds-dark-theme] .wesync-gaze-status.is-error { color: #fdba74; }
 .wesync-market-install, .wesync-market-uninstall { flex: 1; font-size: 12px; padding: 6px 8px; }
 .wesync-market-uninstall { opacity: 0.8; }
 
+/* ── 应用启动器：确认弹层（每次启动都要用户手势确认）────────────────── */
+.wesync-confirm-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(2px);
+}
+.wesync-confirm {
+  width: min(420px, 86vw);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 18px;
+  border-radius: 14px;
+  background: var(--dsw-alias-bg-layer-1, #1c1f26);
+  border: 1px solid var(--dsw-alias-border, rgba(255, 255, 255, 0.12));
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+}
+.wesync-confirm-title { font-size: 14px; font-weight: 600; color: var(--dsw-alias-label-primary); }
+.wesync-confirm-body { font-size: 12px; line-height: 1.7; color: var(--dsw-alias-label-secondary); }
+.wesync-confirm-path {
+  display: block;
+  margin-top: 6px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-primary);
+  font-size: 11px;
+  word-break: break-all;
+  user-select: all;
+}
+.wesync-confirm-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.wesync-confirm-actions .wesync-market-install { flex: 0 0 auto; padding: 6px 18px; }
+
+/* ── 应用启动器：本地库 we应用 瓷砖的 ▶ 启动按钮 ──────────────────── */
+.wesync-app-launch {
+  flex: 0 0 auto;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  color: #fca5a5;
+}
+
 /* 禁用会话正文两侧的「拖拽调整宽度」把手，与轨迹页表现一致。
    harness 只在检测到 composer-overlay 标记时隐藏这对把手（见
    ui-conversation ConversationRoot.module.css），而本面板不接管

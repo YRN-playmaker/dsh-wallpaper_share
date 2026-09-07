@@ -9,7 +9,7 @@
  * 检测不到时在下方 CONFIG.wallpaperEngineDir 手动指定。
  */
 import { createReadStream, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
-import { execFile, execFileSync } from 'node:child_process'
+import { execFile, execFileSync, spawn } from 'node:child_process'
 import { createServer } from 'node:http'
 import { posix } from 'node:path'
 import { homedir } from 'node:os'
@@ -24,6 +24,9 @@ import { MarketClient } from './market/pull.ts'
 import { createMarketRoutes } from './market/routes.ts'
 import { createDwpServeRoutes } from './market/serve.ts'
 import { ApplyState } from './market/apply.ts'
+import { LauncherInstaller } from './launcher/installer.ts'
+import { createLauncherRoutes } from './launcher/routes.ts'
+import { Yun139Client, fileCredStore } from './launcher/yun139.ts'
 
 /** 最小化的 Cordis 上下文结构（独立构建不依赖 @deepseek-ai/cordis 的类型包） */
 interface CordisCtx {
@@ -69,6 +72,10 @@ const CONFIG = {
   dwpMarketCatalogUrl: 'https://raw.githubusercontent.com/YRN-playmaker/dwp-registry/main/data/catalog.json',
   /** DWP market 本地存储目录（installed.json + packages/）；留空 = ~/.dsh-dwp-market */
   dwpMarketDir: '',
+  /** 应用启动器安装根（类 WE app 目录：project.json + preview + 软件本体）；留空 = ~/.dsh/storages/we-sync-apps */
+  launcherDir: '',
+  /** 7z/7za.exe 路径（.7z 包含加密包的解压）；留空 = 自动探测（插件 bin/ → Program Files） */
+  launcherSevenZipPath: '',
 }
 
 interface Req { url?: string; method?: string; headers?: { range?: string } }
@@ -1064,6 +1071,98 @@ export function apply(ctx: CordisCtx): void {
       sendJson(res, { opened: true, dir: app.dir })
     },
   }))
+
+  // —— 应用启动器 · 启动路由：执行 application 类壁纸目录 project.json 里声明的入口。
+  //    通用能力：launcher 装的包与 workshop 老的 application 壁纸都能启动；
+  //    detached + stdio ignore，GUI 程序不随插件进程退出；入口必须位于壁纸目录内。
+  disposers.push(webServer.register({
+    kind: 'exact',
+    path: '/we-sync/apps/launch',
+    handler(req, res) {
+      const url = req.url ?? ''
+      const q = url.indexOf('?')
+      const id = q >= 0 ? decodeURIComponent(url.slice(q + 1).replace(/^id=/, '')) : ''
+      if (id === '') {
+        res.statusCode = 400
+        sendJson(res, { error: 'bad request' })
+        return
+      }
+      // 不强依赖 WE：未检测到 WE 时仍可启动 launcher 装的包（scanApps 对空 weDir 安全）
+      const workshopDir = state.weDir !== '' ? resolveWorkshopDir(state.weDir) : ''
+      const apps = getCachedApps(state.weDir, workshopDir)
+      let app = apps.find((a) => a.id === id)
+      // launcher 标签页传的是 installed.json 的 slug id（如「福瑞」），scanApps 的 id 是目录
+      // 全路径——slug 查不到时回落 launcher 安装记录构造同构条目（目录 = 安装根/slug）。
+      if (app === undefined) {
+        const rec = launcher.get(id)
+        if (rec !== undefined) {
+          app = {
+            id: rec.id,
+            title: rec.title,
+            dir: normalize(launcherRoot + '/' + rec.slug),
+            file: rec.file,
+            preview: null,
+            type: 'application',
+          }
+        }
+      }
+      if (app === undefined) {
+        res.statusCode = 404
+        sendJson(res, { error: 'app not found' })
+        return
+      }
+      if (app.type !== 'application' || app.file.trim() === '') {
+        res.statusCode = 400
+        sendJson(res, { error: '该壁纸没有可启动的可执行文件' })
+        return
+      }
+      const exe = normalize(app.dir + '/' + app.file)
+      // 防逃逸：入口必须解析到壁纸目录内部
+      if (!exe.startsWith(app.dir + '/') || !exists(exe)) {
+        res.statusCode = 404
+        sendJson(res, { error: '可执行文件不存在或不在壁纸目录内: ' + app.file })
+        return
+      }
+      const lower = exe.toLowerCase()
+      // 工作目录取 exe 所在文件夹（便携软件常按 cwd 找资源；exe 在根时等价于 app.dir）
+      const exeDir = exe.slice(0, exe.lastIndexOf('/'))
+      try {
+        if (lower.endsWith('.exe')) {
+          const child = spawn(exe, [], { cwd: exeDir, detached: true, stdio: 'ignore' })
+          child.unref()
+        } else if (lower.endsWith('.bat') || lower.endsWith('.cmd')) {
+          const child = spawn('cmd.exe', ['/c', exe], { cwd: exeDir, detached: true, stdio: 'ignore', windowsHide: true })
+          child.unref()
+        } else {
+          res.statusCode = 400
+          sendJson(res, { error: '不支持的入口类型: ' + app.file })
+          return
+        }
+        sendJson(res, { launched: true, file: app.file, dir: app.dir })
+      } catch (e) {
+        res.statusCode = 500
+        sendJson(res, { error: '启动失败: ' + ((e as Error).message ?? e) })
+      }
+    },
+  }))
+
+  // —— 应用启动器：直链下载 → 类 WE app 封装（project.json + preview）→ 入库。
+  //    安装根默认 ~/.dsh/storages/we-sync-apps（不放 WE 目录，避免 Steam 校验/更新触碰）；
+  //    根目录自动注册进自定义壁纸读取位置，瓷砖经现有 scanApps 出现在「we 应用」分类。
+  const launcherRoot = normalize(CONFIG.launcherDir !== '' ? CONFIG.launcherDir : (homedir() + '/.dsh/storages/we-sync-apps'))
+  try { mkdirSync(launcherRoot, { recursive: true }) } catch { /* 已存在 */ }
+  const launcher = new LauncherInstaller({ root: launcherRoot, sevenZipPath: CONFIG.launcherSevenZipPath })
+  // 139 登录态：存 ~/.dsh/storages/we-sync-139-auth.json；每请求实时读（面板改完即生效，无需重启）
+  const cred139 = fileCredStore(normalize(homedir() + '/.dsh/storages/we-sync-139-auth.json'))
+  const yun139 = new Yun139Client({ getAuth: () => cred139.read() })
+  for (const route of createLauncherRoutes({ installer: launcher, yun139, cred139 })) {
+    disposers.push(webServer.register(route))
+  }
+  if (!appDirs.includes(launcherRoot)) {
+    appDirs.push(launcherRoot)
+    saveAppDirs()
+    appsCache = null
+  }
 
   disposers.push(webServer.register({
     kind: 'exact',

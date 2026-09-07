@@ -1,5 +1,25 @@
 # Changelog
 
+## 26.10.0 - 2026-09-06
+
+### 🚀 应用启动器（新功能）
+
+把壁纸库从「浏览/挂载」扩展为**应用启动器**：DSH 一键下载软件，自动封装成类 WE app 格式（`project.json` + 预览图），在面板里直接启动——不用打开 WE、不依赖 WE 运行。
+
+- **直链安装**：壁纸库新增「应用启动器」分类。粘贴 `http(s)` 直链（`.zip` 或裸 `.exe`），服务端完成 下载 → 大小上限双查（Content-Length + 实收，4 GiB 硬顶）→ 可选 sha512 校验 → zip 解包（路径穿越/条目数/总量三防，单一顶层包装目录自动扁平化，跳过 `__MACOSX` 噪声）→ **可执行入口探测**（浅层优先、安装器/卸载器名降权，多候选可切换）→ 生成类 WE `project.json`（与 workshop application 条目同构 + `source` 溯源段）+ **canvas 预览卡**（客户端 1280×720 带标题字，服务端 PNG 兜底）→ 入库。
+- **一键启动**：启动器卡片与本地库「we 应用」瓷砖均有「▶ 启动」。新增 `POST /we-sync/apps/launch`：读目录内 `project.json` 的入口，`.exe` 直接 detached spawn（`.bat/.cmd` 经 `cmd /c`），GUI 程序不随插件进程退出；**每次启动都弹确认弹层**（显示将执行的路径，用户手势确认后才执行）。入口必须解析到壁纸目录内（防逃逸）。启动路由同时认两种 id：`scanApps` 的目录全路径（本地库瓷砖）与 launcher 安装记录的 slug（启动器标签页——查不到目录 id 时回落安装记录构造同构条目，修「app not found」）；**工作目录取 exe 所在文件夹**（便携软件常按 cwd 定位资源，嵌套目录场景原先误设为安装根）。
+- **安装位置**：默认 `~/.dsh/storages/we-sync-apps`（不放 WE 目录，避免 Steam 校验/更新触碰），根目录自动注册进「壁纸读取位置」，瓷砖经现有 `scanApps` 出现在「we 应用」分类——WE 重不重启都无所谓，新版 WE 不支持应用类壁纸也不影响启动。
+- **管理**：详情展开（来源 URL / SHA512 / 「更新预览」重生成预览卡 / 多入口切换）、按标题搜索、卸载（删目录 + 索引，`installed.json` 记账 30s 缓存）。
+- **加密压缩包**：安装表单新增「解压密码（选填）」框。纯 JS 实现 **ZipCrypto（传统加密）+ WinZip AES（AE-1/AE-2，128/192/256）** 解密（`node:crypto` PBKDF2/HMAC/CTR，零新依赖），无密码包路径不变；密码只随安装请求在内存使用一次，**不写 project.json / installed.json / 日志**。三态明确反馈：包加密未给密码 → 422 `password_required`（密码框高亮）；密码错 → 422 `wrong_password`（校验字节 / PV / HMAC / CRC 四重判定）；正确 → 一次装完。**.7z（含加密 7z）** 经外部解压器落盘解压：依次探测 **7-Zip（7z.exe/7za.exe）→ Bandizip（bz.exe，实测 7.40 CLI 语法 `x -y -o:<dir> -p:<pwd>`，密码错误输出 `ERROR: Password required / Invalid password`）**（`CONFIG.launcherSevenZipPath` 指定路径，否则自动探测插件 `bin/7za.exe` → Program Files；密码经命令行传递，本机单用户场景下进程列表短暂可见属已知妥协），未装任何解压器时给明确指引。
+- **中国移动云盘（139）分享链接**：粘贴 `yun.139.com/shareweb/#/w/i/…` 分享页链接即可安装。契约经真实流量逆向验证：API 网关 `share-kd-njs.yun.139.com/yun-share/…`，请求/响应整体 **AES-128-CBC 信封**（密钥 `PVGDwmcvfs1uV3d1`，随机 IV 前置，响应可能 gzip）。实测分两段鉴权——`getOutLinkInfoV6` 元数据**匿名可调**（提取码走 `passwd` 字段，错误码 9188 → 高亮密码框提示填提取码）；`dlFromOutLinkV3` 原始文件直链**必须登录态**（无登录态 → 200000401「IP鉴权失败」，面板自动展开登录态设置行）。登录态从浏览器 F12 复制一次 `Authorization` 头即可，存 `~/.dsh/storages/we-sync-139-auth.json`（与 Alist 同款做法，随时可清除）；**推荐一键路径**：面板提供 Tampermonkey 助手脚本 `GET /we-sync/139-helper.user.js`（`src/launcher/helper139.ts`），装一次后每次访问 yun.139.com 自动把 `authorization` cookie 同步到本机，之后粘贴分享链接即装、永久免维护。**登录态同步助手 v1.1.0**：不再读 cookie（卡巴斯基等安全软件会注入同名 `authorization` cookie 污染），改为 hook 139 页面自身 XHR/fetch 的 `Authorization` 请求头——登录后页面自己发的 API 请求必然携带真实登录态；同步值过服务端严格三元组校验，垃圾值 422 拒收。**视频+压缩包复合文件**：伪装 `.mp4` 的分享包实为「MP4 垫底 + 尾部追加 zip」的 polyglot（实测 238MB 样本：前 74.5MB 真视频 + 内含 175MB `FS-DS.7z`），zip 识别升级为尾部 EOCD 探测（`hasZipTrailer`），中央目录解析支持 **concat 偏移修正**（EOCD 位置反推，逐候选校验 CD 签名防魔数撞库误判）；解包后**嵌套展开**（`settleNested`）：产物无入口且恰有一个内层 `.zip/.7z` 时逐层解到出现可执行入口（最多 3 层，密码透传，先删包体再解包防同名自嵌套误删）。
+- **API**：`GET /we-sync/launcher/installed`、`POST /we-sync/launcher/install`（含 `password?` 压缩包解压密码、`passcode?` 139 分享提取码——两者分离，未传 `passcode` 时回落 `password` 兼容旧调用）、`POST /we-sync/launcher/entry`、`POST /we-sync/launcher/preview`、`GET /we-sync/launcher/uninstall?id=`、`GET /we-sync/launcher/preview-file?id=`、`GET|POST /we-sync/launcher/139auth`（登录态存取，GET 只回掩码账号）、`GET /we-sync/139-helper.user.js`（油猴助手）、`GET /we-sync/apps/launch?id=`。面板对应拆成两个输入框：**解压密码**（加密压缩包，含内层嵌套包）与**提取码**（139 分享校验），互不复用——分享圈的 139 提取码和压缩包解压码经常是两个值。
+- **安全边界**：仅 http(s) 直链；下载/解包/落盘全程路径穿越防护；sha512 记账（可选传入期望值校验）；执行仅由启动确认弹层触发。
+- **测试**：新增 `src/launcher/test/launcher.test.ts`（17 项：PNG 编码 / slug / 入口探测 / 解包防穿越 / 下载协议与文件名 / 全流程路由 / **加密包密码三态**）与 `src/launcher/test/crypt-zip.test.ts`（10 项：ZipCrypto stored/deflate/错密码/缺密码、AES-256 AE-1、AES-128 AE-2、HMAC 判据、混合包、未加密委托——测试内置**独立实现的加密侧夹具**与解密实现交叉验证）、`src/client/test/launcher-api.test.ts`（10 项）；`pnpm test` 76/76 通过。
+
+> 已知边界（与可行性分析一致）：仅支持**单文件直链**（139 分享根目录需为单文件，文件夹分享暂不支持）；139 原始文件下载需登录态（元数据解析匿名可用）；百度网盘等其它网盘分享未适配；`.rar`（专有解码算法，需另配 unrar）暂不支持；7za 解压的密码经命令行 `-p` 传递；复合包的内层 `.7z` 需本机装有 7-Zip（未装时给出明确指引）。
+
+---
+
 ## 26.9.4 - 2026-09-04
 
 ### 🔗 Harness 0.1.2 适配

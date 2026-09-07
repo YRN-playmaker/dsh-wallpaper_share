@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react'
 import { store, PLUGIN_VERSION, type WeSyncInfo } from './index'
 import { startGaze, stopGaze, calibrate, onGazeStatus, hasCalibrationData, type GazeStatus } from './GazeLens.ts'
 import { fetchCatalog, fetchInstalled, buildCards, searchCards, collectTags, install, uninstall, type MarketEntry, type MarketCard } from './market-api.ts'
+import { fetchInstalled as fetchLauncherInstalled, installApp, uninstallApp, launchApp, setEntry, isValidHttpUrl, humanSize, get139Auth, set139Auth, type InstalledApp } from './launcher-api.ts'
 
 /* =========================================================================
  * 1. 国际化字典 (i18n Dictionary)
@@ -121,6 +122,52 @@ const DICT = {
     dirNotFound: '目录不存在或不可读',
     dirAdded: '已添加目录，重新扫描中',
     dirRemoved: '已移除目录',
+
+    // 应用启动器（launcher 标签：直链下载 → 类 WE app 封装 → 一键启动）
+    launcherTab: '应用启动器',
+    launcherUrlPlaceholder: '粘贴直链（.zip/.7z/.exe）或 139 分享页链接…',
+    launcherTitlePlaceholder: '标题（留空自动取文件名）',
+    launcherPwdPlaceholder: '解压密码（加密包选填）',
+    launcherCodePlaceholder: '提取码（139 分享选填）',
+    launcherPwdNeed: '压缩包已加密，请填写解压密码后重试',
+    launcherPwdWrong: '解压密码错误，或压缩包已损坏',
+    launcherAuthTitle: '139 登录态',
+    launcherAuthHint: '手动方式：登录 yun.139.com 后，F12 → 网络 → 任意请求 → 请求标头里的 Authorization，整串复制粘贴到这里',
+    launcherHelperLink: '一键方式：安装登录态同步助手',
+    launcherHelperHint: '装一次即忘，之后浏览器打开 yun.139.com 会自动把登录态同步到本机（推荐，装完本行以下的都不用管）',
+    launcherAuthPlaceholder: 'Basic xxxx… 或 basic:手机号:token',
+    launcherAuthSave: '保存',
+    launcherAuthClear: '清除',
+    launcherAuthSaved: '139 登录态已保存',
+    launcherAuthNeed: '139 原始文件下载需要登录态，请在下方粘贴 Authorization',
+    launcherShareCode: '该 139 分享需要提取码：请在提取码框填入后重试',
+    launcherShareCodeWrong: '139 提取码错误，请核对后重试',
+    launcherShareFail: '139 分享解析失败（详情见括号内服务端信息）',
+    launcherInstall: '下载安装',
+    launcherInstalling: '下载安装中…',
+    launcherEmpty: '还没有安装的应用。粘贴直链后点「下载安装」。',
+    launcherNoMatch: '没有匹配当前搜索的应用',
+    launcherLaunch: '▶ 启动',
+    launcherLaunching: '启动中…',
+    launcherOpenFolder: '打开文件夹',
+    launcherUninstall: '卸载',
+    launcherSource: '来源',
+    launcherSha: 'SHA512',
+    launcherEntry: '入口',
+    launcherConfirmTitle: '确认启动该程序？',
+    launcherConfirmBody: '将从以下路径执行可执行文件。请确认来源可信：',
+    launcherConfirmGo: '启动',
+    launcherConfirmCancel: '取消',
+    launcherSetEntry: '设为入口',
+    launcherCandidates: '检测到多个可执行文件，当前入口：',
+    flashLInstalled: '安装完成',
+    flashLUninstalled: '已卸载',
+    flashLLaunched: '已启动',
+    flashLFailed: '操作失败',
+    launcherPreviewHint: '预览图：安装完成后可用下方「更新预览」按钮重新生成',
+    launcherUpdatePreview: '更新预览',
+    launcherBadUrl: '链接非法（仅支持 http/https 直链）',
+    launcherNoEntry: '未找到可执行入口',
   },
   en: {
     // Header & Wallpaper status
@@ -231,6 +278,51 @@ const DICT = {
     dirNotFound: 'Dir missing or unreadable',
     dirAdded: 'Dir added, rescanning',
     dirRemoved: 'Dir removed',
+
+    launcherTab: 'App Launcher',
+    launcherUrlPlaceholder: 'Paste a direct link (.zip/.7z/.exe) or a 139 share page URL…',
+    launcherTitlePlaceholder: 'Title (defaults to filename)',
+    launcherPwdPlaceholder: 'Archive password (optional)',
+    launcherCodePlaceholder: 'Share passcode (139, optional)',
+    launcherPwdNeed: 'Archive is encrypted — enter the password and retry',
+    launcherPwdWrong: 'Wrong password, or the archive is corrupted',
+    launcherAuthTitle: '139 Login (Authorization)',
+    launcherAuthHint: 'Manual: sign in at yun.139.com, open DevTools → Network → any request → copy the whole Authorization request header, paste it here',
+    launcherHelperLink: 'One-click: install the login-sync helper',
+    launcherHelperHint: 'Install once; afterwards opening yun.139.com syncs your login state automatically (recommended)',
+    launcherAuthPlaceholder: 'Basic xxxx… or basic:phone:token',
+    launcherAuthSave: 'Save',
+    launcherAuthClear: 'Clear',
+    launcherAuthSaved: '139 authorization saved',
+    launcherAuthNeed: '139 original-file download needs an Authorization — paste it below',
+    launcherShareCode: 'This 139 share needs a passcode — enter it in the passcode box and retry',
+    launcherShareCodeWrong: 'Wrong 139 passcode — check it and retry',
+    launcherShareFail: '139 share resolve failed (see server detail in brackets)',
+    launcherInstall: 'Download & Install',
+    launcherInstalling: 'Downloading…',
+    launcherEmpty: 'No apps installed yet. Paste a direct link and click "Download & Install".',
+    launcherNoMatch: 'No apps match the current search',
+    launcherLaunch: '▶ Launch',
+    launcherLaunching: 'Launching…',
+    launcherOpenFolder: 'Open folder',
+    launcherUninstall: 'Uninstall',
+    launcherSource: 'Source',
+    launcherSha: 'SHA512',
+    launcherEntry: 'Entry',
+    launcherConfirmTitle: 'Launch this program?',
+    launcherConfirmBody: 'The executable below will be started. Make sure you trust its source:',
+    launcherConfirmGo: 'Launch',
+    launcherConfirmCancel: 'Cancel',
+    launcherSetEntry: 'Set as entry',
+    launcherCandidates: 'Multiple executables found. Current entry:',
+    flashLInstalled: 'Installed',
+    flashLUninstalled: 'Uninstalled',
+    flashLLaunched: 'Launched',
+    flashLFailed: 'Operation failed',
+    launcherPreviewHint: 'Preview: regenerate via "Update preview" below after install',
+    launcherUpdatePreview: 'Update preview',
+    launcherBadUrl: 'Invalid link (http/https direct links only)',
+    launcherNoEntry: 'No executable entry found',
   },
 }
 
@@ -282,7 +374,7 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
   const [needsCalib, setNeedsCalib] = useState(false)
   useEffect(() => onGazeStatus((s, err) => { setGazeStatus(s); setGazeError(err) }), [])
   const [appsOpen, setAppsOpen] = useState(false)
-  const [libTab, setLibTab] = useState<'local' | 'market'>('local')
+  const [libTab, setLibTab] = useState<'local' | 'market' | 'launcher'>('local')
   const [apps, setApps] = useState<Array<{ id: string; title: string; file: string; type: string; hasPreview: boolean }>>([])
   const [appsCounts, setAppsCounts] = useState<Record<string, number>>({})
   const [typeFilter, setTypeFilter] = useState('dwp')
@@ -301,6 +393,25 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
   const [mTag, setMTag] = useState('')
   const [mBusy, setMBusy] = useState<Record<string, boolean>>({})
   const [mFlash, setMFlash] = useState('')
+  // 应用启动器（launcher）：直链安装 + 一键启动
+  const [lApps, setLApps] = useState<InstalledApp[]>([])
+  const [lUrl, setLUrl] = useState('')
+  const [lTitle, setLTitle] = useState('')
+  const [lPwd, setLPwd] = useState('') // 解压密码（选填）：压缩包解密用，仅随安装请求传一次，不落任何记录
+  const [lPwdErr, setLPwdErr] = useState(false) // 解压密码语义错误时高亮密码框
+  const [lCode, setLCode] = useState('') // 139 分享提取码（选填）：只用于分享链接校验
+  const [lCodeErr, setLCodeErr] = useState(false) // 提取码语义错误时高亮提取码框
+  const [lAuthOpen, setLAuthOpen] = useState(false) // 139 登录态设置行展开
+  const [lAuth, setLAuth] = useState('') // 139 Authorization 输入
+  const [lAuthPresent, setLAuthPresent] = useState('') // 已配置的掩码账号（'' = 未配置）
+  const [lAuthBusy, setLAuthBusy] = useState(false)
+  const [lBusy, setLBusy] = useState(false)
+  const [lFlash, setLFlash] = useState('')
+  const [lSearch, setLSearch] = useState('')
+  const [lConfirm, setLConfirm] = useState<InstalledApp | null>(null)
+  const [lEntryFor, setLEntryFor] = useState<string | null>(null) // 正在展开候选切换的 app id
+  const [lDetailFor, setLDetailFor] = useState<string | null>(null) // 正在展开详情（来源/哈希）的 app id
+  const [lChoices, setLChoices] = useState<Record<string, string[]>>({}) // 安装时返回的多入口候选（按 id）
 
   // store 是唯一事实源：每次 notify 都把设置项镜像回本地 state。
   // 面板只在挂载时读一次 store 的话，外部对设置的修正（显示器锁失效回退自动、眼动启动失败回拨 off）
@@ -427,7 +538,7 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
   const onAppsToggle = async (): Promise<void> => {
     const next = !appsOpen
     setAppsOpen(next)
-    if (next) { void loadApps(); void loadDwp(); void loadMarket() }
+    if (next) { void loadApps(); void loadDwp(); void loadMarket(); void loadLauncher() }
   }
 
   const loadDwp = async (): Promise<void> => {
@@ -488,6 +599,156 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
     void fetch('/we-sync/apps/open?id=' + encodeURIComponent(id), { cache: 'no-store' }).then((res) => {
       if (!res.ok) flash(t.openFolderFailed)
     }).catch(() => flash(t.openFolderFailed))
+  }
+
+  // ── 应用启动器：安装 / 启动（带确认）/ 卸载 / 预览 / 入口切换 ──────────
+  const loadLauncher = async (): Promise<void> => {
+    try {
+      setLApps(await fetchLauncherInstalled((url, init) => fetch(url, init)))
+      const a = await get139Auth((url, init) => fetch(url, init))
+      setLAuthPresent(a.present ? a.account : '')
+    } catch { /* launcher 路由未就绪不阻断 */ }
+  }
+  const flashL = (msg: string): void => { setLFlash(msg); window.setTimeout(() => setLFlash(''), 3000) }
+
+  /** canvas 预览卡：渐变底 + 首字母徽章 + 标题（服务端兜底卡无文字，客户端版优先）。 */
+  const makeLauncherCard = (title: string): string => {
+    try {
+      const c = document.createElement('canvas')
+      c.width = 1280
+      c.height = 720
+      const g = c.getContext('2d')
+      if (g === null) return ''
+      let h = 0
+      for (let i = 0; i < title.length; i++) h = (h * 31 + title.charCodeAt(i)) >>> 0
+      const hue = h % 360
+      const grad = g.createLinearGradient(0, 0, 1280, 720)
+      grad.addColorStop(0, 'hsl(' + String(hue) + ', 55%, 22%)')
+      grad.addColorStop(1, 'hsl(' + String((hue + 40) % 360) + ', 60%, 42%)')
+      g.fillStyle = grad
+      g.fillRect(0, 0, 1280, 720)
+      g.fillStyle = 'hsla(' + String(hue) + ', 70%, 62%, 0.35)'
+      g.beginPath()
+      g.arc(640, 290, 175, 0, Math.PI * 2)
+      g.fill()
+      g.fillStyle = '#fff'
+      g.textAlign = 'center'
+      g.textBaseline = 'middle'
+      const first = [...title.trim()][0] ?? 'A'
+      g.font = '700 170px system-ui, "Segoe UI", sans-serif'
+      g.fillText(first.toUpperCase(), 640, 290)
+      g.font = '600 58px system-ui, "Segoe UI", sans-serif'
+      g.fillText(title.slice(0, 26), 640, 555)
+      g.font = '400 30px system-ui, "Segoe UI", sans-serif'
+      g.fillStyle = 'rgba(255,255,255,0.72)'
+      g.fillText('dsh · app launcher', 640, 630)
+      return c.toDataURL('image/png')
+    } catch { return '' }
+  }
+
+  const onLauncherInstall = async (): Promise<void> => {
+    const url = lUrl.trim()
+    if (!isValidHttpUrl(url)) { flashL(t.launcherBadUrl); return }
+    setLBusy(true)
+    try {
+      const title = lTitle.trim() === '' ? undefined : lTitle.trim()
+      const pwd = lPwd.trim() === '' ? undefined : lPwd
+      const code = lCode.trim() === '' ? undefined : lCode
+      const preview = makeLauncherCard(title ?? url)
+      const out = await installApp(
+        { url, title, password: pwd, passcode: code, previewDataUrl: preview !== '' ? preview : undefined },
+        (u, i) => fetch(u, i),
+      )
+      if (!out.ok) {
+        // 解压密码语义错误：高亮解压密码框
+        if (out.code === 'password_required' || out.code === 'wrong_password') {
+          setLPwdErr(true)
+          flashL(t.flashLFailed + '：' + (out.code === 'password_required' ? t.launcherPwdNeed : t.launcherPwdWrong))
+          return
+        }
+        // 139 提取码错误：高亮提取码框；需要登录态 → 自动展开登录态设置行
+        if (out.code === 'share_passcode_required' || out.code === 'share_passcode_wrong') {
+          setLCodeErr(true)
+          flashL(t.flashLFailed + '：' + (out.code === 'share_passcode_required' ? t.launcherShareCode : t.launcherShareCodeWrong) + (out.error !== undefined ? '（' + out.error + '）' : ''))
+          return
+        }
+        if (out.code === 'share_auth_required') {
+          setLAuthOpen(true)
+          void get139Auth((u) => fetch(u)).then((a) => { setLAuthPresent(a.present ? a.account : '') })
+          flashL(t.flashLFailed + '：' + t.launcherAuthNeed + (out.error !== undefined ? '（' + out.error + '）' : ''))
+          return
+        }
+        if (out.code === 'share_api_error' || out.code === 'share_not_file') {
+          flashL(t.flashLFailed + '：' + t.launcherShareFail + (out.error !== undefined ? '（' + out.error + '）' : ''))
+          return
+        }
+        flashL(t.flashLFailed + (out.error !== undefined ? '：' + out.error : ''))
+        return
+      }
+      if (out.record !== undefined && (out.candidates?.length ?? 0) > 1) {
+        setLChoices((m) => ({ ...m, [out.record!.id]: out.candidates! }))
+        setLEntryFor(out.record.id)
+      }
+      setLUrl(''); setLTitle(''); setLPwd(''); setLPwdErr(false); setLCode(''); setLCodeErr(false)
+      flashL(t.flashLInstalled)
+      void loadLauncher()
+      void loadApps()
+    } catch (e) {
+      flashL(t.flashLFailed + '：' + String((e as Error).message ?? e))
+    } finally {
+      setLBusy(false)
+    }
+  }
+
+  /** 启动入口：launcher 记录用 slug id；本地库 we应用 瓷砖用扫描 id（服务端两条都认）。 */
+  const onLaunch = (id: string, title: string, file: string, previewRec: InstalledApp | null): void => {
+    if (file.trim() === '') { flashL(t.flashLFailed + '：' + t.launcherNoEntry); return }
+    setLConfirm(previewRec ?? ({ id, title, file } as InstalledApp))
+  }
+
+  /** 139 登录态保存/清除。 */
+  const on139AuthSave = async (): Promise<void> => {
+    setLAuthBusy(true)
+    try {
+      const r = await set139Auth(lAuth.trim(), (u, i) => fetch(u, i))
+      if (!r.ok) { flashL(t.flashLFailed + '：' + (r.error ?? '')); return }
+      setLAuth('')
+      const a = await get139Auth((u) => fetch(u))
+      setLAuthPresent(a.present ? a.account : '')
+      flashL(t.launcherAuthSaved)
+    } finally { setLAuthBusy(false) }
+  }
+  const onConfirmGo = async (): Promise<void> => {
+    const rec = lConfirm
+    setLConfirm(null)
+    if (rec === null) return
+    const r = await launchApp(rec.id, (u) => fetch(u))
+    if (r.ok) flashL(t.flashLLaunched + '：' + rec.title)
+    else flashL(t.flashLFailed + (r.error !== undefined ? '：' + r.error : ''))
+  }
+
+  const onLauncherUninstall = async (rec: InstalledApp): Promise<void> => {
+    const r = await uninstallApp(rec.id, (u) => fetch(u))
+    if (r.ok) { flashL(t.flashLUninstalled); void loadLauncher(); void loadApps() }
+    else flashL(t.flashLFailed + (r.error !== undefined ? '：' + r.error : ''))
+  }
+
+  const onUpdatePreview = async (rec: InstalledApp): Promise<void> => {
+    const dataUrl = makeLauncherCard(rec.title)
+    if (dataUrl === '') { flashL(t.flashLFailed); return }
+    const res = await fetch('/we-sync/launcher/preview', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: rec.id, dataUrl }),
+    })
+    if (res.ok) { flashL(t.launcherUpdatePreview + ' ✓'); void loadApps() }
+    else flashL(t.flashLFailed)
+  }
+
+  const onSetEntry = async (rec: InstalledApp, file: string): Promise<void> => {
+    const r = await setEntry(rec.id, file, (u, i) => fetch(u, i))
+    if (r.ok) { flashL(t.launcherEntry + ' → ' + file); setLEntryFor(null); void loadApps() }
+    else flashL(t.flashLFailed + (r.error !== undefined ? '：' + r.error : ''))
   }
 
   // 壁纸读取位置：加载自定义目录、添加/移除
@@ -724,6 +985,7 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
                   <div className="wesync-apps-cats">
                     <button className={['wesync-chip', libTab === 'local' ? 'wesync-chip-on' : ''].join(' ')} onClick={() => setLibTab('local')}>{t.catLocal}</button>
                     <button className={['wesync-chip', libTab === 'market' ? 'wesync-chip-on' : ''].join(' ')} onClick={() => setLibTab('market')}>{t.catMarket}</button>
+                    <button className={['wesync-chip', libTab === 'launcher' ? 'wesync-chip-on' : ''].join(' ')} onClick={() => { setLibTab('launcher'); void loadLauncher() }}>{t.launcherTab}</button>
                   </div>
                   {libTab === 'local'
                     ? (
@@ -787,7 +1049,14 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
                                                     : <div className="wesync-app-thumb" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{t.noPreview}</div>}
                                                   <span className="wesync-app-badge wesync-badge-application">{t.typeWeApp}</span>
                                                 </div>
-                                                <div className="wesync-app-title">{app.title}</div>
+                                                <div className="wesync-app-title" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                                  <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{app.title}</span>
+                                                  <button
+                                                    className="wesync-btn wesync-app-launch"
+                                                    title={t.launcherLaunch}
+                                                    onClick={(e) => { e.stopPropagation(); onLaunch(app.id, app.title, app.file, null) }}
+                                                  >{t.launcherLaunch}</button>
+                                                </div>
                                               </div>
                                             ))}
                                           </div>
@@ -799,17 +1068,18 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
                               )}
                         </>
                       )
-                    : (
-                        <>
-                          <div className="wesync-apps-filters">
-                            <button className={['wesync-chip', mTag === '' ? 'wesync-chip-on' : ''].join(' ')} onClick={() => setMTag('')}>{t.marketAll}</button>
-                            {mTags.map((tg) => (
-                              <button key={tg} className={['wesync-chip', mTag === tg ? 'wesync-chip-on' : ''].join(' ')} onClick={() => setMTag(tg)}>{tg}</button>
-                            ))}
-                            <input
-                              className="wesync-app-search"
-                              placeholder={t.marketSearch}
-                              value={mSearch}
+                    : libTab === 'market'
+                      ? (
+                          <>
+                            <div className="wesync-apps-filters">
+                              <button className={['wesync-chip', mTag === '' ? 'wesync-chip-on' : ''].join(' ')} onClick={() => setMTag('')}>{t.marketAll}</button>
+                              {mTags.map((tg) => (
+                                <button key={tg} className={['wesync-chip', mTag === tg ? 'wesync-chip-on' : ''].join(' ')} onClick={() => setMTag(tg)}>{tg}</button>
+                              ))}
+                              <input
+                                className="wesync-app-search"
+                                placeholder={t.marketSearch}
+                                value={mSearch}
                               onChange={(e) => setMSearch(e.target.value)}
                             />
                             <button className="wesync-btn" onClick={() => { void loadMarket() }}>{t.marketRefresh}</button>
@@ -855,6 +1125,160 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
                                         })}
                                       </div>
                                     )}
+                        </>
+                      )
+                    : (
+                        // ── 应用启动器：直链安装 + 一键启动（每次弹确认）──────────
+                        <>
+                          <div className="wesync-dir-row">
+                            <input
+                              className="wesync-dir-input"
+                              placeholder={t.launcherUrlPlaceholder}
+                              value={lUrl}
+                              onChange={(e) => setLUrl(e.target.value)}
+                              onKeyDown={(e) => { if (e.key === 'Enter' && !lBusy) void onLauncherInstall() }}
+                            />
+                            <input
+                              className="wesync-dir-input"
+                              style={{ maxWidth: 180 }}
+                              placeholder={t.launcherTitlePlaceholder}
+                              value={lTitle}
+                              onChange={(e) => setLTitle(e.target.value)}
+                            />
+                            <input
+                              className="wesync-dir-input"
+                              type="password"
+                              style={{ maxWidth: 150, borderColor: lPwdErr ? 'rgba(248,113,113,0.85)' : undefined }}
+                              placeholder={t.launcherPwdPlaceholder}
+                              value={lPwd}
+                              onChange={(e) => { setLPwd(e.target.value); if (lPwdErr) setLPwdErr(false) }}
+                              onKeyDown={(e) => { if (e.key === 'Enter' && !lBusy) void onLauncherInstall() }}
+                            />
+                            <input
+                              className="wesync-dir-input"
+                              style={{ maxWidth: 130, borderColor: lCodeErr ? 'rgba(248,113,113,0.85)' : undefined }}
+                              placeholder={t.launcherCodePlaceholder}
+                              value={lCode}
+                              onChange={(e) => { setLCode(e.target.value); if (lCodeErr) setLCodeErr(false) }}
+                              onKeyDown={(e) => { if (e.key === 'Enter' && !lBusy) void onLauncherInstall() }}
+                            />
+                            <button className="wesync-btn" disabled={lBusy} onClick={() => { void onLauncherInstall() }}>
+                              {lBusy ? t.launcherInstalling : t.launcherInstall}
+                            </button>
+                          </div>
+                          {/* 139 登录态（需要时自动展开 / 已配置常驻显示状态） */}
+                          {lAuthOpen || lAuthPresent !== ''
+                            ? (
+                                <div className="wesync-dir-row" style={{ alignItems: 'center' }}>
+                                  <span style={{ flex: '0 0 auto', fontSize: 12, opacity: 0.75 }}>
+                                    {t.launcherAuthTitle}{lAuthPresent !== '' ? `（${lAuthPresent}）` : ''}
+                                  </span>
+                                  <input
+                                    className="wesync-dir-input"
+                                    type="password"
+                                    placeholder={t.launcherAuthPlaceholder}
+                                    value={lAuth}
+                                    onChange={(e) => setLAuth(e.target.value)}
+                                  />
+                                  <button className="wesync-btn" disabled={lAuthBusy || lAuth.trim() === ''} onClick={() => { void on139AuthSave() }}>
+                                    {t.launcherAuthSave}
+                                  </button>
+                                </div>
+                              )
+                            : null}
+                          {/* 推荐路径：装一次油猴助手，之后访问 139 自动同步登录态，永久免维护 */}
+                          <div style={{ fontSize: 12, opacity: 0.65, marginTop: 4 }}>
+                            <a href="/we-sync/139-helper.user.js" target="_blank" rel="noreferrer" style={{ color: 'inherit', textDecoration: 'underline' }}>{t.launcherHelperLink}</a>
+                            <span> · {t.launcherHelperHint}</span>
+                          </div>
+                          {lAuthOpen ? <div style={{ fontSize: 12, opacity: 0.6, marginTop: 4 }}>{t.launcherAuthHint}</div> : null}
+                          {lFlash !== '' ? <div className="wesync-market-flash">{lFlash}</div> : null}
+                          {lApps.length === 0
+                            ? <div className="wesync-app-empty">{t.launcherEmpty}</div>
+                            : (
+                                (() => {
+                                  const kwL = lSearch.trim().toLowerCase()
+                                  const filteredL = lApps.filter((a) => kwL === '' || a.title.toLowerCase().includes(kwL))
+                                  return (
+                                    <>
+                                      <div className="wesync-apps-filters">
+                                        <input
+                                          className="wesync-app-search"
+                                          placeholder={t.searchPlaceholder}
+                                          value={lSearch}
+                                          onChange={(e) => setLSearch(e.target.value)}
+                                        />
+                                      </div>
+                                      {filteredL.length === 0
+                                        ? <div className="wesync-app-empty">{t.launcherNoMatch}</div>
+                                        : (
+                                            <div className="wesync-apps-grid">
+                                              {filteredL.map((rec) => {
+                                                const candidates = lChoices[rec.id] ?? []
+                                                return (
+                                                  <div key={rec.id} className="wesync-app-card wesync-market-card">
+                                                    <div className="wesync-app-thumbwrap">
+                                                      <img className="wesync-app-thumb" src={'/we-sync/launcher/preview-file?id=' + encodeURIComponent(rec.id)} alt={rec.title} loading="lazy"
+                                                        onError={(e) => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden' }} />
+                                                      <span className="wesync-app-badge wesync-badge-application">{t.typeWeApp}</span>
+                                                    </div>
+                                                    <div className="wesync-app-title">{rec.title}</div>
+                                                    <div className="wesync-market-meta">{humanSize(rec.size)} · {rec.file}</div>
+                                                    <div className="wesync-market-actions">
+                                                      <button className="wesync-btn wesync-market-install" onClick={() => onLaunch(rec.id, rec.title, rec.file, rec)}>
+                                                        {t.launcherLaunch}
+                                                      </button>
+                                                      <button className="wesync-btn" onClick={() => { setLDetailFor(lDetailFor === rec.id ? null : rec.id) }}>{'…'}</button>
+                                                      <button className="wesync-btn wesync-market-uninstall" onClick={() => { void onLauncherUninstall(rec) }}>{t.launcherUninstall}</button>
+                                                    </div>
+                                                    {lDetailFor === rec.id
+                                                      ? (
+                                                          <div className="wesync-market-meta" style={{ width: '100%' }}>
+                                                            <div>{t.launcherSource}: <span style={{ wordBreak: 'break-all' }}>{rec.sourceUrl}</span></div>
+                                                            <div>{t.launcherSha}: <span style={{ wordBreak: 'break-all' }}>{rec.sha512.slice(0, 32)}…</span></div>
+                                                            <button className="wesync-btn" style={{ marginTop: 4 }} onClick={() => { void onUpdatePreview(rec) }}>{t.launcherUpdatePreview}</button>
+                                                            {candidates.length > 1
+                                                              ? (
+                                                                  <>
+                                                                    <div style={{ marginTop: 6 }}>{t.launcherCandidates}</div>
+                                                                    {candidates.map((f) => (
+                                                                      <button key={f} className="wesync-btn" style={{ margin: '2px 4px 0 0' }} onClick={() => { void onSetEntry(rec, f) }}>
+                                                                        {f === rec.file ? '● ' : ''}{f}{f === rec.file ? '' : ' → ' + t.launcherSetEntry}
+                                                                      </button>
+                                                                    ))}
+                                                                  </>
+                                                                )
+                                                              : null}
+                                                          </div>
+                                                        )
+                                                      : null}
+                                                  </div>
+                                                )
+                                              })}
+                                            </div>
+                                          )}
+                                    </>
+                                  )
+                                })()
+                              )}
+                          {/* 启动确认弹层：每次启动都要求用户手势确认（安全边界） */}
+                          {lConfirm !== null
+                            ? (
+                                <div className="wesync-confirm-mask" onClick={() => setLConfirm(null)}>
+                                  <div className="wesync-confirm" onClick={(e) => { e.stopPropagation() }}>
+                                    <div className="wesync-confirm-title">{t.launcherConfirmTitle}</div>
+                                    <div className="wesync-confirm-body">
+                                      {t.launcherConfirmBody}
+                                      <code className="wesync-confirm-path">{lConfirm.file}</code>
+                                    </div>
+                                    <div className="wesync-confirm-actions">
+                                      <button className="wesync-btn" onClick={() => setLConfirm(null)}>{t.launcherConfirmCancel}</button>
+                                      <button className="wesync-btn wesync-market-install" onClick={() => { void onConfirmGo() }}>{t.launcherConfirmGo}</button>
+                                    </div>
+                                  </div>
+                                </div>
+                              )
+                            : null}
                         </>
                       )}
                 </>
