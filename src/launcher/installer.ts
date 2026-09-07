@@ -23,6 +23,28 @@ export interface FetchLike {
   status: number
   headers: { get(name: string): string | null }
   arrayBuffer(): Promise<ArrayBuffer>
+  /** 真实 fetch 才有的流式 body（大文件落盘用；测试假响应可省略） */
+  body?: unknown
+}
+
+/** fetch 可选 init（下载层只用 headers；旧测试注入的 fetchFn 只收 url 也兼容） */
+export interface FetchInitLike { headers?: Record<string, string> }
+
+/** 从 fetch 抛出的错误里挖真实原因（undici 把解析错误藏在 cause 里）。 */
+function fetchCauseText(e: unknown): string {
+  const err = e as { message?: unknown; cause?: { message?: unknown; code?: unknown } }
+  const parts = [typeof err.message === 'string' ? err.message : String(e)]
+  const cause = err.cause
+  if (cause !== undefined && cause !== null) {
+    parts.push(typeof cause.message === 'string' ? cause.message : String(cause))
+    if (cause.code !== undefined) parts.push(String(cause.code))
+  }
+  return parts.filter((s) => s !== '').join(' ← ')
+}
+
+/** CDN 返回了 HTTP 解析器无法容忍的头（如 Content-Length 非法 / 与 Transfer-Encoding 冲突）。 */
+function isHttpHeaderParseError(text: string): boolean {
+  return /content-length|invalid header|parse error|hpe_/i.test(text)
 }
 
 /** 两家解压器的命令行参数风格（纯函数，测试可直接断言）。 */
@@ -49,8 +71,8 @@ export function isPasswordErrorOutput(out: string, password?: string): boolean {
 export interface LauncherDeps {
   /** 安装根目录（每个 app 一个子目录） */
   root: string
-  /** 下载注入（Node 测试喂假响应）；默认 globalThis.fetch */
-  fetchFn?: (url: string) => Promise<FetchLike>
+  /** 下载注入（Node 测试喂假响应）；默认 globalThis.fetch。带 init 的真实 fetch 也兼容 */
+  fetchFn?: (url: string, init?: FetchInitLike) => Promise<FetchLike>
   /** 7z/7za.exe 路径（CONFIG.launcherSevenZipPath）；缺省走自动探测 */
   sevenZipPath?: string
   now?: () => string
@@ -127,7 +149,7 @@ export class LauncherInstaller {
 
   constructor(deps: LauncherDeps) {
     this.root = deps.root
-    this.fetchFn = deps.fetchFn ?? (async (url) => await fetch(url))
+    this.fetchFn = deps.fetchFn ?? (async (url, init) => await fetch(url, init))
     this.sevenZipPath = deps.sevenZipPath ?? ''
     this.now = deps.now ?? (() => new Date().toISOString())
   }
@@ -177,13 +199,33 @@ export class LauncherInstaller {
 
   // ── 下载 ───────────────────────────────────────────────────────────
 
-  /** 下载直链：仅 http(s)，大小上限双查（Content-Length + 实收）。 */
+  /** 下载直链：仅 http(s)，大小上限双查（Content-Length + 实收）。
+   *  已知边界：139 CDN 偶发返回让 Node HTTP 解析器崩溃的头（如 Content-Length 与
+   *  Transfer-Encoding 冲突，undici 报 "Parse Error … invalid content-length"，
+   *  面板只能看到笼统的「不合法的 length」）。这类错误对同 URL 的重试往往自愈，
+   *  故命中特征时自动带 Range 头重试一次；Range（206）响应不含 Content-Length，
+   *  解析器不会再踩同一个坑。Range 重试也失败才把真实错误链抛给上层。 */
   async download(url: string): Promise<{ bytes: Uint8Array; fileName: string }> {
     let parsed: URL
     try { parsed = new URL(url) } catch { throw new LauncherError(`URL 非法: ${url}`) }
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') throw new LauncherError(`仅支持 http(s) 直链: ${parsed.protocol}`)
     let res: FetchLike
-    try { res = await this.fetchFn(url) } catch (e) { throw new LauncherError(`下载请求失败: ${(e as Error).message ?? e}`) }
+    let lastErrText = ''
+    try {
+      res = await this.fetchFn(url)
+    } catch (e) {
+      lastErrText = fetchCauseText(e)
+      // HTTP 头解析类错误（invalid content-length 等）：带 Range 头重试一次
+      if (isHttpHeaderParseError(lastErrText)) {
+        try {
+          res = await this.fetchFn(url, { headers: { Range: 'bytes=0-' } })
+        } catch (e2) {
+          throw new LauncherError(`下载请求失败（含 Range 重试）: ${fetchCauseText(e2)}`)
+        }
+      } else {
+        throw new LauncherError(`下载请求失败: ${lastErrText}`)
+      }
+    }
     if (!res.ok) throw new LauncherError(`下载失败: HTTP ${res.status}`)
     const cl = res.headers.get('content-length')
     if (cl !== null && cl !== '') {
@@ -192,7 +234,12 @@ export class LauncherInstaller {
         throw new LauncherError(`文件超过大小上限 (${Math.round(MAX_DOWNLOAD_BYTES / 1048576)} MiB): ${declared}`)
       }
     }
-    const buf = await res.arrayBuffer()
+    let buf: ArrayBuffer
+    try {
+      buf = await res.arrayBuffer()
+    } catch (e) {
+      throw new LauncherError(`下载中断: ${fetchCauseText(e)}`)
+    }
     if (buf.byteLength > MAX_DOWNLOAD_BYTES) {
       throw new LauncherError(`文件超过大小上限 (${Math.round(MAX_DOWNLOAD_BYTES / 1048576)} MiB): ${buf.byteLength}`)
     }

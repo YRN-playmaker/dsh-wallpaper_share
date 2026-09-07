@@ -619,6 +619,8 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
     } catch { /* launcher 路由未就绪不阻断 */ }
   }
   const flashL = (msg: string): void => { setLFlash(msg); window.setTimeout(() => setLFlash(''), 3000) }
+  /** 错误条常驻：不自动消失（用户反馈 3 秒来不及抄报错），直到下一次成功操作或新消息覆盖 */
+  const flashLErr = (msg: string): void => { setLFlash('⚠ ' + msg) }
 
   // ── A1 一键登录：检测到 139 链接且未配置登录态 → 出「一键打开 139」按钮，
   //    新标签打开 yun.139.com（用户手势内 window.open，浏览器允许），期间 2s 轮询
@@ -698,26 +700,26 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
         // 解压密码语义错误：高亮解压密码框
         if (out.code === 'password_required' || out.code === 'wrong_password') {
           setLPwdErr(true)
-          flashL(t.flashLFailed + '：' + (out.code === 'password_required' ? t.launcherPwdNeed : t.launcherPwdWrong))
+          flashLErr(t.flashLFailed + '：' + (out.code === 'password_required' ? t.launcherPwdNeed : t.launcherPwdWrong))
           return
         }
         // 139 提取码错误：高亮提取码框；需要登录态 → 自动展开登录态设置行
         if (out.code === 'share_passcode_required' || out.code === 'share_passcode_wrong') {
           setLCodeErr(true)
-          flashL(t.flashLFailed + '：' + (out.code === 'share_passcode_required' ? t.launcherShareCode : t.launcherShareCodeWrong) + (out.error !== undefined ? '（' + out.error + '）' : ''))
+          flashLErr(t.flashLFailed + '：' + (out.code === 'share_passcode_required' ? t.launcherShareCode : t.launcherShareCodeWrong) + (out.error !== undefined ? '（' + out.error + '）' : ''))
           return
         }
         if (out.code === 'share_auth_required') {
           setLAuthOpen(true)
           void get139Auth((u) => fetch(u)).then((a) => { setLAuthPresent(a.present ? a.account : '') })
-          flashL(t.flashLFailed + '：' + t.launcherAuthNeed + (out.error !== undefined ? '（' + out.error + '）' : ''))
+          flashLErr(t.flashLFailed + '：' + t.launcherAuthNeed + (out.error !== undefined ? '（' + out.error + '）' : ''))
           return
         }
         if (out.code === 'share_api_error' || out.code === 'share_not_file') {
-          flashL(t.flashLFailed + '：' + t.launcherShareFail + (out.error !== undefined ? '（' + out.error + '）' : ''))
+          flashLErr(t.flashLFailed + '：' + t.launcherShareFail + (out.error !== undefined ? '（' + out.error + '）' : ''))
           return
         }
-        flashL(t.flashLFailed + (out.error !== undefined ? '：' + out.error : ''))
+        flashLErr(t.flashLFailed + (out.error !== undefined ? '：' + out.error : ''))
         return
       }
       if (out.record !== undefined && (out.candidates?.length ?? 0) > 1) {
@@ -729,7 +731,7 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
       void loadLauncher()
       void loadApps()
     } catch (e) {
-      flashL(t.flashLFailed + '：' + String((e as Error).message ?? e))
+      flashLErr(t.flashLFailed + '：' + String((e as Error).message ?? e))
     } finally {
       setLBusy(false)
     }
@@ -759,7 +761,7 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
     if (rec === null) return
     const r = await launchApp(rec.id, (u) => fetch(u))
     if (r.ok) flashL(t.flashLLaunched + '：' + rec.title)
-    else flashL(t.flashLFailed + (r.error !== undefined ? '：' + r.error : ''))
+    else flashLErr(t.flashLFailed + (r.error !== undefined ? '：' + r.error : ''))
   }
 
   const onLauncherUninstall = async (rec: InstalledApp): Promise<void> => {

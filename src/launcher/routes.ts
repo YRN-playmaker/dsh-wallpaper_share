@@ -11,7 +11,7 @@
  *   GET  <base>/uninstall?id=<id>         → 卸载（删目录 + 索引）
  * 纯 handler，Node 用 EventEmitter 假 req 可测。
  */
-import { existsSync, rmSync, readFileSync } from 'node:fs'
+import { existsSync, rmSync, readFileSync, appendFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { LauncherInstaller, LauncherError, type InstalledAppRecord } from './installer.ts'
 import { CryptZipError } from './crypt-zip.ts'
@@ -185,7 +185,14 @@ export function createLauncherRoutes(deps: LauncherRoutesDeps): Route[] {
       })
       json(res, 200, { ok: true, record: rec, candidates })
     } catch (e) {
-      const msg = e instanceof LauncherError ? e.message : String((e as Error).message ?? e)
+      const err = e as Error
+      // 安装失败永久落日志（无密码/凭据，只有错误名+消息+栈），供事后诊断——
+      // 面板错误条会超时消失，用户常常来不及抄，这里是唯一的完整现场
+      try {
+        appendFileSync(join(installer.root, '..', 'we-sync-install-errors.log'),
+          `[${new Date().toISOString()}] url=${opts.url as string ?? '?'}\n${err.name}: ${err.message}\n${err.stack ?? ''}\n\n`, 'utf8')
+      } catch { /* 日志写不进不阻断主流程 */ }
+      const msg = e instanceof LauncherError ? e.message : `${err.name}: ${err.message}`
       json(res, e instanceof LauncherError ? 400 : 500, { error: msg })
     }
   } }

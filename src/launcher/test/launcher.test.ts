@@ -565,6 +565,51 @@ test('routes/install：复合文件（视频+zip 内含嵌套 zip）靠尾部 EO
   assert.ok(!existsSync(join(root, 'poly-tool', 'inner.zip')), '内层包体应在解开后删除')
 })
 
+test('installer/download：CDN 非法 Content-Length（HTTP 解析错误）→ 自动带 Range 头重试成功', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'wesync-download-retry-'))
+  const zip = buildZip([{ name: 'a.txt', data: enc('retry') }])
+  let calls = 0
+  let retryHadRange = false
+  const installer = new LauncherInstaller({
+    root,
+    fetchFn: async (_url, init) => {
+      calls++
+      if (calls === 1) {
+        const e = new Error('fetch failed')
+        ;(e as { cause?: unknown }).cause = new Error('Parse Error: Invalid content-length')
+        throw e
+      }
+      retryHadRange = init?.headers?.Range === 'bytes=0-'
+      return fakeRes(zip)
+    },
+  })
+  const dl = await installer.download('https://cdn.example.com/a.zip')
+  assert.equal(calls, 2)
+  assert.equal(retryHadRange, true)
+  assert.equal(dl.bytes.length, zip.length)
+})
+
+test('routes/install：安装失败时错误完整落日志（无密码/凭据），面板可读到详细消息', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'wesync-install-log-'))
+  const installer = new LauncherInstaller({ root, fetchFn: async () => { throw new Error('boom for log test') } })
+  const routes = new Map(createLauncherRoutes({ installer }).map((r) => [r.path, r]))
+  const res = fakeResShim()
+  await routes.get('/we-sync/launcher/install')!.handler(
+    fakeBodyReq('/we-sync/launcher/install', Buffer.from(JSON.stringify({ url: 'https://x/pkg.zip', password: 'SECRET-pw', passcode: 'SECRET-code' }))),
+    res,
+  )
+  assert.equal(res.statusCode, 400)
+  assert.match(String(res.body), /下载请求失败.*boom for log test/)
+  // 日志落在安装根的上一级（storages 目录），含错误详情但不含密码
+  const logPath = join(root, '..', 'we-sync-install-errors.log')
+  assert.ok(existsSync(logPath), '日志文件应存在')
+  const logText = readFileSync(logPath, 'utf8')
+  assert.match(logText, /boom for log test/)
+  assert.match(logText, /https:\/\/x\/pkg\.zip/)
+  assert.ok(!logText.includes('SECRET-pw'), '解压密码不得进日志')
+  assert.ok(!logText.includes('SECRET-code'), '提取码不得进日志')
+})
+
 test('installer/extract7z：7-Zip 与 Bandizip 双解压器参数风格 + 密码错误判定', () => {
   // 参数风格（实测 bz.exe 7.40 语法）
   assert.deepEqual(buildArchiveArgs('7z', 'a.7z', 'D:/out', 'pw'), ['x', '-y', '-ppw', '-oD:/out', 'a.7z'])
