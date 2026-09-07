@@ -144,7 +144,7 @@ const DICT = {
     launcherAuthOpenBtn: '一键打开 139 并登录',
     launcherAuthWaiting: '等待登录态同步…（登录后自动检测，最多 10 分钟）',
     launcherAuthSynced: '✔ 已同步 139 登录态，可以安装了',
-    launcherRootLabel: '安装位置：',
+    launcherRootTag: '（启动器安装位置）',
     launcherRootChange: '更改',
     launcherRootPlaceholder: '例如 D:\\Games\\WeApps（绝对路径）',
     launcherRootSaveLater: '仅改位置（新装生效）',
@@ -311,7 +311,7 @@ const DICT = {
     launcherAuthOpenBtn: 'Open 139 & sign in',
     launcherAuthWaiting: 'Waiting for login sync… (auto-detected after sign-in, up to 10 min)',
     launcherAuthSynced: '✔ 139 login synced — ready to install',
-    launcherRootLabel: 'Install location: ',
+    launcherRootTag: '(launcher install root)',
     launcherRootChange: 'Change',
     launcherRootPlaceholder: 'e.g. D:\\Games\\WeApps (absolute path)',
     launcherRootSaveLater: 'Future installs only',
@@ -657,6 +657,7 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
         ? t.launcherRootMoved + `（${String(r.moved ?? 0)}）` + (r.failed !== undefined && r.failed.length > 0 ? ' ⚠ ' + r.failed.join('、') : '')
         : t.launcherRootSaved)
       void loadLauncher()
+      void loadDirs() // 服务端已把读取位置列表里的旧根替换成新根，同步刷新
     } catch (e) {
       flashLErr(t.launcherRootFail + '：' + String((e as Error).message ?? e))
     } finally {
@@ -1043,14 +1044,49 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
               ? <div className="wesync-dir-status">{t.dirEmpty}</div>
               : (
                   <div className="wesync-dir-list">
-                    {dirs.map((dir) => (
-                      <div key={dir} className="wesync-dir-item">
-                        <span className="wesync-dir-path" title={dir}>{dir}</span>
-                        <button className="wesync-dir-remove" onClick={() => { void onRemoveDir(dir) }}>{t.removeDir}</button>
-                      </div>
-                    ))}
+                    {dirs.map((dir) => {
+                      // 统一地址管理：启动器安装根就在这个列表里改（带标记），不允许移除（防止误删导致应用瓷砖消失）
+                      const isLauncherRoot = dir.replace(/\\/g, '/') === lRoot.replace(/\\/g, '/')
+                      return (
+                        <div key={dir} className="wesync-dir-item">
+                          <span className="wesync-dir-path" title={dir}>{dir}</span>
+                          {isLauncherRoot
+                            ? (
+                                <>
+                                  <span style={{ fontSize: 11, opacity: 0.7, flex: '0 0 auto' }}>{t.launcherRootTag}</span>
+                                  <button
+                                    className="wesync-dir-remove"
+                                    onClick={() => { setLRootDraft(lRoot); setLRootOpen(!lRootOpen) }}
+                                  >
+                                    {t.launcherRootChange}
+                                  </button>
+                                </>
+                              )
+                            : <button className="wesync-dir-remove" onClick={() => { void onRemoveDir(dir) }}>{t.removeDir}</button>}
+                        </div>
+                      )
+                    })}
                   </div>
                 )}
+            {lRootOpen
+              ? (
+                  <div className="wesync-dir-row" style={{ alignItems: 'center', marginTop: 6 }}>
+                    <input
+                      className="wesync-dir-input"
+                      placeholder={t.launcherRootPlaceholder}
+                      value={lRootDraft}
+                      onChange={(e) => setLRootDraft(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter' && !lRootBusy) void onRootSave(false) }}
+                    />
+                    <button className="wesync-btn" disabled={lRootBusy} onClick={() => { void onRootSave(false) }}>
+                      {t.launcherRootSaveLater}
+                    </button>
+                    <button className="wesync-btn" disabled={lRootBusy || lApps.length === 0} onClick={() => { void onRootSave(true) }}>
+                      {t.launcherRootSaveMove}
+                    </button>
+                  </div>
+                )
+              : null}
           </div>
           <div className="wesync-apps-head">
             <div className="wesync-sub">{t.appsTitle}</div>
@@ -1287,38 +1323,7 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
                             <span> · {t.launcherHelperHint}</span>
                           </div>
                           {lAuthOpen ? <div style={{ fontSize: 12, opacity: 0.6, marginTop: 4 }}>{t.launcherAuthHint}</div> : null}
-                          {/* 安装位置（存储根）：默认 C 盘用户目录，可改到任意盘；可选迁移已装应用 */}
-                          <div className="wesync-dir-row" style={{ alignItems: 'center' }}>
-                            <span style={{ flex: '0 0 auto', fontSize: 12, opacity: 0.75 }}>{t.launcherRootLabel}</span>
-                            <span
-                              style={{ fontSize: 12, opacity: 0.85, fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: '1 1 auto' }}
-                              title={lRoot}
-                            >
-                              {lRoot !== '' ? lRoot : '…'}
-                            </span>
-                            <button className="wesync-btn" style={{ flex: '0 0 auto' }} onClick={() => { setLRootDraft(lRoot); setLRootOpen(!lRootOpen) }}>
-                              {t.launcherRootChange}
-                            </button>
-                          </div>
-                          {lRootOpen
-                            ? (
-                                <div className="wesync-dir-row" style={{ alignItems: 'center' }}>
-                                  <input
-                                    className="wesync-dir-input"
-                                    placeholder={t.launcherRootPlaceholder}
-                                    value={lRootDraft}
-                                    onChange={(e) => setLRootDraft(e.target.value)}
-                                    onKeyDown={(e) => { if (e.key === 'Enter' && !lRootBusy) void onRootSave(false) }}
-                                  />
-                                  <button className="wesync-btn" disabled={lRootBusy} onClick={() => { void onRootSave(false) }}>
-                                    {t.launcherRootSaveLater}
-                                  </button>
-                                  <button className="wesync-btn" disabled={lRootBusy || lApps.length === 0} onClick={() => { void onRootSave(true) }}>
-                                    {t.launcherRootSaveMove}
-                                  </button>
-                                </div>
-                              )
-                            : null}
+                          {/* 安装位置在上方「壁纸读取位置」列表统一管理（带启动器标记，点「更改」展开编辑） */}
                           {lFlash !== '' ? <div className="wesync-market-flash">{lFlash}</div> : null}
                           {lApps.length === 0
                             ? <div className="wesync-app-empty">{t.launcherEmpty}</div>

@@ -992,6 +992,11 @@ export function apply(ctx: CordisCtx): void {
       const q = url.indexOf('?')
       const dir = q >= 0 ? decodeURIComponent(url.slice(q + 1).replace(/^dir=/, '')) : ''
       const norm = normalize(dir.trim())
+      // 启动器安装根不可移除（应用瓷砖来源；要换位置请在列表里对它点「更改」）
+      if (norm.replace(/\\/g, '/').toLowerCase() === launcherRoot.replace(/\\/g, '/').toLowerCase()) {
+        sendJson(res, { dirs: appDirs, error: '该目录是应用启动器安装位置，不可移除（可对它点「更改」换位置）' })
+        return
+      }
       const idx = appDirs.indexOf(norm)
       if (idx >= 0) {
         appDirs.splice(idx, 1)
