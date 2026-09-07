@@ -134,7 +134,16 @@ const DICT = {
     launcherAuthTitle: '139 登录态',
     launcherAuthHint: '手动方式：登录 yun.139.com 后，F12 → 网络 → 任意请求 → 请求标头里的 Authorization，整串复制粘贴到这里',
     launcherHelperLink: '一键方式：安装登录态同步助手',
-    launcherHelperHint: '装一次即忘，之后浏览器打开 yun.139.com 会自动把登录态同步到本机（推荐，装完本行以下的都不用管）',
+    launcherTutorialBeta: '该功能为测试版本',
+    launcherTutorialPrepTitle: '启动前的准备：',
+    launcherTutorialPrep1: '安装油猴（Tampermonkey 浏览器扩展）',
+    launcherTutorialPrep2: '在网页登录你的对应网盘（如为网盘链接）',
+    launcherTutorialPrep3Lead: '点击“',
+    launcherTutorialPrep3Tail: '”（引号内文本为链接）',
+    launcherTutorialUseTitle: '日常使用的流程：',
+    launcherTutorialUse1: '1. 在对话框内填入你的下载链接、解压密码、提取码、名称',
+    launcherTutorialUse2: '2. 点击「下载安装」',
+    launcherTutorialUse3: '3. 看到应用栏出现应用后，单击启动应用（每次启动有确认弹窗）',
     launcherAuthPlaceholder: 'Basic xxxx… 或 basic:手机号:token',
     launcherAuthSave: '保存',
     launcherAuthClear: '清除',
@@ -301,7 +310,16 @@ const DICT = {
     launcherAuthTitle: '139 Login (Authorization)',
     launcherAuthHint: 'Manual: sign in at yun.139.com, open DevTools → Network → any request → copy the whole Authorization request header, paste it here',
     launcherHelperLink: 'One-click: install the login-sync helper',
-    launcherHelperHint: 'Install once; afterwards opening yun.139.com syncs your login state automatically (recommended)',
+    launcherTutorialBeta: 'This feature is in beta',
+    launcherTutorialPrepTitle: 'First-time setup:',
+    launcherTutorialPrep1: 'Install Tampermonkey (browser extension)',
+    launcherTutorialPrep2: 'Sign in to your cloud drive in the browser (if the link is a cloud-drive share)',
+    launcherTutorialPrep3Lead: 'Click “',
+    launcherTutorialPrep3Tail: '” (the quoted text is the link)',
+    launcherTutorialUseTitle: 'Daily usage:',
+    launcherTutorialUse1: '1. Fill in the download link, archive password, share passcode and title in the input row',
+    launcherTutorialUse2: '2. Click "Install"',
+    launcherTutorialUse3: '3. Once the app tile appears in the library, click it to launch (a confirm dialog shows each time)',
     launcherAuthPlaceholder: 'Basic xxxx… or basic:phone:token',
     launcherAuthSave: 'Save',
     launcherAuthClear: 'Clear',
@@ -1317,10 +1335,17 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
                                 </div>
                               )
                             : null}
-                          {/* 推荐路径：装一次油猴助手，之后访问 139 自动同步登录态，永久免维护 */}
-                          <div style={{ fontSize: 12, opacity: 0.65, marginTop: 4 }}>
-                            <a href="/we-sync/139-helper.user.js" target="_blank" rel="noreferrer" style={{ color: 'inherit', textDecoration: 'underline' }}>{t.launcherHelperLink}</a>
-                            <span> · {t.launcherHelperHint}</span>
+                          {/* 使用教程（beta 提示 + 首次准备 + 日常流程） */}
+                          <div style={{ fontSize: 12, opacity: 0.8, marginTop: 8, lineHeight: 1.7 }}>
+                            <div style={{ opacity: 0.65 }}>⚠ {t.launcherTutorialBeta}</div>
+                            <div style={{ marginTop: 4 }}><b>{t.launcherTutorialPrepTitle}</b></div>
+                            <div>1. {t.launcherTutorialPrep1}</div>
+                            <div>2. {t.launcherTutorialPrep2}</div>
+                            <div>3. {t.launcherTutorialPrep3Lead}<a href="/we-sync/139-helper.user.js" target="_blank" rel="noreferrer" style={{ color: 'inherit', textDecoration: 'underline' }}>{t.launcherHelperLink}</a>{t.launcherTutorialPrep3Tail}</div>
+                            <div style={{ marginTop: 4 }}><b>{t.launcherTutorialUseTitle}</b></div>
+                            <div>{t.launcherTutorialUse1}</div>
+                            <div>{t.launcherTutorialUse2}</div>
+                            <div>{t.launcherTutorialUse3}</div>
                           </div>
                           {lAuthOpen ? <div style={{ fontSize: 12, opacity: 0.6, marginTop: 4 }}>{t.launcherAuthHint}</div> : null}
                           {/* 安装位置在上方「壁纸读取位置」列表统一管理（带启动器标记，点「更改」展开编辑） */}
