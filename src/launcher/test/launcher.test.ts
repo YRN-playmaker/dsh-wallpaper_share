@@ -4,7 +4,7 @@ import { mkdtempSync, existsSync, readdirSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { deflateRawSync } from 'node:zlib'
-import { LauncherInstaller, LauncherError, buildArchiveArgs, isPasswordErrorOutput } from '../installer.ts'
+import { LauncherInstaller, LauncherError, buildArchiveArgs, isPasswordErrorOutput, writeBytesSafe } from '../installer.ts'
 import { createLauncherRoutes, dataUrlToBytes, type Req, type Res, type Route } from '../routes.ts'
 import { Yun139Error } from '../yun139.ts'
 import { fallbackCardPng } from '../png.ts'
@@ -608,6 +608,49 @@ test('routes/install：安装失败时错误完整落日志（无密码/凭据�
   assert.match(logText, /https:\/\/x\/pkg\.zip/)
   assert.ok(!logText.includes('SECRET-pw'), '解压密码不得进日志')
   assert.ok(!logText.includes('SECRET-code'), '提取码不得进日志')
+})
+
+test('installer/find7zStart：「视频垫底+7z 追加」复合文件定位 7z 段起点', () => {
+  const inst = new LauncherInstaller({ root: tmpdir() })
+  const sig = Buffer.from([0x37, 0x7a, 0xbc, 0xaf, 0x27, 0x1c])
+  // 头部魔数 → 0
+  assert.equal(inst.find7zStart(Buffer.concat([sig, Buffer.alloc(100)])), 0)
+  // 2MB 媒体垫底 + 7z 签名 → 偏移命中
+  assert.equal(inst.find7zStart(Buffer.concat([Buffer.alloc(2 * 1024 * 1024, 0xab), sig, Buffer.alloc(64)])), 2 * 1024 * 1024)
+  // 无签名小文件 / 大文件 → -1
+  assert.equal(inst.find7zStart(Buffer.alloc(64, 0x00)), -1)
+  assert.equal(inst.find7zStart(Buffer.alloc(2048, 0x00)), -1)
+})
+
+test('installer/writeBytesSafe：分块写入与读取回一致（>chunkSize 走多块路径）', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'wesync-write-'))
+  const target = join(dir, 'big.bin')
+  const data = new Uint8Array(5 * 1024 * 1024)
+  for (let i = 0; i < data.length; i++) data[i] = (i * 7 + 13) & 0xff
+  writeBytesSafe(target, data, 1024 * 1024) // 1MiB 块 → 5 块
+  const back = readFileSync(target)
+  assert.equal(back.length, data.length)
+  assert.deepEqual([...back.subarray(0, 1024)], [...data.subarray(0, 1024)])
+  assert.deepEqual([...back.subarray(-1024)], [...data.subarray(-1024)])
+})
+
+test('routes/install：「视频垫底+7z 追加」复合文件 → 走 7z 分支（段偏移），不再单文件直写', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'wesync-poly7z-'))
+  const sig = Buffer.from([0x37, 0x7a, 0xbc, 0xaf, 0x27, 0x1c])
+  const poly = Buffer.concat([Buffer.alloc(2 * 1024 * 1024, 0xab), sig, Buffer.alloc(4096, 0xcd)])
+  const installer = new LauncherInstaller({ root, fetchFn: async () => fakeRes(poly) })
+  const routes = new Map(createLauncherRoutes({ installer }).map((r) => [r.path, r]))
+  const res = fakeResShim()
+  await routes.get('/we-sync/launcher/install')!.handler(
+    fakeBodyReq('/we-sync/launcher/install', Buffer.from(JSON.stringify({ url: 'https://x/game.mp4' }))),
+    res,
+  )
+  const bodyText = String(res.body)
+  // 垃圾 7z 数据：本机有解压器 → 「7z 解压失败」；无解压器的机器 → 「未找到 7z」。
+  // 两种结果都证明走了 7z 分支（而非单文件直写或误判 zip）
+  assert.match(bodyText, /7z 解压失败|未找到 7z/)
+  assert.ok(!bodyText.includes('RangeError'), '不得再出现 writeSync 越界')
+  assert.ok(!bodyText.includes('包内未找到可执行入口'), '不应走单文件直写分支')
 })
 
 test('installer/extract7z：7-Zip 与 Bandizip 双解压器参数风格 + 密码错误判定', () => {

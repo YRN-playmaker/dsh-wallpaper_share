@@ -10,7 +10,7 @@
  * 安全边界：仅接受 http(s) 直链；Content-Length 与实收字节数双查，超限即弃；
  * sha512 记账（可选传入期望值，不符即拒装）；解包条目数/总字节/路径穿越全防。
  */
-import { mkdirSync, writeFileSync, readFileSync, existsSync, statSync, readdirSync, rmSync } from 'node:fs'
+import { mkdirSync, writeFileSync, readFileSync, existsSync, statSync, readdirSync, rmSync, openSync, closeSync, writeSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { join, dirname, extname, basename, normalize as pathNormalize, sep } from 'node:path'
 import { homedir } from 'node:os'
@@ -46,6 +46,38 @@ function fetchCauseText(e: unknown): string {
 function isHttpHeaderParseError(text: string): boolean {
   return /content-length|invalid header|parse error|hpe_/i.test(text)
 }
+
+/** Node fs.writeSync 的 length 是 int32：单次写上限 2 GiB-1。 */
+const MAX_WRITE_CHUNK = 0x7fffffff
+
+/** 分块写整块字节（writeFileSync 对 >2GiB 的 Uint8Array 直接 RangeError——Node fs.writeSync 的 length 是 int32）。
+ *  chunkSize 仅供测试注入小分块验证多块路径。 */
+export function writeBytesSafe(target: string, bytes: Uint8Array, chunkSize = MAX_WRITE_CHUNK): void {
+  if (bytes.length <= chunkSize) {
+    writeFileSync(target, bytes)
+    return
+  }
+  const fd = openSync(target, 'w')
+  try {
+    for (let off = 0; off < bytes.length; off += chunkSize) {
+      writeSync(fd, bytes, off, Math.min(chunkSize, bytes.length - off))
+    }
+  } finally { closeSync(fd) }
+}
+
+/** 在大文件字节里找 7z 段起点（37 7A BC AF 27 1C）：头部命中 → 0；否则 1MB 之后全量扫
+ *  （Buffer.indexOf 走原生 memmem、视图共享零拷贝，GB 级文件亚秒级）；非 7z → -1。
+ *  场景：「视频垫底 + 7z 追加」复合文件——头部是媒体数据，7z 签名埋在文件中部。 */
+function find7zOffset(bytes: Uint8Array): number {
+  if (bytes.length > 6 && bytes[0] === 0x37 && bytes[1] === 0x7A && bytes[2] === 0xBC
+    && bytes[3] === 0xAF && bytes[4] === 0x27 && bytes[5] === 0x1C) return 0
+  if (bytes.length < 1048576) return -1 // 小文件头部即全部，无需扫描
+  const view = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+  const idx = view.indexOf(SEVEN_ZIP_SIG, 1024)
+  return idx >= 0 ? idx : -1
+}
+
+const SEVEN_ZIP_SIG = Buffer.from([0x37, 0x7a, 0xbc, 0xaf, 0x27, 0x1c])
 
 /** 两家解压器的命令行参数风格（纯函数，测试可直接断言）。 */
 export function buildArchiveArgs(kind: '7z' | 'bandizip', tmpArchive: string, destDir: string, password?: string): string[] {
@@ -272,7 +304,7 @@ export class LauncherInstaller {
       assertInside(destDir, target)
       const data = map.get(p.orig)!
       mkdirSync(dirname(target), { recursive: true })
-      writeFileSync(target, data)
+      writeBytesSafe(target, data)
       written.push(p.safe)
     }
     return written
@@ -284,7 +316,7 @@ export class LauncherInstaller {
     const target = join(destDir, ...safe.split('/'))
     assertInside(destDir, target)
     mkdirSync(dirname(target), { recursive: true })
-    writeFileSync(target, bytes)
+    writeBytesSafe(target, bytes)
     return safe
   }
 
@@ -294,6 +326,11 @@ export class LauncherInstaller {
   is7zBytes(bytes: Uint8Array): boolean {
     return bytes.length > 6 && bytes[0] === 0x37 && bytes[1] === 0x7A && bytes[2] === 0xBC
       && bytes[3] === 0xAF && bytes[4] === 0x27 && bytes[5] === 0x1C
+  }
+
+  /** 7z 段起点（含「视频垫底 + 7z 追加」复合文件的中部签名）：0=头部，>0=偏移，-1=非 7z。 */
+  find7zStart(bytes: Uint8Array): number {
+    return find7zOffset(bytes)
   }
 
   /** zip 识别：扩展名之外，兼容「视频+zip 复合文件」（zip 数据垫在媒体数据后，头部非 PK）。 */
@@ -335,7 +372,7 @@ export class LauncherInstaller {
    * `-p:<pwd>` / `-o:<dir>` 冒号风格。密码经命令行传递——均无 stdin 密码通道；
    * 本机单用户场景下进程列表短暂可见属可接受妥协（文档已注明）。
    */
-  extract7z(bytes: Uint8Array, destDir: string, password?: string): string[] {
+  extract7z(bytes: Uint8Array, destDir: string, password?: string, offset = 0): string[] {
     const tools: Array<{ exe: string; kind: '7z' | 'bandizip' }> = []
     const sevenZip = this.resolveSevenZip()
     if (sevenZip !== null) tools.push({ exe: sevenZip, kind: '7z' })
@@ -350,8 +387,9 @@ export class LauncherInstaller {
       throw new LauncherError('未找到 7z/7za 或 Bandizip（bz.exe）：请安装 7-Zip 或 Bandizip，或将 7za.exe 放入插件 bin/ 目录（CONFIG.launcherSevenZipPath 可指定路径）')
     }
     mkdirSync(destDir, { recursive: true })
+    // 复合文件（视频垫底+7z）：只把 7z 段写成临时包，解压器不认前面的媒体数据
     const tmpArchive = join(destDir, '__archive__.7z')
-    writeFileSync(tmpArchive, bytes)
+    writeBytesSafe(tmpArchive, offset > 0 ? bytes.subarray(offset) : bytes)
     try {
       let lastOutput = ''
       for (const tool of tools) {

@@ -150,12 +150,14 @@ export function createLauncherRoutes(deps: LauncherRoutesDeps): Route[] {
       const dir = join(installer.root, slug)
       if (existsSync(dir)) rmSync(dir, { recursive: true, force: true })
       // zip 识别：扩展名 / PK 头魔数 / 尾部 EOCD（视频+zip 复合文件，头部是媒体数据）
+      // 7z 识别：头部魔数 + 「视频垫底+7z 追加」复合文件的中部签名（返回段偏移，解压只喂 7z 段）
       const isZip = /\.zip$/i.test(fileName) || installer.isZipBytes(bytes)
-      const is7z = /\.7z$/i.test(fileName) || installer.is7zBytes(bytes)
+      const z7off = installer.is7zBytes(bytes) ? 0 : installer.find7zStart(bytes)
+      const is7z = z7off >= 0
       let files: string[]
       try {
         if (is7z) {
-          files = installer.extract7z(bytes, dir, password)
+          files = installer.extract7z(bytes, dir, password, z7off)
         } else if (isZip) {
           files = installer.unzipToDir(bytes, dir, password)
         } else {
