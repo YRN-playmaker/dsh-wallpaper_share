@@ -423,22 +423,39 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
   const [gazeSnapText, setGazeSnapText] = useState(store.settings.gazeSnapText)
   const [needsCalib, setNeedsCalib] = useState(false)
   useEffect(() => onGazeStatus((s, err) => { setGazeStatus(s); setGazeError(err) }), [])
-  // —— 双页翻滚：设置 ⇄ 壁纸库（高阻尼蓄力切页，右侧页签指示当前页与进度）——
-  // 常规轻滑不切页：wheel 累积 deltaY 突破阈值才翻页；未突破时页面有 5%~8% 的
-  // 阻力拉扯跟随；停止滚动 250ms 后累加值清零、页面平滑弹回。
+  // —— 双页一体滚动：设置 ⇄ 壁纸库纵向叠放，一个原生滚动搞定 ——
+  // 不拦截 wheel：面板自身是滚动容器（scroll-snap 页界吸附防误触——页内任意位置
+  // 都能停住，只有越过页底半屏才吸附翻到下一页）；右侧页签 scrollspy 跟随当前页。
   const [page, setPage] = useState<'settings' | 'library'>('settings')
   const appsOpen = page === 'library'
-  const panelRef = useRef<HTMLDivElement | null>(null)
+  const pagesRef = useRef<HTMLDivElement | null>(null)
+  const libraryRef = useRef<HTMLDivElement | null>(null)
+  const libLoadedRef = useRef(false)
   const pageRef = useRef<'settings' | 'library'>('settings')
   pageRef.current = page
-  const busyRef = useRef(false) // 翻页动画进行中，忽略滚轮
-  const accRef = useRef(0) // deltaY 动量累加器
-  const decayRef = useRef<number | null>(null)
-  const flipRef = useRef<(dir: 1 | -1) => void>(() => {})
-  const [pull, setPull] = useState(0) // 阻力拉扯位移（px）
-  const [accRatio, setAccRatio] = useState(0) // 蓄力进度（-1..1，供页签进度条）
-  const [settling, setSettling] = useState(false) // 弹回中（带过渡）
-  const [pageAnim, setPageAnim] = useState<'' | 'out-next' | 'in-next' | 'out-prev' | 'in-prev'>('')
+  const loadLibraryData = (): void => {
+    if (libLoadedRef.current) return
+    libLoadedRef.current = true
+    void loadApps(); void loadDwp(); void loadMarket(); void loadLauncher()
+  }
+  /** scrollspy：以滚动视口中心线判定当前页；首次进入壁纸库页时懒加载数据 */
+  const onPagesScroll = (): void => {
+    const el = pagesRef.current
+    const lib = libraryRef.current
+    if (el === null || lib === null) return
+    const center = el.scrollTop + el.clientHeight * 0.5
+    const next = center >= lib.offsetTop ? 'library' : 'settings'
+    if (next !== pageRef.current) setPage(next)
+    if (next === 'library') loadLibraryData()
+  }
+  /** 页签点击：原生平滑滚动到对应页顶（无自定义动画） */
+  const scrollToPage = (target: 'settings' | 'library'): void => {
+    const el = pagesRef.current
+    const lib = libraryRef.current
+    if (el === null) return
+    const top = target === 'library' && lib !== null ? lib.offsetTop : 0
+    el.scrollTo({ top, behavior: 'smooth' })
+  }
   const [libTab, setLibTab] = useState<'local' | 'market' | 'launcher'>('local')
   const [apps, setApps] = useState<Array<{ id: string; title: string; file: string; type: string; hasPreview: boolean; source?: string }>>([])
   const [appsCounts, setAppsCounts] = useState<Record<string, number>>({})
@@ -603,103 +620,6 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
     setGazeSnapText(next)
     store.notify()
   }
-
-  // —— 高阻尼蓄力翻页引擎 ────────────────────────────────────────────
-  /** deltaY 累积超过该阈值才翻页（常规轻滑不触发）；deltaMode 归一化后比较 */
-  const PAGE_THRESHOLD = 600
-  /** 停止滚动多久后清空动量并弹回原位 */
-  const DECAY_MS = 250
-  /** 未突破阈值时的最大拉扯位移（面板高度百分比） */
-  const PULL_RATIO = 0.07
-
-  const disarmDecay = (): void => {
-    if (decayRef.current !== null) { window.clearTimeout(decayRef.current); decayRef.current = null }
-  }
-
-  const armDecay = (): void => {
-    disarmDecay()
-    decayRef.current = window.setTimeout(() => {
-      decayRef.current = null
-      accRef.current = 0
-      setAccRatio(0)
-      setSettling(true)
-      setPull(0) // 弹回：.wesync-page-settle 提供平滑过渡
-      window.setTimeout(() => { setSettling(false) }, 240)
-    }, DECAY_MS)
-  }
-
-  const flipTo = (dir: 1 | -1): void => {
-    if (busyRef.current) return
-    if ((dir === 1 && pageRef.current === 'library') || (dir === -1 && pageRef.current === 'settings')) return
-    busyRef.current = true
-    disarmDecay()
-    accRef.current = 0
-    setAccRatio(0)
-    setPull(0)
-    setPageAnim(dir === 1 ? 'out-next' : 'out-prev') // 当前页滑出
-    window.setTimeout(() => {
-      setPage(dir === 1 ? 'library' : 'settings')
-      setPageAnim(dir === 1 ? 'in-next' : 'in-prev') // 新页滑入
-      if (dir === 1) { void loadApps(); void loadDwp(); void loadMarket(); void loadLauncher() }
-      window.setTimeout(() => { setPageAnim(''); busyRef.current = false }, 300)
-    }, 240)
-  }
-  flipRef.current = flipTo
-
-  // wheel 拦截（passive:false）：内部滚动容器优先，其余走蓄力翻页
-  useEffect(() => {
-    const root = panelRef.current
-    if (root === null) return
-    const onWheel = (e: WheelEvent): void => {
-      if (e.ctrlKey) return // 缩放手势不接管
-      // 内部滚动容器还能往该方向滚 → 交给原生滚动（不打断列表浏览）
-      let el: HTMLElement | null = e.target as HTMLElement | null
-      while (el !== null && el !== root) {
-        const style = window.getComputedStyle(el)
-        const oy = style.overflowY
-        if ((oy === 'auto' || oy === 'scroll') && el.scrollHeight > el.clientHeight + 1) {
-          const atTop = el.scrollTop <= 0
-          const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 1
-          if ((e.deltaY > 0 && !atBottom) || (e.deltaY < 0 && !atTop)) return
-        }
-        el = el.parentElement
-      }
-      e.preventDefault()
-      if (busyRef.current) return
-      if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) return // 横向滚动手势不接管
-      // deltaMode 归一化：1=行(×40) 2=页(×800)
-      let dy = e.deltaY
-      if (e.deltaMode === 1) dy *= 40
-      else if (e.deltaMode === 2) dy *= 800
-      const dir: 1 | -1 = dy > 0 ? 1 : -1 // 下滚 → 下一页（壁纸库），上滚 → 上一页（设置）
-      const canFlip = (pageRef.current === 'settings' && dir === 1) || (pageRef.current === 'library' && dir === -1)
-      if (!canFlip) {
-        // 已是边界页：轻微橡皮筋反馈后弹回，不累积
-        accRef.current = 0
-        setAccRatio(0)
-        setPull(Math.max(-16, Math.min(16, dy * 0.04)))
-        armDecay()
-        return
-      }
-      accRef.current += dy
-      const ratio = Math.min(1, Math.abs(accRef.current) / PAGE_THRESHOLD)
-      const maxPull = (root.clientHeight || 480) * PULL_RATIO
-      setPull((pageRef.current === 'settings' ? -1 : 1) * ratio * maxPull) // 朝翻页方向拉扯
-      setAccRatio(dir * ratio)
-      if (Math.abs(accRef.current) >= PAGE_THRESHOLD) {
-        accRef.current = 0
-        disarmDecay()
-        setAccRatio(0)
-        setPull(0)
-        flipRef.current(dir)
-      } else {
-        armDecay()
-      }
-    }
-    root.addEventListener('wheel', onWheel, { passive: false })
-    return () => { root.removeEventListener('wheel', onWheel) }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
 
   const loadDwp = async (): Promise<void> => {
     try {
@@ -1054,37 +974,10 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
 
   const monitors = info !== null && Array.isArray(info.monitors) && info.monitors.length > 1 ? info.monitors : null
 
-  /** 双页包裹层的类名：当前页带进/出场动画类，非当前页 display:none（不占布局） */
-  const pageClass = (p: 'settings' | 'library'): string => {
-    const cls = ['wesync-page']
-    if (page === p) {
-      // dir=1（设置→壁纸库）：设置页向上退场，壁纸库自下方入场
-      if (p === 'settings' && pageAnim === 'out-next') cls.push('wesync-page-leave-up')
-      if (p === 'library' && pageAnim === 'in-next') cls.push('wesync-page-enter-down')
-      // dir=-1（壁纸库→设置）：壁纸库向下退场，设置页自上方入场
-      if (p === 'library' && pageAnim === 'out-prev') cls.push('wesync-page-leave-down')
-      if (p === 'settings' && pageAnim === 'in-prev') cls.push('wesync-page-enter-up')
-    } else {
-      cls.push('wesync-page-hidden')
-    }
-    return cls.join(' ')
-  }
-  /** 拉扯位移只作用于当前页；翻页动画期间归零；弹回/拉扯时用 settle 过渡 */
-  const pageStyle = (p: 'settings' | 'library'): React.CSSProperties => {
-    const cur = page === p && pageAnim === ''
-    const y = cur ? pull : 0
-    const animating = page === p && pageAnim !== ''
-    const settle = settling && pageAnim === ''
-    return {
-      transform: y !== 0 ? `translateY(${y.toFixed(1)}px)` : undefined,
-      transition: animating || settle ? 'transform 0.24s cubic-bezier(0.22, 1, 0.36, 1)' : undefined,
-    }
-  }
-
   return (
-    <div ref={panelRef} className="wesync-panel">
-      <div className="wesync-pages">
-        <div className={pageClass('settings')} style={pageStyle('settings')}>
+    <div className="wesync-panel">
+      <div className="wesync-pages" ref={pagesRef} onScroll={onPagesScroll}>
+        <div className="wesync-page">
       <div className="wesync-card">
         <div className="wesync-head">
           <div className="wesync-title">{title}</div>
@@ -1250,8 +1143,8 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
       </div>
         <div className="wesync-page-hint" style={{ textAlign: 'center' }}>{t.pageHint}</div>
         </div>
-        <div className={pageClass('library')} style={pageStyle('library')}>
-          {/* 壁纸库页：独立卡片，翻滚切页后进入 */}
+        <div className="wesync-page" ref={libraryRef}>
+          {/* 壁纸库页：独立卡片，向下滚进入（scroll-snap 吸附页顶） */}
           <div className="wesync-card">
             <div className="wesync-apps">
             <div className="wesync-apps-head">
@@ -1585,27 +1478,21 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
           </div>
         </div>
       </div>
-      {/* 右侧醒目页签：当前页指示 + 蓄力进度条（也可直接点击切页，兜底入口） */}
+      {/* 右缘页签：scrollspy 跟随当前页，点击原生平滑滚到对应页 */}
       <div className="wesync-pager">
         <button
           className={['wesync-pager-dot', page === 'settings' ? 'wesync-pager-dot-on' : ''].join(' ')}
           title={t.pageSettings}
-          onClick={() => { if (page !== 'settings') flipRef.current(-1) }}
+          onClick={() => scrollToPage('settings')}
         >
           <span className="wesync-pager-label">{t.pageSettings}</span>
-          {page === 'settings' && accRatio < -0.03
-            ? <span className="wesync-pager-progress" style={{ transform: 'scaleX(' + String(Math.min(1, -accRatio)) + ')' }} />
-            : null}
         </button>
         <button
           className={['wesync-pager-dot', page === 'library' ? 'wesync-pager-dot-on' : ''].join(' ')}
           title={t.pageLibrary}
-          onClick={() => { if (page !== 'library') flipRef.current(1) }}
+          onClick={() => scrollToPage('library')}
         >
           <span className="wesync-pager-label">{t.pageLibrary}</span>
-          {page === 'library' && accRatio > 0.03
-            ? <span className="wesync-pager-progress" style={{ transform: 'scaleX(' + String(Math.min(1, accRatio)) + ')' }} />
-            : null}
         </button>
       </div>
     </div>

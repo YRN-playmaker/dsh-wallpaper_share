@@ -135,6 +135,22 @@ export interface ParticleSystemDesc {
   sequenceMirror: boolean
 }
 
+/** animationlayers 单层（scene.json 对象属性；决定 puppet 播放哪些动画及合成方式） */
+export interface SceneAnimationLayer {
+  /** 层名（"动画 N" 等；与 MDLA 动画名/序号映射） */
+  name: string | null
+  /** scene.json 引用的动画 id（对应 MDLA 目录项 id） */
+  animation: number | null
+  /** 混合权重 0..1（普通层 mix(final, layerWorld, blend)） */
+  blend: number
+  /** 播放倍速 */
+  rate: number
+  /** additive 层：final += (layerWorld − 层动画帧0世界) × blend */
+  additive: boolean
+  /** 可见性（仅 visible=true 的层参与合成） */
+  visible: boolean
+}
+
 export interface SceneModelLayer {
   id: number
   name: string
@@ -163,8 +179,10 @@ export interface SceneModelLayer {
   decodableTexture: string | null
   /** puppet 骨骼模型（模型带 puppet 字段时解析 _puppet.mdl） */
   puppet: PuppetModel | null
-  /** animationlayers 引用的动画 id（决定播放 puppet 的哪个动画） */
+  /** animationlayers 引用的动画 id（legacy 单动画选择用） */
   animationIds: number[]
+  /** animationlayers 全结构（blend/additive/rate/visible；新格式多层合成用） */
+  animationLayers: SceneAnimationLayer[]
   /** 骨骼挂载点（o.attachment，如 "head"/"Attachment"）；位置基于 parent 骨骼 */
   attachment: string | null
   /** 粒子系统描述（对象带 particle 字段时） */
@@ -279,6 +297,7 @@ export function buildSceneModel(pkgBuf: Uint8Array, opts?: { particleRateScale?:
       decodableTexture: decodable,
       puppet,
       animationIds: parseAnimationIds(o.animationlayers),
+      animationLayers: parseAnimationLayers(o.animationlayers),
       attachment: typeof o.attachment === 'string' ? o.attachment : null,
       particle,
       effects: parseLayerEffects(o),
@@ -371,6 +390,27 @@ function parseAnimationIds(v: unknown): number[] {
     }
   }
   return ids
+}
+
+/** 解析 animationlayers → 全结构（name/blend/rate/additive/visible/animation） */
+function parseAnimationLayers(v: unknown): SceneAnimationLayer[] {
+  if (!Array.isArray(v)) return []
+  const out: SceneAnimationLayer[] = []
+  for (const a of v) {
+    if (a === null || typeof a !== 'object') continue
+    const o = a as Record<string, unknown>
+    const vis = o.visible
+    const visible = vis === true || (vis !== null && typeof vis === 'object' && (vis as { value?: unknown }).value === true)
+    out.push({
+      name: typeof o.name === 'string' ? o.name : null,
+      animation: typeof o.animation === 'number' ? o.animation : null,
+      blend: typeof o.blend === 'number' && o.blend >= 0 && o.blend <= 1 ? o.blend : 1,
+      rate: typeof o.rate === 'number' && o.rate > 0 ? o.rate : 1,
+      additive: o.additive === true,
+      visible,
+    })
+  }
+  return out
 }
 
 /** 解析 puppet 骨骼模型：模型 json 的 puppet 字段 → _puppet.mdl → PuppetModel */

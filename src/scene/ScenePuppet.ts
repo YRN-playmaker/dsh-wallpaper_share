@@ -74,14 +74,49 @@ export interface PuppetAnimation {
   boneKeyframes?: PuppetKeyframe[][]
 }
 
+/** 骨骼 2D 世界位姿（角度 + 平移，模型空间 y-up） */
+export interface PuppetBoneRT {
+  angle: number
+  tx: number
+  ty: number
+}
+
+/** MDAT 锚点（attachment 挂载点，含骨骼索引 + 局部矩阵） */
+export interface PuppetBoneAnchor {
+  /** 锚点名（scene.json 对象 attachment 字段匹配） */
+  name: string
+  /** 锚定骨骼索引（< bones.length） */
+  boneIdx: number
+  /** 锚点矩阵（16 f32 列主序）；平移 = 骨骼局部偏移，按骨骼旋角旋转后加到骨骼世界位姿 */
+  m: number[]
+}
+
+/** MDLA0006 新格式逐骨骼动画（9 列循环交错布局，官方 30fps 播放） */
+export interface PuppetAnimV2 {
+  /** MDLA 目录项 id（对应 scene.json animationlayers[].animation） */
+  id: number
+  name: string
+  /** 循环帧数（官方 30fps 播放） */
+  frameCount: number
+  boneCount: number
+  /**
+   * 每骨骼每帧局部值 [px, py, rotZ]，平铺 number[]：
+   * 索引 = bone × frameCount × 3 + frame × 3（+0 px / +1 py / +2 rotZ）。
+   * 解析期急切解码（避免把原始 MDL 字节序列化到客户端）。
+   */
+  localFrames: number[]
+}
+
 export interface PuppetModel {
   material: string
   bones: PuppetBone[]
   mesh: PuppetMesh | null
+  /** 0013 老格式逐帧动画（渲染层 legacy 路径） */
   animations: PuppetAnimation[]
-  /** MDAT 具名骨骼位置（骨骼名 → [x,y,z]，y-up 模型空间，相对图片中心）；
-   * 用于 attachment="head" 等部件的锚点偏移 */
-  bonePositions: Record<string, [number, number, number]>
+  /** MDLA0006 新格式逐骨骼动画（渲染层主路径） */
+  animsV2: PuppetAnimV2[]
+  /** MDAT 具名骨骼锚点（attachment 挂载，跟随骨骼动画） */
+  boneAnchors: PuppetBoneAnchor[]
 }
 
 const f32At = (bytes: Uint8Array, q: number): number => {
@@ -96,6 +131,10 @@ const i32At = (bytes: Uint8Array, q: number): number => {
 }
 const u16At = (bytes: Uint8Array, q: number): number => {
   return bytes[q] | (bytes[q + 1] << 8)
+}
+/** 读取 [start, end) 区间 UTF-8 字符串（MDAT/MDLA 名字可为非 ASCII） */
+const utf8At = (bytes: Uint8Array, start: number, end: number): string => {
+  return new TextDecoder('utf-8').decode(bytes.subarray(start, end))
 }
 
 /** 解析 mdl；失败返回 null */
@@ -257,20 +296,28 @@ export function parsePuppetMdl(bytes: Uint8Array): PuppetModel | null {
           q = j + 1
         }
       } else {
-        // 0004：骨骼布局 = [pad:1][u0:4 parent:4 f0:4 矩阵64B=76B][变长 json 属性块\0]
-        // （bone0 的 pad 是 MDLS 头 @+17；后续骨骼 pad 紧跟上一 json 的 \0 之后）
-        // 实测 61 骨骼 json 起点间距恒定 78B = pad1 + def76 + json 首字节偏移
-        let q = mdls + 18
-        for (let i = 0; i < boneCount && q + 76 <= len; i++) {
-          const parent = i32At(bytes, q + 4)
-          const mp = q + 12
+        // 0004：骨骼定义 = [tmp u8/u16][type u32][parent i32][len u32][矩阵 len 字节][name\0]
+        // （逆向自 wallpaper64.exe；tmp 大部分为 u8，带旋转/特殊骨骼为 u16 —— 用 len 合理性判别）。
+        // parent@+5 / 矩阵@+13 与旧实现字段对齐一致（旧 q=mdls+18 时 parent@+4 / 矩阵@+12）。
+        let p = mdls + 17
+        for (let i = 0; i < boneCount && p + 12 <= len; i++) {
+          let headExtra = 0
+          let parent = i32At(bytes, p + 5)
+          let entryLen = u32At(bytes, p + 9)
+          if (entryLen === 0 || entryLen > 4096) {
+            parent = i32At(bytes, p + 6)
+            entryLen = u32At(bytes, p + 10)
+            headExtra = 1
+            if (entryLen === 0 || entryLen > 4096) break
+          }
+          p += 9 + headExtra + 4
           const bind: number[] = []
-          for (let k = 0; k < 16; k++) bind.push(f32At(bytes, mp + k * 4))
-          mdlsBones.push({ parent, bind })
-          // 跳过 json 属性块（矩阵后到 \0）+ 下一骨骼的 pad 字节
-          let j = mp + 64
-          while (j < len && bytes[j] !== 0 && j < q + 4096) j++
-          q = j + 2
+          for (let k = 0; k < 16; k++) bind.push(f32At(bytes, p + k * 4))
+          mdlsBones.push({ parent: parent === -1 ? -1 : parent, bind })
+          p += entryLen
+          let j = p
+          while (j < len && bytes[j] !== 0) j++
+          p = j + 1
         }
       }
     }
@@ -287,9 +334,8 @@ export function parsePuppetMdl(bytes: Uint8Array): PuppetModel | null {
       }
     }
 
-    // --- MDAT 具名骨骼（count u16@+13，名字 @+17 起，矩阵 = 名字起点 + strlen + 1）---
-    const bonePositions: Record<string, [number, number, number]> = {}
-    const mdatNames: string[] = []
+    // --- MDAT 具名骨骼锚点（u16 count@+13，条目 = [u16 boneIdx][name\0][矩阵 64B]）---
+    const boneAnchors: PuppetBoneAnchor[] = []
     if (mdat >= 0) {
       const mdatEnd = (() => {
         let e = len
@@ -299,35 +345,37 @@ export function parsePuppetMdl(bytes: Uint8Array): PuppetModel | null {
       })()
       const mdatCount = u16At(bytes, mdat + 13)
       if (mdatCount > 0 && mdatCount <= 256) {
-        let q = mdat + 17
-        for (let i = 0; i < mdatCount && q + 65 <= mdatEnd; i++) {
-          // 条目间可能有 1B pad（0x00）：跳过
-          let skips = 0
-          while (skips < 4 && q < mdatEnd && bytes[q] === 0 && q + 66 <= mdatEnd) { q++; skips++ }
-          // 名字（ASCII）
-          let nm = ''
+        let q = mdat + 15 // 第一条目的 boneIdx
+        for (let i = 0; i < mdatCount && q + 2 <= mdatEnd; i++) {
+          const boneIdx = u16At(bytes, q); q += 2
           let s = q
-          while (s < mdatEnd && bytes[s] !== 0 && bytes[s] >= 32 && bytes[s] < 127 && nm.length < 128) { nm += String.fromCharCode(bytes[s]); s++ }
-          if (nm.length < 1 || s >= mdatEnd || bytes[s] !== 0) break
+          while (s < mdatEnd && bytes[s] !== 0) s++
+          if (s >= mdatEnd) break
+          const nm = utf8At(bytes, q, s)
+          if (nm.length < 1) break
           const mp = s + 1
           if (mp + 64 > mdatEnd) break
-          mdatNames.push(nm)
-          bonePositions[nm] = [f32At(bytes, mp + 48), f32At(bytes, mp + 52), f32At(bytes, mp + 56)]
+          const m: number[] = []
+          for (let k = 0; k < 16; k++) m.push(f32At(bytes, mp + k * 4))
+          boneAnchors.push({ name: nm, boneIdx, m })
           q = mp + 64
         }
       } else {
-        // 兜底：循环扫描名字（count 字段不可靠时）
-        let q = mdat + 17
+        // 兜底：count 字段不可靠时循环扫描
+        let q = mdat + 15
         let guard = 0
         while (q + 66 <= mdatEnd && guard++ < 256) {
-          let nm = ''
+          const boneIdx = u16At(bytes, q); q += 2
           let s = q
-          while (s < mdatEnd && bytes[s] !== 0 && bytes[s] >= 32 && bytes[s] < 127 && nm.length < 128) { nm += String.fromCharCode(bytes[s]); s++ }
-          if (nm.length < 1 || s >= mdatEnd || bytes[s] !== 0) break
+          while (s < mdatEnd && bytes[s] !== 0) s++
+          if (s >= mdatEnd) break
+          const nm = utf8At(bytes, q, s)
+          if (nm.length < 1) break
           const mp = s + 1
           if (mp + 64 > mdatEnd) break
-          mdatNames.push(nm)
-          bonePositions[nm] = [f32At(bytes, mp + 48), f32At(bytes, mp + 52), f32At(bytes, mp + 56)]
+          const m: number[] = []
+          for (let k = 0; k < 16; k++) m.push(f32At(bytes, mp + k * 4))
+          boneAnchors.push({ name: nm, boneIdx, m })
           q = mp + 64
         }
       }
@@ -335,14 +383,14 @@ export function parsePuppetMdl(bytes: Uint8Array): PuppetModel | null {
 
     // --- 组装骨骼 ---
     const bones: PuppetBone[] = []
-    const total = Math.max(boneCount, mdatNames.length, poseMatrices !== null ? poseMatrices.length / 16 : 0)
+    const total = Math.max(boneCount, poseMatrices !== null ? poseMatrices.length / 16 : 0)
     for (let i = 0; i < total; i++) {
       const mdlsB = mdlsBones[i]
       const pose = poseMatrices !== null && i * 16 + 15 < poseMatrices.length
         ? poseMatrices.slice(i * 16, i * 16 + 16)
         : null
       bones.push({
-        name: mdatNames[i] ?? '',
+        name: '',
         parent: mdlsB !== undefined ? mdlsB.parent : -1,
         bind: mdlsB !== undefined ? mdlsB.bind : null,
         pose,
@@ -437,7 +485,75 @@ export function parsePuppetMdl(bytes: Uint8Array): PuppetModel | null {
       }
     }
 
-    return { material, bones, mesh, animations, bonePositions }
+    // --- MDLA0006 新格式 9 列循环交错逐骨骼动画（渲染主路径；逆向定案，30fps）---
+    // 布局：每动画 boneCount 段，每段 frameCount×36B（9 f32/帧）；骨骼 b 的
+    //   pos = 段 b 帧 (frame+floor(2b/9))%frameCount 列 (2b)%9,(2b+1)%9
+    //   rot = 段 b 帧 (frame+floor(2b/9)+floor((2b+5)/9))%frameCount 列 (2b+5)%9
+    const animsV2: PuppetAnimV2[] = []
+    if (mdla6 >= 0) {
+      try {
+        let p = mdla6 + 9
+        p += 4 // 段总字节
+        const animCount = Math.max(0, Math.min(64, u32At(bytes, p))); p += 4
+        for (let a = 0; a < animCount && p + 12 <= len; a++) {
+          const id = u32At(bytes, p); p += 4
+          p += 4 // u32 0
+          let s = p
+          while (s < len && bytes[s] !== 0 && s - p < 128) s++
+          if (s >= len) break
+          const nm = utf8At(bytes, p, s)
+          p = s + 1 // \0
+          while (p < len && bytes[p] !== 0) p++ // loop 字符串
+          if (p >= len) break
+          p++
+          // 扫描 f32 30.0 标记（0x41F00000 → 字节 F0 41）定位帧数
+          while (p + 1 < len && !(bytes[p] === 0xf0 && bytes[p + 1] === 0x41)) p++
+          p += 2
+          const frameCount = u16At(bytes, p); p += 2
+          p += 2 // u16 0
+          p += 4 // u32 0
+          const boneCount = u32At(bytes, p); p += 4
+          p += 4 // u32 0
+          const segBytes = u32At(bytes, p); p += 4
+          if (boneCount > 512 || segBytes === 0 || segBytes > 0x100000) break
+          const segs: number[] = []
+          for (let b = 0; b < boneCount && p + (b + 1) * segBytes <= len; b++) segs.push(p + b * segBytes)
+          if (segs.length === 0) break
+          // 急切解码每骨骼每帧局部 [px, py, rotZ]（避免把原始 MDL 字节序列化到客户端）
+          // 上限保护：异常大 frameCount（损坏/恶意 MDL）会导致 localFrames 爆内存
+          const totalFrames = Math.max(1, Math.min(frameCount, 4096))
+          const localFrames = new Array<number>(boneCount * totalFrames * 3).fill(0)
+          for (let b = 0; b < boneCount; b++) {
+            const segStart = segs[b]
+            const b2 = 2 * b
+            const posShift = Math.floor(b2 / 9)
+            const posCol = b2 % 9
+            const rotShift = Math.floor((b2 + 5) / 9)
+            const rotCol = (b2 + 5) % 9
+            for (let f = 0; f < totalFrames; f++) {
+              const o = segStart + ((f + posShift) % totalFrames) * 36 + posCol * 4
+              const o2 = segStart + ((f + posShift + rotShift) % totalFrames) * 36 + rotCol * 4
+              let px = Number.NaN
+              let py = Number.NaN
+              let rotZ = Number.NaN
+              if (o + 4 <= bytes.length && o2 + 4 <= bytes.length) {
+                px = f32At(bytes, o)
+                py = f32At(bytes, o + 4)
+                rotZ = f32At(bytes, o2)
+              }
+              const base = b * totalFrames * 3 + f * 3
+              localFrames[base] = px
+              localFrames[base + 1] = py
+              localFrames[base + 2] = rotZ
+            }
+          }
+          animsV2.push({ id, name: nm, frameCount: totalFrames, boneCount, localFrames })
+          p += segBytes * boneCount
+        }
+      } catch { /* 交错解析失败 → 渲染层回退 legacy animations */ }
+    }
+
+    return { material, bones, mesh, animations, animsV2, boneAnchors }
   } catch {
     return null
   }
@@ -528,4 +644,54 @@ export function sampleAnimation(anim: PuppetAnimation, t: number): { values: num
     a = b
   }
   return { values: mono[mono.length - 1].values, t: prog + startT }
+}
+
+/**
+ * 采样 MDLA0006 新格式（9 列循环交错）某帧的每骨骼世界位姿（parent 链 2D 累乘）。
+ * 读值异常（越界/非有限/量级过大）的骨骼回退其 MDLS 局部 bind 矩阵（链乘继续，不炸）。
+ * 与官方引擎一致：角度相加、平移 = 父平移 + Rz(父角度)·局部平移。
+ */
+export function samplePuppetRT(puppet: PuppetModel, animIdx: number, frame: number): Array<PuppetBoneRT | null> {
+  const anim = puppet.animsV2[animIdx]
+  if (anim === undefined) return []
+  const bones = puppet.bones
+  const nb = Math.max(bones.length, anim.boneCount)
+  const out: Array<PuppetBoneRT | null> = new Array(nb)
+  const totalFrames = Math.max(1, anim.frameCount)
+  const f = ((frame % totalFrames) + totalFrames) % totalFrames
+  for (let b = 0; b < nb; b++) {
+    const bone = bones[b]
+    const parent = bone !== undefined ? bone.parent : -1
+    const base = b * totalFrames * 3 + f * 3
+    const px = anim.localFrames[base]
+    const py = anim.localFrames[base + 1]
+    const rotZ = anim.localFrames[base + 2]
+    if (Number.isFinite(px) && Number.isFinite(py) && Math.abs(px) < 10000 && Math.abs(py) < 10000 && Number.isFinite(rotZ)) {
+      if (parent >= 0 && parent < nb && out[parent] !== null && out[parent] !== undefined) {
+        const pa = out[parent]!.angle
+        const pc = Math.cos(pa)
+        const ps = Math.sin(pa)
+        out[b] = { angle: pa + rotZ, tx: out[parent]!.tx + px * pc - py * ps, ty: out[parent]!.ty + px * ps + py * pc }
+      } else {
+        out[b] = { angle: rotZ, tx: px, ty: py }
+      }
+    } else {
+      const bind = bone !== undefined ? bone.bind : null
+      if (bind !== null && bind.length >= 16) {
+        const ang = Math.atan2(bind[1], bind[0])
+        if (parent >= 0 && parent < nb && out[parent] !== null && out[parent] !== undefined) {
+          const pa = out[parent]!.angle
+          const pc = Math.cos(pa)
+          const ps = Math.sin(pa)
+          out[b] = { angle: pa + ang, tx: out[parent]!.tx + bind[12] * pc - bind[13] * ps, ty: out[parent]!.ty + bind[12] * ps + bind[13] * pc }
+        } else {
+          out[b] = { angle: ang, tx: bind[12], ty: bind[13] }
+        }
+      } else {
+        const pr = parent >= 0 && parent < nb ? (out[parent] ?? { angle: 0, tx: 0, ty: 0 }) : { angle: 0, tx: 0, ty: 0 }
+        out[b] = { angle: pr.angle, tx: pr.tx, ty: pr.ty }
+      }
+    }
+  }
+  return out
 }

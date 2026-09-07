@@ -16,7 +16,7 @@
  * 静态合成，用于验证「真实 scene.json 图层树 + transform 能进 Harness」。
  */
 import type { SceneModel, SceneModelLayer, LayerEffect } from '../scene/SceneModel.ts'
-import { sampleAnimation as samplePuppet, type PuppetAnimation } from '../scene/ScenePuppet.ts'
+import { sampleAnimation as samplePuppet, samplePuppetRT, type PuppetAnimation, type PuppetBoneRT, type PuppetModel } from '../scene/ScenePuppet.ts'
 import { skinVertex, mat4Mul, mat4TRS, mat4TRSEuler, mat4Identity, computeSkinMatrices, type Mat4 } from '../scene/PuppetSkin.ts'
 import { ParticleRuntime } from './ParticleRuntime.ts'
 import { ParticleGL } from './ParticleGL.ts'
@@ -137,6 +137,78 @@ function buildMeshCanvas(mesh: { vertices: { pos: [number, number, number]; uv: 
     g.restore()
   }
   return { canvas: c, originX: pad - mnx, originY: pad - mny }
+}
+
+/** 新格式动画层合成规格 */
+interface PuppetAnimLayerSpec { animIdx: number; blend: number; rate: number; additive: boolean }
+
+/**
+ * 把 scene.json animationlayers 映射到 MDLA 新格式动画索引（官方语义）：
+ * 仅 visible=true 层参与；动画选择 = id 直配 → 名字匹配 → "动画 N" 数字后缀 → 层索引回退。
+ * 多动画 + 非空 layers 时按此合成；否则回退单动画（动画 0）。
+ */
+function resolveAnimLayers(puppet: PuppetModel, layer: SceneModelLayer): PuppetAnimLayerSpec[] {
+  if (puppet.animsV2.length > 1 && layer.animationLayers.length > 0) {
+    const out: PuppetAnimLayerSpec[] = []
+    for (const l of layer.animationLayers) {
+      if (!l.visible) continue
+      const blend = l.blend >= 0 && l.blend <= 1 ? l.blend : 1
+      const rate = l.rate > 0 ? l.rate : 1
+      let idx = -1
+      if (l.animation !== null) idx = puppet.animsV2.findIndex((a) => a.id === l.animation)
+      if (idx < 0 && l.name !== null && l.name !== '') idx = puppet.animsV2.findIndex((a) => a.name !== '' && a.name === l.name)
+      if (idx < 0 && l.name !== null) {
+        const m = String(l.name).match(/(\d+)/)
+        if (m !== null) {
+          const n = parseInt(m[1], 10)
+          if (n >= 1 && n <= puppet.animsV2.length) idx = n - 1
+        }
+      }
+      if (idx < 0) {
+        const li = layer.animationLayers.indexOf(l)
+        if (li >= 0 && li < puppet.animsV2.length) idx = li
+      }
+      if (idx < 0) idx = 0
+      out.push({ animIdx: idx, blend, rate, additive: l.additive })
+    }
+    if (out.length > 0) return out
+  }
+  return [{ animIdx: 0, blend: 1, rate: 1, additive: false }]
+}
+
+/** 新格式静态检测：所有合成层的帧 0 / 1 / 中 三采样位姿全同 → 静态（不播放） */
+function isStaticPuppetV2(puppet: PuppetModel, layers: PuppetAnimLayerSpec[]): boolean {
+  for (const L of layers) {
+    const fc = Math.max(1, puppet.animsV2[L.animIdx]?.frameCount ?? 1)
+    const f0 = samplePuppetRT(puppet, L.animIdx, 0)
+    const f1 = fc > 1 ? samplePuppetRT(puppet, L.animIdx, 1) : f0
+    const fm = fc > 2 ? samplePuppetRT(puppet, L.animIdx, Math.floor(fc / 2)) : f0
+    const nb = Math.max(f0.length, f1.length, fm.length)
+    for (let b = 0; b < nb; b++) {
+      const a = f0[b]
+      const c = f1[b]
+      const d = fm[b]
+      if (a === null || c === null || d === null) continue
+      if (Math.abs(a.angle - c.angle) > 1e-4 || Math.abs(a.tx - c.tx) > 1e-3 || Math.abs(a.ty - c.ty) > 1e-3) return false
+      if (Math.abs(a.angle - d.angle) > 1e-4 || Math.abs(a.tx - d.tx) > 1e-3 || Math.abs(a.ty - d.ty) > 1e-3) return false
+    }
+  }
+  return true
+}
+
+/** 链乘 MDLS 局部矩阵 → 每骨骼 bind 世界位姿（列主序；parent 链 2D 分解） */
+function computeBindWorldRT(puppet: PuppetModel): PuppetBoneRT[] {
+  const bones = puppet.bones
+  const nb = bones.length
+  const bindWorld: Array<Mat4 | null> = new Array(nb)
+  for (let b = 0; b < nb; b++) {
+    const local = bones[b].bind ?? bones[b].pose ?? null
+    const parent = bones[b].parent
+    bindWorld[b] = local === null
+      ? (parent >= 0 && parent < nb ? bindWorld[parent] ?? null : null)
+      : (parent >= 0 && parent < nb && bindWorld[parent] !== null && bindWorld[parent] !== undefined ? mat4Mul(bindWorld[parent]!, local) : local)
+  }
+  return bindWorld.map((m) => m !== null ? { angle: Math.atan2(m[1], m[0]), tx: m[12], ty: m[13] } : { angle: 0, tx: 0, ty: 0 })
 }
 
 /**
@@ -302,6 +374,16 @@ export class SceneModelRenderer {
   private animXform = new Map<number, { dx: number; dy: number; rot: number }>()
   /** 0013 老格式逐骨骼动画全局矩阵：puppet 图层 id → 每骨骼动画矩阵（TRS，绝对姿态） */
   private boneAnimMats = new Map<number, Array<Mat4 | null>>()
+  /** 新格式（MDLA0006）逐骨骼动画全局矩阵（列主序世界）：puppet 图层 id → 每骨骼 */
+  private puppetGlobalMats = new Map<number, Array<Mat4 | null>>()
+  /** 新格式逐骨骼链乘 bind 世界矩阵（M_skin = M_global × inv(bindWorld)） */
+  private puppetBindWorld = new Map<number, Array<Mat4 | null>>()
+  /** 新格式逐骨骼最终位姿 {angle,tx,ty}（attachment 锚点跟随用） */
+  private puppetPosesRT = new Map<number, PuppetBoneRT[]>()
+  /** 新格式动画播放状态：图层 id → { 合成层, 播放时间 } */
+  private puppetAnimsV2 = new Map<number, { layers: Array<{ animIdx: number; blend: number; rate: number; additive: boolean }>; time: number }>()
+  /** 新格式 bind 世界位姿缓存（静态，attachment 无动画帧时用）：图层 id → 每骨骼 */
+  private bindWorldCache = new Map<number, PuppetBoneRT[]>()
   /** puppet 网格离屏渲染缓存：图层 id → { canvas, 模型原点 } */
   private meshCanvases = new Map<number, { canvas: HTMLCanvasElement; originX: number; originY: number; animKey: string }>()
   private dpr = 1
@@ -392,8 +474,13 @@ export class SceneModelRenderer {
     this.worldTransform.clear()
     this.byId.clear()
     this.puppetAnims.clear()
+    this.puppetAnimsV2.clear()
     this.animXform.clear()
     this.boneAnimMats.clear()
+    this.puppetGlobalMats.clear()
+    this.puppetBindWorld.clear()
+    this.puppetPosesRT.clear()
+    this.bindWorldCache.clear()
     this.meshCanvases.clear()
     for (const v of this.effectMasks.values()) { try { if ('close' in v.bmp) v.bmp.close() } catch { /* 忽略 */ } }
     this.effectMasks.clear()
@@ -498,7 +585,18 @@ export class SceneModelRenderer {
     // puppet 动画：所有带"真实逐帧动画"的层播放（装配根 alpha=0 锚点整体动画 +
     // 部件自身动画如头发/草/裙子摆动）。静态姿势表（帧值全同）跳过。
     for (const layer of model.layers) {
-      if (layer.puppet === null || layer.puppet.animations.length === 0) continue
+      if (layer.puppet === null) continue
+      // 新格式（MDLA0006 9 列交错）优先：全骨骼蒙皮 + 多层合成
+      if (layer.puppet.animsV2.length > 0) {
+        // 预计算 bind 世界位姿（attachment 锚点静态帧用，静态/动画均需）
+        this.bindWorldCache.set(layer.id, computeBindWorldRT(layer.puppet))
+        const layers = resolveAnimLayers(layer.puppet, layer)
+        // 静态检测：帧 0 / 1 / 中 三采样全同 → 不播放（渲染 bind 姿势一次）
+        if (isStaticPuppetV2(layer.puppet, layers)) continue
+        this.puppetAnimsV2.set(layer.id, { layers, time: 0 })
+        continue
+      }
+      if (layer.puppet.animations.length === 0) continue
       const anim = layer.animationIds.length > 0
         ? layer.puppet.animations.find((a) => layer.animationIds.includes(a.id)) ?? layer.puppet.animations[0]
         : layer.puppet.animations[0]
@@ -554,8 +652,8 @@ export class SceneModelRenderer {
    * 递归合并 parent 层级变换（含 attachment 骨骼挂载）。
    * 顶层（无 parent）：WE 场景坐标 **y 向上** → 屏幕 y = 场景高 - origin.y。
    * 子图层：局部坐标 y 向上，父 scale 施加于子的位移与尺寸。
-   * attachment（如 "head"/"Attachment"）：子层挂到 parent puppet 的具名骨骼，
-   * 锚点 = parent 锚点 + 骨骼局部位置（y-up）+ 子层 origin。
+   * attachment（如 "head"/"Attachment"）：子层挂到 parent puppet 的具名骨骼锚点，
+   * 锚点 = 锚定骨骼最终世界位姿（动画合成后）+ R(骨骼角)·锚点局部矩阵平移 + 子层 origin。
    */
   private computeWorldTransforms(): void {
     const model = this.model
@@ -571,13 +669,33 @@ export class SceneModelRenderer {
       const parent = l.parent !== null ? byId.get(l.parent) : undefined
       if (parent !== undefined) {
         const p = walk(parent)
-        // attachment 骨骼局部位置（y-up 模型空间）；父 scale 施加
-        const bp = l.attachment !== null && parent.puppet !== null
-          ? parent.puppet.bonePositions?.[l.attachment]
-          : undefined
+        // attachment 锚点偏移（模型空间 y-up）：骨骼最终位姿 + R(角)·局部矩阵平移
+        let ao: [number, number] | null = null
+        if (l.attachment !== null && parent.puppet !== null) {
+          const anchor = parent.puppet.boneAnchors.find((a) => a.name === l.attachment)
+          if (anchor !== undefined && anchor.boneIdx >= 0 && anchor.boneIdx < parent.puppet.bones.length) {
+            if (parent.puppet.animsV2.length > 0) {
+              // 新格式：跟随动画骨骼最终位姿 + 旋转局部偏移
+              const pose = this.puppetPosesRT.get(parent.id)?.[anchor.boneIdx]
+                ?? this.bindWorldCache.get(parent.id)?.[anchor.boneIdx]
+                ?? null
+              if (pose !== null && pose !== undefined) {
+                const c = Math.cos(pose.angle)
+                const s = Math.sin(pose.angle)
+                ao = [
+                  pose.tx + anchor.m[12] * c - anchor.m[13] * s,
+                  pose.ty + anchor.m[12] * s + anchor.m[13] * c,
+                ]
+              }
+            } else {
+              // 老格式/无动画：沿用旧静态语义（矩阵平移直接作锚点偏移）
+              ao = [anchor.m[12], anchor.m[13]]
+            }
+          }
+        }
         t = {
-          ox: p.ox + p.sx * (l.origin[0] + (bp !== undefined ? bp[0] : 0)),
-          oy: p.oy - p.sy * (l.origin[1] + (bp !== undefined ? bp[1] : 0)),
+          ox: p.ox + p.sx * (l.origin[0] + (ao !== null ? ao[0] : 0)),
+          oy: p.oy - p.sy * (l.origin[1] + (ao !== null ? ao[1] : 0)),
           sx: p.sx * (l.scale[0] ?? 1),
           sy: p.sy * (l.scale[1] ?? 1),
         }
@@ -841,6 +959,70 @@ export class SceneModelRenderer {
   private updatePuppetAnims(dt: number): void {
     this.animXform.clear()
     this.boneAnimMats.clear()
+    this.puppetGlobalMats.clear()
+    this.puppetBindWorld.clear()
+    this.puppetPosesRT.clear()
+    // 新格式（MDLA0006）全骨骼蒙皮 + 多层合成
+    for (const [layerId, st] of this.puppetAnimsV2) {
+      st.time += dt
+      const layer = this.byId.get(layerId)
+      const puppet = layer?.puppet ?? null
+      if (puppet === null) continue
+      const nb = puppet.bones.length
+      if (nb === 0) continue
+      // 链乘 bind 世界矩阵（列主序）→ bindRT（additive 合成起点）
+      const bindWorld: Array<Mat4 | null> = new Array(nb)
+      for (let b = 0; b < nb; b++) {
+        const local = puppet.bones[b].bind ?? puppet.bones[b].pose ?? null
+        const parent = puppet.bones[b].parent
+        bindWorld[b] = local === null
+          ? (parent >= 0 && parent < nb ? bindWorld[parent] ?? null : null)
+          : (parent >= 0 && parent < nb && bindWorld[parent] !== null && bindWorld[parent] !== undefined ? mat4Mul(bindWorld[parent]!, local) : local)
+      }
+      const bindRT = bindWorld.map((m) => m !== null ? { angle: Math.atan2(m[1], m[0]), tx: m[12], ty: m[13] } : { angle: 0, tx: 0, ty: 0 })
+      const final = bindRT.map((r) => ({ angle: r.angle, tx: r.tx, ty: r.ty }))
+      // additive 参考姿势缓存：每动画帧0 世界（帧0≠bind 的模型用 bind 会整体飞走）
+      const refCache = new Map<number, Array<PuppetBoneRT | null>>()
+      for (const L of st.layers) {
+        const fc = Math.max(1, puppet.animsV2[L.animIdx]?.frameCount ?? 1)
+        const frame = Math.floor(st.time * 30 * L.rate) % fc
+        const lw = samplePuppetRT(puppet, L.animIdx, frame)
+        let refRT: Array<PuppetBoneRT | null> | null = null
+        if (L.additive) {
+          if (!refCache.has(L.animIdx)) refCache.set(L.animIdx, samplePuppetRT(puppet, L.animIdx, 0))
+          refRT = refCache.get(L.animIdx) ?? null
+        }
+        for (let b = 0; b < nb; b++) {
+          const w = lw[b]
+          if (w === null || w === undefined) continue
+          if (L.additive) {
+            const ref = refRT !== null ? refRT[b] : null
+            if (ref === null || ref === undefined) continue
+            let da = w.angle - ref.angle
+            while (da > Math.PI) da -= 2 * Math.PI
+            while (da < -Math.PI) da += 2 * Math.PI
+            final[b].angle += da * L.blend
+            final[b].tx += (w.tx - ref.tx) * L.blend
+            final[b].ty += (w.ty - ref.ty) * L.blend
+          } else {
+            let da = w.angle - final[b].angle
+            while (da > Math.PI) da -= 2 * Math.PI
+            while (da < -Math.PI) da += 2 * Math.PI
+            final[b].angle += da * L.blend
+            final[b].tx += (w.tx - final[b].tx) * L.blend
+            final[b].ty += (w.ty - final[b].ty) * L.blend
+          }
+        }
+      }
+      // final RT → 列主序动画全局矩阵
+      const globals: Array<Mat4 | null> = new Array(nb)
+      for (let b = 0; b < nb; b++) {
+        globals[b] = mat4TRS(final[b].tx, final[b].ty, 0, final[b].angle, 1, 1, 1)
+      }
+      this.puppetGlobalMats.set(layerId, globals)
+      this.puppetBindWorld.set(layerId, bindWorld)
+      this.puppetPosesRT.set(layerId, final)
+    }
     for (const [layerId, st] of this.puppetAnims) {
       st.time += dt
       const kf = st.anim.keyframes
@@ -917,6 +1099,8 @@ export class SceneModelRenderer {
       }
       this.animXform.set(layerId, { dx, dy, rot })
     }
+    // 动态 attachment 锚点：骨骼位姿变化时重建世界变换（含锚点跟随）
+    if (this.puppetPosesRT.size > 0) this.computeWorldTransforms()
   }
 
   /** 静态图像层：无粒子、无效果、无动画（自身及祖先）、非序列帧动画，可离屏缓存只渲染一次 */
@@ -927,7 +1111,7 @@ export class SceneModelRenderer {
     if (this.layerSprite.has(layer.id)) return false
     let p: number | null = layer.id
     while (p !== null && this.byId.has(p)) {
-      if (this.animXform.has(p) || this.boneAnimMats.has(p)) return false
+      if (this.animXform.has(p) || this.boneAnimMats.has(p) || this.puppetGlobalMats.has(p)) return false
       p = this.byId.get(p)?.parent ?? null
     }
     return true
@@ -1154,22 +1338,37 @@ export class SceneModelRenderer {
       if (layer.dayNight !== undefined) layerAlpha = layer.alpha * this.dayNightFactor(layer.dayNight)
       if (layerAlpha < 1) ctx.globalAlpha = Math.max(0, Math.min(1, layerAlpha))
       let bmp = this.layerTextures.get(layer.id) ?? null
-      // puppet 网格蒙皮渲染（实验开关；模型空间顶点 → 离屏 canvas → 场景变换）
+      // puppet 网格蒙皮渲染（模型空间顶点 → 离屏 canvas → 场景变换）
       if (model.puppetMeshRender && layer.puppet !== null && layer.puppet.mesh !== null && bmp !== null) {
+        const newGlobals = this.puppetGlobalMats.get(layer.id)
+        const newBindWorld = this.puppetBindWorld.get(layer.id)
         // 0013 老格式：逐骨骼动画矩阵（骨骼 0 静态根 + 骨骼 1+ 瞳孔/眼睑）→ 全骨骼蒙皮
         const old13Mats = this.boneAnimMats.get(layer.id)
-        // 动画部件：每帧按当前 root 骨骼旋转重建（蒙皮：绕骨骼 0 bind 位置旋转）
+        // 动画部件（legacy 启发式）：每帧按当前 root 骨骼旋转重建
         const selfXf2 = this.animXform.get(layer.id)
         const b0 = layer.puppet.bones[0]?.bind ?? null
         const animSkin = selfXf2 !== undefined && b0 !== null && b0.length >= 15
           ? { rot: selfXf2.rot, bx: b0[12], by: b0[13] } as const
           : null
-        const key = layer.id + ':' + (old13Mats !== undefined ? 'old13' + Math.floor(this.animTime * 60).toString(36) : (animSkin !== null ? animSkin.rot.toFixed(4) : 'static'))
+        let key: string
+        let binds: Array<number[] | null> | null
+        let mats: Array<Mat4 | null> | null | undefined
+        let anim: typeof animSkin
+        if (newGlobals !== undefined && newBindWorld !== undefined) {
+          // 新格式（MDLA0006）：全骨骼蒙皮，M_skin = M_global × inv(bindWorld)
+          key = 'v2:' + Math.floor(this.animTime * 30).toString(36)
+          binds = newBindWorld
+          mats = newGlobals
+          anim = null
+        } else {
+          key = old13Mats !== undefined ? 'old13:' + Math.floor(this.animTime * 60).toString(36) : (animSkin !== null ? animSkin.rot.toFixed(4) : 'static')
+          binds = layer.puppet.bones.map((b) => b.bind ?? b.pose ?? null)
+          mats = old13Mats
+          anim = animSkin
+        }
         let mc = this.meshCanvases.get(layer.id)
         if (mc === undefined || mc.animKey !== key) {
-          // 各骨骼全局 bind 矩阵（MDLS bind；缺省回退 MDLE pose）→ 求 M_inv_bind
-          const binds = layer.puppet.bones.map((b) => b.bind ?? b.pose ?? null)
-          const built = buildMeshCanvas(layer.puppet.mesh, bmp, animSkin, binds, old13Mats)
+          const built = buildMeshCanvas(layer.puppet.mesh, bmp, anim, binds, mats)
           mc = { canvas: built.canvas, originX: built.originX, originY: built.originY, animKey: key }
           this.meshCanvases.set(layer.id, mc)
         }

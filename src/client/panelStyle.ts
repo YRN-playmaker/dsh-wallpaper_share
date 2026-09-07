@@ -3,46 +3,56 @@
  */
 export const PANEL_CSS = `
 .wesync-panel {
-  padding: 24px;
+  padding: 0;
   display: flex;
   flex-direction: row;
-  gap: 10px;
+  gap: 8px;
   max-width: 724px;
   box-sizing: border-box;
-  position: relative;
 }
 
-/* ── 双页翻滚（设置 ⇄ 壁纸库）────────────────────────────────────── */
+/* ── 双页一体滚动：设置 ⇄ 壁纸库纵向叠放，一个原生滚动搞定 ──────────
+   页界 scroll-snap 吸附：滚过页底半屏才吸附翻页（防误触——页内任意位置停下都会被
+   拉回整页对齐，不会因轻滑而意外切页）；滚动条隐藏，滚轮/触摸板/拖动全部原生可用。 */
 .wesync-pages {
   flex: 1;
   min-width: 0;
+  max-height: min(100vh - 32px, 980px);
+  overflow-y: auto;
+  scroll-snap-type: y mandatory;
+  scrollbar-width: none;
+  display: flex;
+  flex-direction: column;
 }
 
+.wesync-pages::-webkit-scrollbar { display: none; }
+
 .wesync-page {
+  flex: 0 0 auto;
   display: flex;
   flex-direction: column;
   gap: 16px;
   min-width: 0;
+  padding: 24px 0 24px 24px;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
 }
 
-.wesync-page-hidden { display: none; }
-.wesync-page-leave-down { animation: wesync-page-leave-down 0.24s cubic-bezier(0.55, 0, 0.85, 0.36) forwards; }
-.wesync-page-enter-down { animation: wesync-page-enter-down 0.3s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
-.wesync-page-leave-up { animation: wesync-page-leave-up 0.24s cubic-bezier(0.55, 0, 0.85, 0.36) forwards; }
-.wesync-page-enter-up { animation: wesync-page-enter-up 0.3s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
-@keyframes wesync-page-leave-down { to { transform: translateY(-36px); opacity: 0; } }
-@keyframes wesync-page-enter-down { from { transform: translateY(36px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-@keyframes wesync-page-leave-up { to { transform: translateY(36px); opacity: 0; } }
-@keyframes wesync-page-enter-up { from { transform: translateY(-36px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+.wesync-page-hint {
+  font-size: 11px;
+  color: var(--dsw-alias-label-caption);
+  white-space: nowrap;
+}
 
-/* ── 右侧页签栏：当前页 + 蓄力进度（醒目、可点击兜底）────────────── */
+/* ── 右缘页签：scrollspy 跟随当前页，点击原生平滑滚到对应页 ───────── */
 .wesync-pager {
   flex: 0 0 auto;
-  width: 64px;
+  width: 56px;
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 12px;
+  gap: 10px;
+  padding-right: 8px;
 }
 
 .wesync-pager-dot {
@@ -80,18 +90,6 @@ export const PANEL_CSS = `
 .wesync-pager-dot-on .wesync-pager-label {
   color: rgba(250, 204, 21, 0.95);
   font-weight: 600;
-}
-
-.wesync-pager-progress {
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 100%;
-  background: rgba(234, 179, 8, 0.3);
-  transform-origin: left center;
-  transform: scaleX(0);
-  pointer-events: none;
 }
 
 .wesync-card {
