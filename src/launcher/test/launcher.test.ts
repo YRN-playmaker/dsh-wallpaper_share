@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, existsSync, readdirSync, readFileSync } from 'node:fs'
+import { mkdtempSync, existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { deflateRawSync } from 'node:zlib'
@@ -642,6 +642,56 @@ test('installer/writeBytesSafe：分块写入与读取回一致（>chunkSize 走
   assert.equal(back.length, data.length)
   assert.deepEqual([...back.subarray(0, 1024)], [...data.subarray(0, 1024)])
   assert.deepEqual([...back.subarray(-1024)], [...data.subarray(-1024)])
+})
+
+test('routes/root：GET 当前根；POST 换根（相对路径 400，绝对路径生效并回调持久化）', async () => {
+  const rootA = mkdtempSync(join(tmpdir(), 'wesync-root-a-'))
+  const rootB = mkdtempSync(join(tmpdir(), 'wesync-root-b-'))
+  const installer = new LauncherInstaller({ root: rootA })
+  let persisted = ''
+  const routes = new Map(createLauncherRoutes({ installer, onRootChanged: (r) => { persisted = r } }).map((r) => [r.path, r]))
+  const res1 = fakeResShim()
+  await routes.get('/we-sync/launcher/root')!.handler({ url: '/we-sync/launcher/root', method: 'GET' } as unknown as Req, res1)
+  assert.equal(res1.statusCode, 200)
+  assert.match(String(res1.body), /root/)
+
+  // 相对路径 → 400（必须是绝对路径）
+  const res2 = fakeResShim()
+  await routes.get('/we-sync/launcher/root')!.handler(
+    fakeBodyReq('/we-sync/launcher/root', Buffer.from(JSON.stringify({ root: 'relative/path' }))),
+    res2,
+  )
+  assert.equal(res2.statusCode, 400)
+
+  // 合法绝对路径 → 生效 + 持久化回调
+  const res3 = fakeResShim()
+  await routes.get('/we-sync/launcher/root')!.handler(
+    fakeBodyReq('/we-sync/launcher/root', Buffer.from(JSON.stringify({ root: rootB }))),
+    res3,
+  )
+  assert.equal(res3.statusCode, 200)
+  assert.equal(installer.root, rootB)
+  assert.equal(persisted, rootB)
+})
+
+test('installer/moveToRoot：已装应用整目录搬入新根，记录随迁 installed.json', () => {
+  const rootA = mkdtempSync(join(tmpdir(), 'wesync-move-a-'))
+  const rootB = mkdtempSync(join(tmpdir(), 'wesync-move-b-'))
+  const zip = buildZip([{ name: 'm.exe', data: Buffer.from([0x4d, 0x5a, 1, 2, 3]) }])
+  const installer = new LauncherInstaller({ root: rootA })
+  installer.unzipToDir(zip, join(rootA, 'm'), undefined)
+  // 直接落索引文件（upsert 是私有 API；list() 从盘上读）
+  writeFileSync(join(rootA, 'installed.json'), JSON.stringify([{
+    id: 'm', title: 'M', slug: 'm', file: 'm.exe', preview: 'preview.png',
+    sourceUrl: 'x', sourceName: 'x.zip', size: 1, sha512: 'sha512-x', installedAt: 't',
+  }]), 'utf8')
+  const r = installer.moveToRoot(rootB)
+  assert.equal(r.moved, 1)
+  assert.equal(r.failed.length, 0)
+  assert.ok(existsSync(join(rootB, 'm', 'm.exe')))
+  assert.ok(!existsSync(join(rootA, 'm')))
+  const recs = JSON.parse(readFileSync(join(rootB, 'installed.json'), 'utf8')) as Array<{ id: string }>
+  assert.ok(recs.some((x) => x.id === 'm'))
 })
 
 test('routes/install：「视频垫底+7z 追加」复合文件 → 走 7z 分支（段偏移），不再单文件直写', async () => {

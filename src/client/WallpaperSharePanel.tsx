@@ -7,7 +7,7 @@ import { useEffect, useState } from 'react'
 import { store, PLUGIN_VERSION, type WeSyncInfo } from './index'
 import { startGaze, stopGaze, calibrate, onGazeStatus, hasCalibrationData, type GazeStatus } from './GazeLens.ts'
 import { fetchCatalog, fetchInstalled, buildCards, searchCards, collectTags, install, uninstall, type MarketEntry, type MarketCard } from './market-api.ts'
-import { fetchInstalled as fetchLauncherInstalled, installApp, uninstallApp, launchApp, setEntry, isValidHttpUrl, humanSize, get139Auth, set139Auth, type InstalledApp } from './launcher-api.ts'
+import { fetchInstalled as fetchLauncherInstalled, installApp, uninstallApp, launchApp, setEntry, isValidHttpUrl, humanSize, get139Auth, set139Auth, getLauncherRoot, setLauncherRoot, type InstalledApp } from './launcher-api.ts'
 
 /* =========================================================================
  * 1. 国际化字典 (i18n Dictionary)
@@ -144,6 +144,14 @@ const DICT = {
     launcherAuthOpenBtn: '一键打开 139 并登录',
     launcherAuthWaiting: '等待登录态同步…（登录后自动检测，最多 10 分钟）',
     launcherAuthSynced: '✔ 已同步 139 登录态，可以安装了',
+    launcherRootLabel: '安装位置：',
+    launcherRootChange: '更改',
+    launcherRootPlaceholder: '例如 D:\\Games\\WeApps（绝对路径）',
+    launcherRootSaveLater: '仅改位置（新装生效）',
+    launcherRootSaveMove: '迁移已装应用',
+    launcherRootSaved: '✔ 安装位置已更新，之后的安装存到新位置',
+    launcherRootMoved: '✔ 已迁移应用',
+    launcherRootFail: '更改安装位置失败',
     launcherShareCode: '该 139 分享需要提取码：请在提取码框填入后重试',
     launcherShareCodeWrong: '139 提取码错误，请核对后重试',
     launcherShareFail: '139 分享解析失败（详情见括号内服务端信息）',
@@ -303,6 +311,14 @@ const DICT = {
     launcherAuthOpenBtn: 'Open 139 & sign in',
     launcherAuthWaiting: 'Waiting for login sync… (auto-detected after sign-in, up to 10 min)',
     launcherAuthSynced: '✔ 139 login synced — ready to install',
+    launcherRootLabel: 'Install location: ',
+    launcherRootChange: 'Change',
+    launcherRootPlaceholder: 'e.g. D:\\Games\\WeApps (absolute path)',
+    launcherRootSaveLater: 'Future installs only',
+    launcherRootSaveMove: 'Move installed apps',
+    launcherRootSaved: '✔ Install location updated — future installs go there',
+    launcherRootMoved: '✔ Apps moved',
+    launcherRootFail: 'Failed to update install location',
     launcherShareCode: 'This 139 share needs a passcode — enter it in the passcode box and retry',
     launcherShareCodeWrong: 'Wrong 139 passcode — check it and retry',
     launcherShareFail: '139 share resolve failed (see server detail in brackets)',
@@ -414,6 +430,10 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
   const [lAuthPresent, setLAuthPresent] = useState('') // 已配置的掩码账号（'' = 未配置）
   const [lAuthBusy, setLAuthBusy] = useState(false)
   const [lAuthWaiting, setLAuthWaiting] = useState(false) // A1 一键登录：已打开 139 页，轮询等待助手同步
+  const [lRoot, setLRoot] = useState('') // 安装位置（存储根，绝对路径）
+  const [lRootOpen, setLRootOpen] = useState(false) // 安装位置编辑行展开
+  const [lRootDraft, setLRootDraft] = useState('') // 安装位置输入草稿
+  const [lRootBusy, setLRootBusy] = useState(false)
   const [lBusy, setLBusy] = useState(false)
   const [lFlash, setLFlash] = useState('')
   const [lSearch, setLSearch] = useState('')
@@ -616,11 +636,33 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
       setLApps(await fetchLauncherInstalled((url, init) => fetch(url, init)))
       const a = await get139Auth((url, init) => fetch(url, init))
       setLAuthPresent(a.present ? a.account : '')
+      setLRoot(await getLauncherRoot((url, init) => fetch(url, init)))
     } catch { /* launcher 路由未就绪不阻断 */ }
   }
   const flashL = (msg: string): void => { setLFlash(msg); window.setTimeout(() => setLFlash(''), 3000) }
   /** 错误条常驻：不自动消失（用户反馈 3 秒来不及抄报错），直到下一次成功操作或新消息覆盖 */
   const flashLErr = (msg: string): void => { setLFlash('⚠ ' + msg) }
+
+  // ── 安装位置：查看 / 更换（可选迁移已装应用；跨盘自动复制+删源）──────────
+  const onRootSave = async (move: boolean): Promise<void> => {
+    const next = lRootDraft.trim()
+    if (next === '' || next === lRoot) { setLRootOpen(false); return }
+    setLRootBusy(true)
+    try {
+      const r = await setLauncherRoot(next, move, (u, i) => fetch(u, i))
+      if (!r.ok) { flashLErr(t.launcherRootFail + '：' + (r.error ?? '')); return }
+      setLRoot(r.root ?? next)
+      setLRootOpen(false)
+      flashL(move
+        ? t.launcherRootMoved + `（${String(r.moved ?? 0)}）` + (r.failed !== undefined && r.failed.length > 0 ? ' ⚠ ' + r.failed.join('、') : '')
+        : t.launcherRootSaved)
+      void loadLauncher()
+    } catch (e) {
+      flashLErr(t.launcherRootFail + '：' + String((e as Error).message ?? e))
+    } finally {
+      setLRootBusy(false)
+    }
+  }
 
   // ── A1 一键登录：检测到 139 链接且未配置登录态 → 出「一键打开 139」按钮，
   //    新标签打开 yun.139.com（用户手势内 window.open，浏览器允许），期间 2s 轮询
@@ -1245,6 +1287,38 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
                             <span> · {t.launcherHelperHint}</span>
                           </div>
                           {lAuthOpen ? <div style={{ fontSize: 12, opacity: 0.6, marginTop: 4 }}>{t.launcherAuthHint}</div> : null}
+                          {/* 安装位置（存储根）：默认 C 盘用户目录，可改到任意盘；可选迁移已装应用 */}
+                          <div className="wesync-dir-row" style={{ alignItems: 'center' }}>
+                            <span style={{ flex: '0 0 auto', fontSize: 12, opacity: 0.75 }}>{t.launcherRootLabel}</span>
+                            <span
+                              style={{ fontSize: 12, opacity: 0.85, fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: '1 1 auto' }}
+                              title={lRoot}
+                            >
+                              {lRoot !== '' ? lRoot : '…'}
+                            </span>
+                            <button className="wesync-btn" style={{ flex: '0 0 auto' }} onClick={() => { setLRootDraft(lRoot); setLRootOpen(!lRootOpen) }}>
+                              {t.launcherRootChange}
+                            </button>
+                          </div>
+                          {lRootOpen
+                            ? (
+                                <div className="wesync-dir-row" style={{ alignItems: 'center' }}>
+                                  <input
+                                    className="wesync-dir-input"
+                                    placeholder={t.launcherRootPlaceholder}
+                                    value={lRootDraft}
+                                    onChange={(e) => setLRootDraft(e.target.value)}
+                                    onKeyDown={(e) => { if (e.key === 'Enter' && !lRootBusy) void onRootSave(false) }}
+                                  />
+                                  <button className="wesync-btn" disabled={lRootBusy} onClick={() => { void onRootSave(false) }}>
+                                    {t.launcherRootSaveLater}
+                                  </button>
+                                  <button className="wesync-btn" disabled={lRootBusy || lApps.length === 0} onClick={() => { void onRootSave(true) }}>
+                                    {t.launcherRootSaveMove}
+                                  </button>
+                                </div>
+                              )
+                            : null}
                           {lFlash !== '' ? <div className="wesync-market-flash">{lFlash}</div> : null}
                           {lApps.length === 0
                             ? <div className="wesync-app-empty">{t.launcherEmpty}</div>

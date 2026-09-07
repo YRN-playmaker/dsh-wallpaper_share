@@ -35,6 +35,8 @@ export interface LauncherRoutesDeps {
   yun139?: Yun139Resolver
   /** 139 登录态存储（缺省内存态，不落盘） */
   cred139?: { read(): string; write(v: string): void }
+  /** 安装根变更回调（持久化覆盖值 + 重注册壁纸读取位置）；缺省仅内存生效 */
+  onRootChanged?: (newRoot: string) => void
 }
 
 const MAX_BODY_BYTES = 4 * 1024 * 1024 // 安装请求体（含 base64 预览卡）上限
@@ -90,10 +92,37 @@ export function createLauncherRoutes(deps: LauncherRoutesDeps): Route[] {
   const installer = deps.installer
   const yun139: Yun139Resolver = deps.yun139 ?? new Yun139Client()
   const cred139 = deps.cred139 ?? { read: () => '', write: () => {} }
+  const onRootChanged = deps.onRootChanged ?? (() => {})
 
   const installed: Route = { kind: 'exact', path: base + '/installed', handler: (_req, res) => {
     json(res, 200, { installed: installer.list() })
   } }
+
+  // —— 安装位置（存储根）：GET 当前值；POST 更换（可选迁移已装应用，跨盘自动复制+删源）
+  const rootRoute: Route = { kind: 'exact', path: base + '/root', handler: async (req, res) => {
+    if (req.method === 'GET') {
+      return json(res, 200, { root: installer.root })
+    }
+    let body: unknown
+    try {
+      const raw = await readBody(req)
+      body = JSON.parse(new TextDecoder().decode(raw)) as unknown
+    } catch (e) { return json(res, 400, { error: `请求体非法: ${(e as Error).message ?? e}` }) }
+    const opts = body as { root?: unknown; move?: unknown }
+    if (typeof opts.root !== 'string' || opts.root.trim() === '') return json(res, 400, { error: '缺 root' })
+    try {
+      const move = opts.move === true
+      const r = move
+        ? installer.moveToRoot(opts.root)
+        : (installer.setRoot(opts.root), { moved: 0, failed: [] as string[] })
+      onRootChanged(installer.root)
+      return json(res, 200, { ok: true, root: installer.root, moved: r.moved, failed: r.failed })
+    } catch (e) {
+      const msg = e instanceof LauncherError ? e.message : `${(e as Error).name}: ${(e as Error).message}`
+      return json(res, e instanceof LauncherError ? 400 : 500, { error: msg })
+    }
+  } }
+
 
   const install: Route = { kind: 'exact', path: base + '/install', handler: async (req, res) => {
     let body: unknown
@@ -304,7 +333,7 @@ export function createLauncherRoutes(deps: LauncherRoutesDeps): Route[] {
     res.end(HELPER_139_SCRIPT)
   } }
 
-  return [installed, install, entry, preview, uninstall, previewFile, auth139, helper139]
+  return [installed, install, entry, preview, uninstall, previewFile, auth139, helper139, rootRoute]
 }
 
 /** 供 index.ts 类型引用（避免直接 import installer 内部类型绕路）。 */

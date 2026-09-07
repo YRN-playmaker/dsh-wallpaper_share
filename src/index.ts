@@ -1149,13 +1149,33 @@ export function apply(ctx: CordisCtx): void {
   // —— 应用启动器：直链下载 → 类 WE app 封装（project.json + preview）→ 入库。
   //    安装根默认 ~/.dsh/storages/we-sync-apps（不放 WE 目录，避免 Steam 校验/更新触碰）；
   //    根目录自动注册进自定义壁纸读取位置，瓷砖经现有 scanApps 出现在「we 应用」分类。
-  const launcherRoot = normalize(CONFIG.launcherDir !== '' ? CONFIG.launcherDir : (homedir() + '/.dsh/storages/we-sync-apps'))
+  //    面板可改安装位置：覆盖值持久化 ~/.dsh/storages/we-sync-apps-root.json（优先于 CONFIG.launcherDir）。
+  const launcherRootFile = normalize(homedir() + '/.dsh/storages/we-sync-apps-root.json')
+  let launcherRoot = normalize(CONFIG.launcherDir !== '' ? CONFIG.launcherDir : (homedir() + '/.dsh/storages/we-sync-apps'))
+  try {
+    const saved = JSON.parse(readText(launcherRootFile)) as { root?: unknown }
+    if (typeof saved.root === 'string' && saved.root.trim() !== '') launcherRoot = normalize(saved.root.trim())
+  } catch { /* 无覆盖文件 → 用默认/CONFIG */ }
   try { mkdirSync(launcherRoot, { recursive: true }) } catch { /* 已存在 */ }
   const launcher = new LauncherInstaller({ root: launcherRoot, sevenZipPath: CONFIG.launcherSevenZipPath })
   // 139 登录态：存 ~/.dsh/storages/we-sync-139-auth.json；每请求实时读（面板改完即生效，无需重启）
   const cred139 = fileCredStore(normalize(homedir() + '/.dsh/storages/we-sync-139-auth.json'))
   const yun139 = new Yun139Client({ getAuth: () => cred139.read() })
-  for (const route of createLauncherRoutes({ installer: launcher, yun139, cred139 })) {
+  for (const route of createLauncherRoutes({
+    installer: launcher,
+    yun139,
+    cred139,
+    // 换安装位置后：持久化覆盖值 + 重注册壁纸读取位置（新根立刻被 scanApps 扫到）
+    onRootChanged: (next) => {
+      try { writeFileSync(launcherRootFile, JSON.stringify({ root: next }, null, 2) + '\n', 'utf8') } catch { /* 忽略持久化失败 */ }
+      const i = appDirs.indexOf(launcherRoot)
+      if (i >= 0) appDirs[i] = next
+      else if (!appDirs.includes(next)) appDirs.push(next)
+      launcherRoot = next
+      saveAppDirs()
+      appsCache = null
+    },
+  })) {
     disposers.push(webServer.register(route))
   }
   if (!appDirs.includes(launcherRoot)) {

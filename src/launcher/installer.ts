@@ -10,7 +10,7 @@
  * 安全边界：仅接受 http(s) 直链；Content-Length 与实收字节数双查，超限即弃；
  * sha512 记账（可选传入期望值，不符即拒装）；解包条目数/总字节/路径穿越全防。
  */
-import { mkdirSync, writeFileSync, readFileSync, existsSync, statSync, readdirSync, rmSync, openSync, closeSync, writeSync } from 'node:fs'
+import { mkdirSync, writeFileSync, readFileSync, existsSync, statSync, readdirSync, rmSync, openSync, closeSync, writeSync, renameSync, cpSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { join, dirname, extname, basename, normalize as pathNormalize, sep } from 'node:path'
 import { homedir } from 'node:os'
@@ -155,6 +155,16 @@ function assertInside(destDir: string, target: string): void {
   }
 }
 
+/** 安装根规范化：去引号/空白，必须绝对路径（盘符或 UNC 或 / 开头），尾部去分隔符。 */
+function normalizeRoot(next: string): string {
+  const trimmed = next.trim().replace(/^["']|["']$/g, '')
+  if (trimmed === '') throw new LauncherError('安装位置不能为空')
+  if (!/^[a-zA-Z]:[\\/]/.test(trimmed) && !trimmed.startsWith('//') && !trimmed.startsWith('/')) {
+    throw new LauncherError(`安装位置必须是绝对路径（如 D:\\Games\\WeApps）: ${trimmed}`)
+  }
+  return pathNormalize(trimmed).replace(/[\\/]+$/, '')
+}
+
 interface EntryPair { orig: string; safe: string }
 
 /** 去掉 zip 常见的单一顶层包装目录（"My Game v1.2/game.exe" → 直接展开到根）。
@@ -170,9 +180,10 @@ function stripTopWrapper(pairs: EntryPair[]): EntryPair[] {
 }
 
 export class LauncherInstaller {
-  readonly root: string
-  /** 可替换的下载实现（测试注入假响应） */
-  fetchFn: (url: string) => Promise<FetchLike>
+  /** 安装根（面板可运行时更换；每个 app 一个子目录） */
+  root: string
+  /** 可替换的下载实现（测试注入假响应）；带 init 的真实 fetch 兼容 */
+  fetchFn: (url: string, init?: FetchInitLike) => Promise<FetchLike>
   /** 7z/7za.exe 显式路径（CONFIG 注入）；空 = 自动探测 */
   sevenZipPath: string
   private now: () => string
@@ -184,6 +195,51 @@ export class LauncherInstaller {
     this.fetchFn = deps.fetchFn ?? (async (url, init) => await fetch(url, init))
     this.sevenZipPath = deps.sevenZipPath ?? ''
     this.now = deps.now ?? (() => new Date().toISOString())
+  }
+
+  /** 运行时更换安装根（面板「安装位置」）。目录自动创建；索引缓存失效（旧根的记录全部失效）。
+   *  记录不迁移——旧根原样保留，想迁移由上层调 moveToRoot。 */
+  setRoot(next: string): void {
+    const root = normalizeRoot(next)
+    if (root === this.root) return
+    mkdirSync(root, { recursive: true })
+    this.root = root
+    this.indexCache = null
+  }
+
+  /** 移动已装应用到新根（按记录的 slug 整目录搬；目标同名先删——安装语义本就是覆盖）。
+   *  跨盘 rename 会 EXDEV → 回落 cpSync 复制后删源。迁移成功后把记录的 sha512 清掉吗？不——
+   *  sha512 是安装时记账值，与位置无关，保留。记录本身随新根 installed.json 重建。
+   *  返回成功迁移的记录数；失败的应用跳过并在结果里报告。 */
+  moveToRoot(next: string): { moved: number; failed: string[] } {
+    const oldRoot = this.root
+    const list = this.list()
+    this.setRoot(next)
+    const failed: string[] = []
+    const kept: InstalledAppRecord[] = []
+    let moved = 0
+    for (const rec of list) {
+      const from = join(oldRoot, rec.slug)
+      const to = join(this.root, rec.slug)
+      if (!existsSync(from)) { continue }
+      try {
+        if (existsSync(to)) rmSync(to, { recursive: true, force: true })
+        mkdirSync(dirname(to), { recursive: true })
+        try {
+          renameSync(from, to)
+        } catch {
+          // 跨盘（EXDEV）或文件被占用：整树复制后删源
+          cpSync(from, to, { recursive: true })
+          rmSync(from, { recursive: true, force: true })
+        }
+        moved++
+        kept.push(rec)
+      } catch { failed.push(rec.title || rec.slug) }
+    }
+    // 记录随迁：新根 installed.json 只保留迁移成功的（失败/已损坏的留在旧根，可重装）
+    try { writeFileSync(this.indexFile(), JSON.stringify(kept, null, 2) + '\n', 'utf8') } catch { /* ignore */ }
+    this.indexCache = null
+    return { moved, failed }
   }
 
   // ── 索引 ───────────────────────────────────────────────────────────

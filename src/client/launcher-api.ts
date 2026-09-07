@@ -110,6 +110,28 @@ export async function set139Auth(authorization: string, fetchFn: Fetch = default
   return { ok: true }
 }
 
+/** 安装位置：查询当前根目录。 */
+export async function getLauncherRoot(fetchFn: Fetch = defaultFetch): Promise<string> {
+  const res = await fetchFn('/we-sync/launcher/root', { cache: 'no-store' })
+  const body = await res.json().catch(() => ({})) as { root?: string }
+  return typeof body.root === 'string' ? body.root : ''
+}
+
+/** 安装位置：更换根目录。move=true 时把已装应用整目录搬到新位置（跨盘自动复制+删源）。
+ *  moved=成功迁移数；failed=迁移失败的标题列表（留原处，可重装）。 */
+export async function setLauncherRoot(
+  root: string, move: boolean, fetchFn: Fetch = defaultFetch,
+): Promise<{ ok: boolean; error?: string; root?: string; moved?: number; failed?: string[] }> {
+  const res = await fetchFn('/we-sync/launcher/root', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ root, move }),
+  })
+  const body = await res.json().catch(() => ({})) as { error?: string; root?: string; moved?: number; failed?: string[] }
+  if (!res.ok) return { ok: false, error: body.error ?? `HTTP ${res.status}` }
+  return { ok: true, root: body.root, moved: body.moved, failed: body.failed }
+}
+
 // ── 安装前校验（纯函数）─────────────────────────────────────────────
 
 /** URL 粗校验：仅 http(s)。 */
