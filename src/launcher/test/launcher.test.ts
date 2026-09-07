@@ -7,6 +7,7 @@ import { deflateRawSync } from 'node:zlib'
 import { LauncherInstaller, LauncherError, buildArchiveArgs, isPasswordErrorOutput, writeBytesSafe } from '../installer.ts'
 import { createLauncherRoutes, dataUrlToBytes, type Req, type Res, type Route } from '../routes.ts'
 import { Yun139Error } from '../yun139.ts'
+import { integrityOf, verifyIntegrity } from '../../market/integrity.ts'
 import { fallbackCardPng } from '../png.ts'
 
 // —— 测试用最小 zip 写入器（stored=0），与 market/test/unzip.test.ts 独立同构 ——
@@ -620,6 +621,15 @@ test('installer/find7zStart：「视频垫底+7z 追加」复合文件定位 7z 
   // 无签名小文件 / 大文件 → -1
   assert.equal(inst.find7zStart(Buffer.alloc(64, 0x00)), -1)
   assert.equal(inst.find7zStart(Buffer.alloc(2048, 0x00)), -1)
+})
+
+test('integrityOf：分块喂哈希（大文件 >2GiB 场景，chunkSize 注入验证与整体一致）', () => {
+  const data = new Uint8Array(5 * 1024 * 1024)
+  for (let i = 0; i < data.length; i++) data[i] = (i * 31 + 7) & 0xff
+  const whole = integrityOf(data)
+  const chunked = integrityOf(data, 1024 * 1024)
+  assert.equal(chunked, whole)
+  assert.match(chunked, /^sha512-[A-Za-z0-9+/=]+$/)
 })
 
 test('installer/writeBytesSafe：分块写入与读取回一致（>chunkSize 走多块路径）', () => {
