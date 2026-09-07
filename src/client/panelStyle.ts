@@ -454,6 +454,8 @@ body[data-ds-dark-theme] .wesync-gaze-status.is-error { color: #fdba74; }
 .wesync-badge-video { background: rgba(168, 85, 247, 0.82); border-color: transparent; }
 .wesync-badge-image { background: rgba(34, 197, 94, 0.82); border-color: transparent; }
 .wesync-badge-application { background: rgba(239, 68, 68, 0.82); border-color: transparent; }
+/* 启动器安装的应用：黄色「应用」徽章，区别于 WE 工坊应用的红色「we 应用」 */
+.wesync-badge-launcher { background: rgba(234, 179, 8, 0.85); border-color: transparent; }
 .wesync-badge-web { background: rgba(245, 158, 11, 0.82); border-color: transparent; }
 .wesync-badge-other { background: rgba(107, 114, 128, 0.82); border-color: transparent; }
 

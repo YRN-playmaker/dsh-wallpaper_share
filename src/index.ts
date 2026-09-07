@@ -1021,7 +1021,12 @@ export function apply(ctx: CordisCtx): void {
       const counts: Record<string, number> = { all: apps.length, scene: 0, video: 0, image: 0, application: 0, web: 0, other: 0 }
       for (const a of apps) counts[a.type] = (counts[a.type] ?? 0) + 1
       sendJson(res, {
-        apps: apps.map((a) => ({ id: a.id, title: a.title, file: a.file, type: a.type, hasPreview: a.preview !== null })),
+        apps: apps.map((a) => ({
+          id: a.id, title: a.title, file: a.file, type: a.type,
+          // 来源标记：安装根下的应用（启动器装的）在前端用独立黄色「应用」徽章，区别于 WE 工坊应用
+          source: (normalize(a.dir) + '/').startsWith(normalize(launcherRoot) + '/') ? 'launcher' : '',
+          hasPreview: a.preview !== null,
+        })),
         counts,
       })
     },

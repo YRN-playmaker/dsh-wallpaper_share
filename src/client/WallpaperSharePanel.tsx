@@ -96,6 +96,7 @@ const DICT = {
     mountFailed: '挂载失败',
     typeDwp: 'dwp壁纸',
     typeWeApp: 'we 应用',
+    typeLauncherApp: '应用',
     mounted: '已挂载',
     searchPlaceholder: '搜索标题…',
     showMore: '显示更多',
@@ -273,6 +274,7 @@ const DICT = {
     mountFailed: 'Mount failed',
     typeDwp: 'DWP',
     typeWeApp: 'WE Apps',
+    typeLauncherApp: 'App',
     mounted: 'Mounted',
     searchPlaceholder: 'Search titles…',
     showMore: 'Show more',
@@ -417,7 +419,7 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
   useEffect(() => onGazeStatus((s, err) => { setGazeStatus(s); setGazeError(err) }), [])
   const [appsOpen, setAppsOpen] = useState(false)
   const [libTab, setLibTab] = useState<'local' | 'market' | 'launcher'>('local')
-  const [apps, setApps] = useState<Array<{ id: string; title: string; file: string; type: string; hasPreview: boolean }>>([])
+  const [apps, setApps] = useState<Array<{ id: string; title: string; file: string; type: string; hasPreview: boolean; source?: string }>>([])
   const [appsCounts, setAppsCounts] = useState<Record<string, number>>({})
   const [typeFilter, setTypeFilter] = useState('dwp')
   const [search, setSearch] = useState('')
@@ -1180,7 +1182,7 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
                                                   {app.hasPreview
                                                     ? <img className="wesync-app-thumb" src={'/we-sync/apps/preview?id=' + encodeURIComponent(app.id)} alt={app.title} loading="lazy" />
                                                     : <div className="wesync-app-thumb" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{t.noPreview}</div>}
-                                                  <span className="wesync-app-badge wesync-badge-application">{t.typeWeApp}</span>
+                                                  <span className="wesync-app-badge wesync-badge-launcher">{app.source === 'launcher' ? t.typeLauncherApp : t.typeWeApp}</span>
                                                 </div>
                                                 <div className="wesync-app-title" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                                                   <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{app.title}</span>
@@ -1377,7 +1379,7 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
                                                     <div className="wesync-app-thumbwrap">
                                                       <img className="wesync-app-thumb" src={'/we-sync/launcher/preview-file?id=' + encodeURIComponent(rec.id)} alt={rec.title} loading="lazy"
                                                         onError={(e) => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden' }} />
-                                                      <span className="wesync-app-badge wesync-badge-application">{t.typeWeApp}</span>
+                                                      <span className="wesync-app-badge wesync-badge-launcher">{t.typeLauncherApp}</span>
                                                     </div>
                                                     <div className="wesync-app-title">{rec.title}</div>
                                                     <div className="wesync-market-meta">{humanSize(rec.size)} · {rec.file}</div>
