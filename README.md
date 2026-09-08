@@ -2,7 +2,7 @@
 已适配 harness 0.1.2-rc
 <!-- Hero -->
 <div align="center">
-  <b style="font-size: 1.15em;">把 Wallpaper Engine 的壁纸实时同步为 DSH Web 界面背景，并附带主题壁纸</b><br /><br />
+  <b style="font-size: 1.15em;">把 Wallpaper Engine 的壁纸实时同步为 DSH Web 界面背景，并支持应用挂载和自定义壁纸导入</b><br /><br />
   <a href="https://www.npmjs.com/package/dsh-wallpaper_share"><img alt="npm version" src="https://img.shields.io/npm/v/dsh-wallpaper_share" /></a>
   <a href="https://www.npmjs.com/package/dsh-wallpaper_share"><img alt="npm downloads" src="https://img.shields.io/npm/dm/dsh-wallpaper_share" /></a>
   <a href="https://github.com/YRN-playmaker/dsh-wallpaper_share/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/YRN-playmaker/dsh-wallpaper_share" /></a>
@@ -12,13 +12,13 @@
 </div>
 
 <div align="center">
-  🌏 <a href="#中文"><b>中文</b></a> · <a href="#english">English</a> · 纯中文长文见 <a href="README.zh-CN.md"><code>README.zh-CN.md</code></a>
+  🌏 <a href="#中文"><b>中文</b></a> · <a href="#english">English</a> · 
 </div>
 
 
-把 Wallpaper Engine 当前显示的壁纸实时同步为 DeepSeek Harness Web 界面的背景，并提供 `wallpaper_share` 标签页用于调整渲染模式、视觉效果、专注模式与壁纸库。支持场景壁纸的完整动效与应用壁纸的导入。
+把 Wallpaper Engine 的壁纸同步为 DeepSeek Harness Web 界面的背景，并支持调整渲染模式、视觉效果、专注模式与壁纸库外挂壁纸与直链应用下载。
 
-> **纯显示同步**：只读取 WE 状态，不控制 / 不修改桌面壁纸（换壁纸请在 WE 内操作）。
+> **纯显示同步**：只读取 WE 状态，不控制 / 不修改桌面壁纸。
 > **无敏感信息**：代码不含 Steam 用户名 / SteamID / 令牌；WE 安装目录运行时自动检测（注册表 `HKCU\Software\WallpaperEngine\installPath` → 常见 Steam 路径），检测不到时才需要手动配置。眼动追踪全程本地推理，摄像头画面不出设备。
 
 ---
@@ -61,25 +61,29 @@ dsh plugin --profile web add dsh-wallpaper_share   # 或见下方「安装」选
 
 ## ✨ 功能一览
 
-- **实时同步**：在 WE 切换壁纸后，页面背景约 2 秒内自动跟随
-- **多显示器**：自动跟随"最新变化"的一台；复数显示器时可手动锁定某台作为背景来源
-- **三档渲染模式**：预览 / 捕获 / 完整，详见 [渲染模式与兼容矩阵](#-渲染模式与兼容矩阵)
-- **原生 scene 捕获渲染器**：随包内置 Rust 编写的 `we-capture.exe`，用 Windows Graphics Capture 抓取 WE 正在渲染的桌面，镜像 WE 自身输出 → GLSL / SceneScript / 关键帧 / 粒子等**所有 WE 效果天然全覆盖**
-- **专注模式**：叠加一个圆心清晰、圆外模糊的阅读窗；默认跟随鼠标，开专注即生效
-- **眼动追踪（实验）**：可选，用摄像头推断注视点让透镜跟随视线；9 点校准、文字吸附、抗抖动
-- **应用启动器**：壁纸库新增「应用启动器」分类——粘贴软件包 `http(s)` 直链（`.zip`/`.7z`/`.exe`，**加密压缩包填解压密码**）或**中国移动云盘分享链接**（`yun.139.com/shareweb/#/w/i/…`，提取码填在密码框），DSH 自动 下载 → 解包 → 探测可执行入口 → 封装成**类 WE app 格式**（自动生成 `project.json` + 预览图卡片）并入库；卡片一键「▶ 启动」（每次弹确认），也支持卸载 / 更新预览 / 多入口切换。装到 `~/.dsh/storages/we-sync-apps`（自动注册进壁纸读取位置），不依赖 WE 运行、不受新版 WE 取消应用类壁纸影响。加密 zip（ZipCrypto / WinZip AES）纯 JS 解密、密码不落盘；`.7z` 需系统装有 7-Zip 或将 `7za.exe` 放入插件 `bin/`（`CONFIG.launcherSevenZipPath` 可指定路径）。139 分享的元数据解析匿名可用（提取码即密码框值），**原始文件下载需登录态**：登录 yun.139.com 后 F12 复制任意请求的 `Authorization` 头，粘贴到面板「139 登录态」行（存 `~/.dsh/storages/we-sync-139-auth.json`，可随时清除；缺登录态时面板自动展开该行）
-- **壁纸库 · 本地 / 市场**：按**本地**与**市场**两大分类浏览。本地一栏管理已装内容——`dwp壁纸`（点击即挂载为全局背景，已挂载再点取消）与 `we 应用`（点击打开所在文件夹，含「▶ 启动」），带标题搜索、缩略图与计数；市场一栏浏览 `dwp-registry` 目录，支持名称 / 作者搜索、标签筛选与**安装 / 更新 / 卸载**
+- **实时同步**：在 WE 切换壁纸后，harness页面背景会自动跟随为最新变化的壁纸，复数显示器时可手动锁定某台作为背景来源。支持三档渲染模式以调节能效表现：详见 [渲染模式与兼容矩阵](#-渲染模式与兼容矩阵)
+<img width="1917" height="1018" alt="image" src="https://github.com/user-attachments/assets/6f147644-6283-456b-a9eb-c9c6d9925079" />
+
+- **侧边栏沉浸模式**：一键隐去会话头部、正文与输入栏，让壁纸独占视野；网页 / 应用类壁纸在沉浸下可直接鼠标交互（详见[沉浸模式](#-沉浸模式与任务指示)）
+
+- **专注模式**：叠加一个圆心清晰、圆外模糊的阅读窗,以专注于任务，提升文字可读性；默认跟随鼠标，也可用摄像头推断注视点让透镜跟随视线；9 点校准、文字吸附、抗抖动
+<img width="426" height="240" alt="Video Project 29" src="https://github.com/user-attachments/assets/57daf64c-ff2b-40c7-aeef-73cac46c4c2b" />
+
+- **壁纸库**：按**本地**/**市场**/**应用启动器**分类。本地一栏管理已装内容——`dwp壁纸`（点击即挂载为全局背景，已挂载再点取消）与 `we 应用`（点击打开所在文件夹，含「▶ 启动」），带标题搜索、缩略图与计数；市场一栏浏览 `dwp-registry` 目录，支持名称 / 作者搜索、标签筛选与安装 / 更新 / 卸载；**应用启动器**：支持用户粘贴 `http(s)` 直链（`.zip`/`.7z`/`.exe`，**加密压缩包填解压密码**）或部分**云盘分享链接**（如`yun.139.com/shareweb/#/w/i/…`，提取码填在密码框），唤醒DSH 自动下载，解包并封装成**类 app 格式**（自动生成 `project.json` + 预览图卡片）入库；卡片一键「▶ 启动」，也支持卸载 / 更新预览 / 多入口切换。不依赖 WE 运行、不受新版 WE 取消应用类壁纸影响。、
+<img width="820" height="583" alt="image" src="https://github.com/user-attachments/assets/f1b78eb3-027f-43fd-98b8-3e0c34f76a60" />
+
+-**设置页面以及其他功能↓**
+<img width="841" height="667" alt="image" src="https://github.com/user-attachments/assets/7d652c07-8344-4de3-abbd-75620375c0b6" />
 - **DWP 壁纸与全局背景渲染**：`dwp/1.0` 协议包（纯文本 / solid / 粒子 / mesh 图层 + 12 种混合模式 + 3 种动画 + 11 种效果，确定性渲染）；挂载后经 WebGL2 真实渲染为 DSH 全局背景（低配 Canvas2D 降级），同时暂停 WE 同步避免冲突，刷新后自动恢复
-- **沉浸模式**：一键隐去会话头部、正文与输入栏，让壁纸独占视野；网页 / 应用类壁纸在沉浸下可直接鼠标交互（详见[沉浸模式](#-沉浸模式与任务指示)）
 - **视觉效果**：面板透明度 0–100% / 背景模糊 0–30px / 阴影深度 0–100%，即时生效
 - **后台任务可视化**：收纳侧边栏时，用圆形指示感知任务进度（绿 = 空闲 / 蓝 = 进行中 / 黄 = 等待授权）
 - **同步开关**：一键启停；挂载 DWP 壁纸期间显示「同步暂停（DWP）」第三态
+-**面板导览**`wallpaper_share` 标签页采用**双页虚拟滚动**：「设置 ⇄ 壁纸库」两页纵向叠放、中间留断层，一套滚轮全接管——页内跟手滚动 + 惯性阻尼，滚到页界继续滚即**蓄力翻页**（250ms 无输入弹回防误触），右缘页签显示当前页（黄色高亮）与蓄力进度，点击可直达；所有操作即时生效、无需保存：
 - **设置持久化**：同步开关、渲染模式、显示器锁、三档渲染模式、专注 / 眼动等偏好写入 `localStorage`（键 `we-sync.settings`），刷新或重启 DSH 后自动恢复；沉浸模式等临时视图态与任务状态一律不落盘
 - **自诊断路由** `/we-sync/diag`（仅本机可访问，含 scene renderer 状态与纹理提取结果）
 
-## 🧭 面板导览
 
-`wallpaper_share` 标签页采用**双页虚拟滚动**：「设置 ⇄ 壁纸库」两页纵向叠放、中间留断层，一套滚轮全接管——页内跟手滚动 + 惯性阻尼，滚到页界继续滚即**蓄力翻页**（250ms 无输入弹回防误触），右缘页签显示当前页（黄色高亮）与蓄力进度，点击可直达；所有操作即时生效、无需保存：
+
 
 | 卡片 | 内容 |
 | --- | --- |
