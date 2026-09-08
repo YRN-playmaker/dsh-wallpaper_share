@@ -2,6 +2,19 @@
  * 面板样式（独立构建不再依赖 CSS Modules，运行时注入 <style>）。
  */
 export const PANEL_CSS = `
+/* ── share 视图激活期间的宿主滚动体锁定 ──────────────────────────
+   share 页面装在宿主 GUI 的 .scrollBody（[data-conversation-scroll]）里：
+   滚动条与面板外区域的滚轮都归它。挂锁类：隐藏滚动条、收回预留 gutter、
+   关闭键盘/拖动滚动路径，确保 share 页内只有虚拟滚动引擎一条滚路。 */
+[data-conversation-scroll].wesync-wheel-lock {
+  scrollbar-width: none;      /* Firefox */
+  scrollbar-gutter: auto;     /* 收回 reserved gutter，滚动条消失不跳动 */
+  overflow: hidden;           /* 键盘/拖动滚动路径一并关闭 */
+  overscroll-behavior: contain;
+}
+[data-conversation-scroll].wesync-wheel-lock::-webkit-scrollbar {
+  display: none;              /* Chromium/WebView2：彻底隐藏滚动条 */
+}
 .wesync-panel {
   padding: 0;
   display: flex;

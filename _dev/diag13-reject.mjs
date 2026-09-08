@@ -43,6 +43,7 @@ const ROOT = 'D:/SteamLibrary/steamapps/workshop/content/431960'
 for (const id of readdirSync(ROOT).filter((d) => /^\d+$/.test(d))) {
   const pkgPath = join(ROOT, id, 'scene.pkg')
   if (!existsSync(pkgPath)) continue
+  console.error('pkg: ' + id)
   let pkg; try { pkg = parsePkg(pkgPath) } catch { continue }
   for (const mn of pkg.names().filter((n) => /\.mdl$/i.test(n))) {
     if (!TARGETS.has(id + ' ' + mn)) continue
@@ -75,6 +76,7 @@ for (const id of readdirSync(ROOT).filter((d) => /^\d+$/.test(d))) {
       const c2 = frameCount >= 1 && frameCount <= 8192
       const c3 = Number.isInteger(segRows) && segRows >= frameCount && segRows <= frameCount + 8
       parts.push(`anim[${a}]: fc=${frameCount} bc=${boneCount} segBytes=${segBytes} rows=${segRows} → ${c1 && c2 && c3 ? 'pass' : 'BREAK(' + (c1 ? '' : 'bc ') + (c2 ? '' : 'fc ') + (c3 ? '' : 'rows') + ')'}`)
+      if (!(c1 && c2 && c3) || segBytes === 0) break // 防 segBytes=0 原地打转
       p += segBytes * boneCount
     }
     const pm = parsePuppetMdl(bytes)

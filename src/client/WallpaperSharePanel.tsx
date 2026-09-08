@@ -498,6 +498,27 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
     animRef.current = { from: posRef.current, to, start: performance.now(), target }
     if (target === 'library') loadLibraryData()
   }
+  // —— 宿主滚动容器锁定：share 视图激活期间禁用原生滚轮 + 隐藏滚动条 ——
+  // share 页面整个装在宿主 GUI 的 .scrollBody（[data-conversation-scroll]）里：
+  // 滚动条与面板外区域的滚轮都归它。本视图挂载期间在它上面挂捕获段拦截器
+  // （capture 先于一切默认动作，面板外的滚轮也吞掉），并隐藏其滚动条；
+  // 切走（组件卸载）自动还原，不影响聊天等其他视图。
+  useEffect(() => {
+    const scroller = document.querySelector('[data-conversation-scroll]')
+    if (scroller === null) return
+    const el = scroller as HTMLElement
+    el.classList.add('wesync-wheel-lock')
+    const block = (e: WheelEvent): void => {
+      const t = e.target as Element | null
+      if (t !== null && t.closest('textarea') !== null) return // 文本域内部滚动放行
+      e.preventDefault()
+    }
+    el.addEventListener('wheel', block, { passive: false, capture: true })
+    return () => {
+      el.classList.remove('wesync-wheel-lock')
+      el.removeEventListener('wheel', block, { capture: true } as EventListenerOptions)
+    }
+  }, [])
   // 一套滚轮全接管（passive:false）：输入框/下拉框放行原生，其余进动量引擎
   useEffect(() => {
     const vp = viewportRef.current
