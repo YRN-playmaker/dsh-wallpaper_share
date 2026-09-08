@@ -5,7 +5,7 @@
 <div align="center">
   <a href="https://www.npmjs.com/package/dsh-wallpaper_share"><img alt="npm version" src="https://img.shields.io/npm/v/dsh-wallpaper_share" /></a>
   <a href="https://opensource.org/licenses/GPL-3.0"><img alt="License: GPL-3.0" src="https://img.shields.io/badge/License-GPL--3.0-blue.svg" /></a>
-  <a href="https://github.com/YRN-playmaker/dsh-wallpaper_share/releases"><img alt="插件版本 v26.9.4" src="https://img.shields.io/badge/v26.9.4-4d6bfe" /></a>
+  <a href="https://github.com/YRN-playmaker/dsh-wallpaper_share/releases"><img alt="插件版本 v26.9.8" src="https://img.shields.io/badge/v26.9.8-4d6bfe" /></a>
 </div>
 
 [中文](README.zh-CN.md) | [English → README.md](README.md#english)
@@ -74,13 +74,13 @@ dsh plugin --profile web add dsh-wallpaper_share   # 或见下方「安装」选
 
 ## 🧭 面板导览
 
-`wallpaper_share` 标签页自上而下三张卡片，所有操作即时生效、无需保存：
+`wallpaper_share` 标签页采用**双页虚拟滚动**：「设置 ⇄ 壁纸库」两页纵向叠放、中间留断层，一套滚轮全接管——页内跟手滚动 + 惯性阻尼，滚到页界继续滚即**蓄力翻页**（250ms 无输入弹回防误触），右缘页签显示当前页（黄色高亮）与蓄力进度，点击可直达；所有操作即时生效、无需保存：
 
 | 卡片 | 内容 |
 | --- | --- |
 | **壁纸状态** | 壁纸名（标题行**右缘为插件版本号**，一键整段选中便于反馈问题）；下方副标题只承载诊断信息——scene 壁纸显示当前渲染通路（`场景 · 预览图 / 捕获 live 30fps / 浏览器模型渲染 / 回退：<原因>`），未应用壁纸时显示引导文案，其余类型整行不占；多显示器时出现「背景显示器」下拉；`⏻ 同步开启 / 关闭 / 暂停（DWP）` 三态按钮 |
 | **视觉效果** | 三档渲染模式分段按钮；「专注模式」及其展开条（眼动追踪 / 校准视线 / 文字吸附 / 实时状态）；透明度 · 模糊 · 阴影三个滑块（**专注开启时滑块隐藏**，改由任务态与透镜接管） |
-| **壁纸库** | 「壁纸读取位置」可添加自定义壁纸目录（指向单个壁纸目录或集合文件夹）；「本地 / 市场」两栏切换，本地按 `dwp壁纸` / `we 应用` 筛选 + 标题搜索 + 分页（显示更多 +60），市场支持安装 / 更新 / 卸载 |
+| **壁纸库** | 「壁纸读取位置」可添加自定义壁纸目录（指向单个壁纸目录或集合文件夹），启动器安装位置也并入这里（带「（启动器安装位置）」标记，可更改 / 迁移）；「本地 / 市场 / 应用启动器」三栏切换，本地按 `dwp壁纸` / `we 应用` 筛选 + 标题搜索 + 分页（显示更多 +60），市场支持安装 / 更新 / 卸载，**应用启动器**支持直链安装（`.zip`/`.7z`/`.exe`，加密包可填解压密码）与 **139 分享链接**（提取码填密码框；原始文件下载需粘贴一次 Authorization 登录态），自动封装类 WE app（json + 预览图）与一键启动（每次弹确认） |
 
 两点与宿主 UI 的约定：
 
@@ -122,7 +122,9 @@ scene 壁纸在捕获 / 完整档下的渲染优先级与回退链：
 
 **原生捕获器原理**：WE 的 DX11 渲染窗口是 Progman 子窗口、WGC 不接受子窗口，故捕获其顶层根 Progman / WorkerW，BGRA→JPEG 按外部渲染器协议输出到 stdout。因为镜像的是 **WE 自身的渲染结果**，无需在 JS 端复刻对面那套 ~500KB 软渲染引擎，效果 100% 覆盖。多显示器下顶层根窗横跨整个虚拟桌面，捕获器按锁定的那块 WPE 子窗矩形用 `CopySubresourceRegion` + `D3D11_BOX` 只回读目标屏区域再编码（换算经 `ClientToScreen` / `GetClientRect` 归一化，DPI 缩放非 100% 同样正确）→ 输出严格是单块屏。`bin/we-capture.exe`（约 540KB，Windows-only）随 npm 包发布，Rust 源码在 `native/we-capture/`（`cargo build --release` 可重建，含 `--selftest` 诊断模式）；DSH 侧 `probeRenderer` 自动发现，`sceneRenderMode='auto'` 检测到原生渲染器即走 external（捕获档），否则回退 browser。JPEG 编码器用 SIMD 的 `jpeg-encoder`，1080p 编码仅约 11ms。
 
-完整链路与各层实现见 **[docs/scene-fallback.md](docs/scene-fallback.md)**；pkg / 纹理 / puppet 格式见 **[docs/scene-format.md](docs/scene-format.md)**、**[docs/tex-format-findings.md](docs/tex-format-findings.md)**、**[docs/mdl-skinning-findings.md](docs/mdl-skinning-findings.md)**。
+完整链路与各层实现见 **[docs/scene-fallback.md](docs/scene-fallback.md)**；pkg / 纹理 / puppet 格式见 **[docs/scene-format.md](docs/scene-format.md)**、**[docs/tex-format-findings.md](docs/tex-format-findings.md)**、**[docs/mdl-skinning-findings.md](docs/mdl-skinning-findings.md)**、**[docs/bone-pipeline-compare.md](docs/bone-pipeline-compare.md)**。
+
+**骨骼动画（完整档）**：puppet 部件按 MDLS 绑定 + MDLA 逐骨骼动画做全骨骼链乘蒙皮，`animationlayers` 多层合成（普通层 mix / additive 层以自身帧 0 为参考 / rate 倍速 / 30fps），MDAT 具名锚点（含中文名）跟随骨骼最终世界位姿。26.9.8 定案 MDLA0006 连续流布局（骨骼窗口跨段延伸、每骨骼 +2 浮点漂移、fc+1 行含闭合行），并钳制末骨越界帧——修复人物每循环抽动一次与蒙皮异常形变（如 3465215190）；58 个本地 MDL 端到端校验（帧0≈bind + 闭环平滑度）全部通过。
 
 ## 🔍 专注模式与眼动追踪
 
@@ -177,8 +179,8 @@ dsh plugin --profile web add github:YRN-playmaker/dsh-wallpaper_share
 #   从 GitHub 安装（仓库自带预构建 lib/，不需要构建许可；main = 最新档）
 dsh plugin --profile web add dsh-wallpaper_share
 #   从 npm 安装（默认 = latest 最新档）
-dsh plugin --profile web add ./dsh-wallpaper_share-26.9.4.tgz
-#   本地 tarball 安装（26.9.4）
+dsh plugin --profile web add ./dsh-wallpaper_share-26.9.8.tgz
+#   本地 tarball 安装（26.9.8）
 dsh plugin --profile web add github:YRN-playmaker/dsh-wallpaper_share#test
 #   从 GitHub 安装 test 分支（测试档，含壁纸特效优化、页面功能更新等）
 ```
@@ -256,7 +258,7 @@ dsh plugin --profile web add github:YRN-playmaker/dsh-wallpaper_share#test
 
 ## 🆕 已知问题
 
-> 适用版本：插件 `v26.9.4` / Harness `0.1.2-rc.1`。
+> 适用版本：插件 `v26.9.8` / Harness `0.1.2-rc.1`。
 
 ### 兼容性（Harness 0.1.2 破坏性变更 · 已适配）
 
