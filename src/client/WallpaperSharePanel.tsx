@@ -464,6 +464,9 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
     const gap = gapRef.current
     if (vp === null || track === null || s === null || gap === null) return
     const vpH = vp.clientHeight
+    // 每页至少撑满一个视口高（CSS var 注入）：否则矮页翻页后，相邻页的尾巴会留在
+    // 视口上方露出来（如设置页目录列表的最后一行出现在壁纸库页顶）
+    vp.style.setProperty('--wesync-vph', Math.max(0, vpH) + 'px')
     const libTop = Math.max(0, s.offsetHeight + gap.offsetHeight)
     const maxPos = Math.max(0, track.scrollHeight - vpH)
     geoRef.current = {

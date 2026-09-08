@@ -36,7 +36,11 @@ export const PANEL_CSS = `
   flex-direction: column;
   gap: 16px;
   min-width: 0;
+  /* 每页至少撑满一个视口高（--wesync-vph 由引擎 measure() 注入）：
+     保证翻页后当前页独占视口，矮页不会把相邻页尾巴留在视口上方 */
+  min-height: var(--wesync-vph, 640px);
   padding: 24px 0 24px 24px;
+  box-sizing: border-box;
 }
 
 /* 页间断层：只在蓄力拉扯/翻页动画经过时露出，提示「继续滚动翻页」 */
