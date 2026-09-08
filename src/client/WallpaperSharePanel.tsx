@@ -498,25 +498,46 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
     animRef.current = { from: posRef.current, to, start: performance.now(), target }
     if (target === 'library') loadLibraryData()
   }
-  // —— 宿主滚动容器锁定：share 视图激活期间禁用原生滚轮 + 隐藏滚动条 ——
+  // —— 宿主滚动容器锁定：share 视图激活期间禁用原生滚轮 + 隐藏滚动条 + 复位滚动位置 ——
   // share 页面整个装在宿主 GUI 的 .scrollBody（[data-conversation-scroll]）里：
   // 滚动条与面板外区域的滚轮都归它。本视图挂载期间在它上面挂捕获段拦截器
   // （capture 先于一切默认动作，面板外的滚轮也吞掉），并隐藏其滚动条；
   // 切走（组件卸载）自动还原，不影响聊天等其他视图。
+  //
+  // 关键：overflow:hidden 只让滚动条消失，并不会重置已存在的 scrollTop。若用户先在
+  // 聊天等其他视图把该容器滚到中途，再切回 share，残留偏移会把面板顶部裁到可视区之上
+  // （表现为"显示不全"，且因滚轮已禁用而无法滚回）。面板自带虚拟滚动引擎、自身
+  // height:100% 独占视口，share 激活期间宿主的原生滚动位置没有任何正当用途，
+  // 因此挂载时立即归零，并在整个激活期间钉住（含头 20 帧兜底，拦住宿主
+  // 首帧之后才发生的聊天贴底 / 路由还原等延迟复位）。
   useEffect(() => {
     const scroller = document.querySelector('[data-conversation-scroll]')
     if (scroller === null) return
     const el = scroller as HTMLElement
     el.classList.add('wesync-wheel-lock')
+    const pinTop = (): void => {
+      if (el.scrollTop !== 0) el.scrollTop = 0
+      if (el.scrollLeft !== 0) el.scrollLeft = 0
+    }
+    pinTop()
     const block = (e: WheelEvent): void => {
       const t = e.target as Element | null
       if (t !== null && t.closest('textarea') !== null) return // 文本域内部滚动放行
       e.preventDefault()
     }
     el.addEventListener('wheel', block, { passive: false, capture: true })
+    // scroll 不冒泡：挂在宿主容器上只在它自身偏移时触发，面板内网格滚动不受影响
+    el.addEventListener('scroll', pinTop, { passive: true })
+    let frames = 0
+    let raf = requestAnimationFrame(function pinEarly(): void {
+      pinTop()
+      if (++frames < 20) raf = requestAnimationFrame(pinEarly)
+    })
     return () => {
       el.classList.remove('wesync-wheel-lock')
       el.removeEventListener('wheel', block, { capture: true } as EventListenerOptions)
+      el.removeEventListener('scroll', pinTop)
+      cancelAnimationFrame(raf)
     }
   }, [])
   // 一套滚轮全接管（passive:false）：输入框/下拉框放行原生，其余进动量引擎
@@ -1180,7 +1201,7 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
     <div className="wesync-panel" ref={panelRef}>
       <div className="wesync-pages" ref={viewportRef}>
         <div className="wesync-pages-track" ref={trackRef}>
-        <div className="wesync-page" ref={settingsRef}>
+        <div className="wesync-page wesync-page-settings" ref={settingsRef}>
       <div className="wesync-card">
         <div className="wesync-head">
           <div className="wesync-title">{title}</div>
@@ -1351,7 +1372,7 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
           <span className="wesync-page-hint">{t.pageGapHint}</span>
           <span className="wesync-page-gap-line" />
         </div>
-        <div className="wesync-page">
+        <div className="wesync-page wesync-page-library">
           {/* 壁纸库页：独立卡片，蓄力翻页滚过断层进入 */}
           <div className="wesync-card">
             <div className="wesync-apps">

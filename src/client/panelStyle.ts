@@ -20,7 +20,11 @@ export const PANEL_CSS = `
   display: flex;
   flex-direction: row;
   gap: 8px;
-  max-width: 724px;
+  /* 撑满宿主会话列：原来 724px 的硬上限让整个面板只占页面左半边，
+     壁纸库的网格因此被挤成 2 列、单卡被撑得异常大，右侧空间全浪费。
+     宽度上限交给会话列自身决定（宿主 root 的 padding 已提供边距）。 */
+  width: 100%;
+  max-width: none;
   height: 100%;
   min-height: 0;
   box-sizing: border-box;
@@ -52,8 +56,15 @@ export const PANEL_CSS = `
   /* 每页至少撑满一个视口高（--wesync-vph 由引擎 measure() 注入）：
      保证翻页后当前页独占视口，矮页不会把相邻页尾巴留在视口上方 */
   min-height: var(--wesync-vph, 640px);
-  padding: 24px 0 24px 24px;
+  /* 面板现在铺满会话列，右侧也需要内边距，否则卡片贴着列右缘 */
+  padding: 24px;
   box-sizing: border-box;
+}
+
+/* 设置页保持紧凑阅读宽度：滑块/选项行拉满整列会失去可读性。
+   壁纸库页（.wesync-page-library）不设上限，铺满会话列。 */
+.wesync-page-settings {
+  max-width: 748px;
 }
 
 /* 页间断层：只在蓄力拉扯/翻页动画经过时露出，提示「继续滚动翻页」 */
@@ -462,7 +473,10 @@ body[data-ds-dark-theme] .wesync-gaze-status.is-error { color: #fdba74; }
 
 .wesync-apps-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  /* 响应式多列：原来固定 2 列，面板一宽单张卡就被撑成半个屏幕
+     （缩略图 16:9 随宽度放大 → 单项异常大、一屏放不下几张）。
+     按最小 160px 自动铺列，窄容器退化成 2 列，宽容器自然变密。 */
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
   gap: 8px;
   padding: 2px;
 }
