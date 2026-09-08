@@ -8,6 +8,8 @@ export const PANEL_CSS = `
   flex-direction: row;
   gap: 8px;
   max-width: 724px;
+  height: 100%;
+  min-height: 0;
   box-sizing: border-box;
 }
 
@@ -18,6 +20,8 @@ export const PANEL_CSS = `
 .wesync-pages {
   flex: 1;
   min-width: 0;
+  min-height: 0;
+  height: 100%;
   max-height: min(100vh - 32px, 980px);
   overflow: hidden;
   position: relative;

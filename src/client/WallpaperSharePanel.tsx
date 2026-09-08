@@ -502,8 +502,7 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
       const tag = (e.target as HTMLElement | null)?.tagName
       if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return
       if (e.ctrlKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return
-      e.preventDefault()
-      if (phaseRef.current === 'anim') return
+      if (phaseRef.current === 'anim') { e.preventDefault(); return }
       let dy = e.deltaY
       if (e.deltaMode === 1) dy *= 40
       else if (e.deltaMode === 2) dy *= 800
@@ -514,15 +513,24 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
       const pageTop = cur === 'library' ? g.libTop : 0
       const pageBottom = cur === 'library' ? g.maxPos : g.boundary
       // 方向感知的页界判定：只有「朝页界滚」才算到达边界
-      // （页顶往下滚 / 页底往上滚都还是正常页内滚动）
       const atBoundary = (dir === 1 && posRef.current >= pageBottom - 0.5) || (dir === -1 && posRef.current <= pageTop + 0.5)
-      // 蓄力中反向滚 → 立即取消蓄力回归滚动；同向则继续累加
-      if (phaseRef.current === 'charge' && pullTargetRef.current !== 0 && ((dir === 1 && pullTargetRef.current > 0) || (dir === -1 && pullTargetRef.current < 0))) {
+      const canFlip = (dir === 1 && cur === 'settings') || (dir === -1 && cur === 'library')
+      const charging = phaseRef.current === 'charge' && pullTargetRef.current !== 0
+      // 外层边界且无相邻页（设置页顶↑ / 壁纸库底↓）：不吞事件，放行给宿主滚动链——
+      // 面板是宿主页面的一部分，浏览器据此把面板顶部/底部滚进可视区，顶部选项不被裁剪
+      if (!charging && atBoundary && !canFlip) return
+      e.preventDefault()
+      // 蓄力中反向滚 → 立即取消蓄力回归滚动
+      if (charging && ((dir === 1 && pullTargetRef.current > 0) || (dir === -1 && pullTargetRef.current < 0))) {
         phaseRef.current = 'idle'
         cancelCharge()
         disarmDecay()
+        if (!atBoundary) {
+          velRef.current = dy * 0.4
+          posRef.current = Math.max(pageTop, Math.min(pageBottom, posRef.current + dy))
+          return
+        }
       }
-      const charging = phaseRef.current === 'charge' && pullTargetRef.current !== 0
       if (!charging && !atBoundary) {
         // 页内正常滚动：跟手 + 惯性（pos 由页域 clamp）
         disarmDecay()
@@ -530,27 +538,19 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
         posRef.current = Math.max(pageTop, Math.min(pageBottom, posRef.current + dy))
         return
       }
-      const canFlip = (dir === 1 && cur === 'settings') || (dir === -1 && cur === 'library')
+      // 到达可翻页界 → 蓄力：动量累加突破阈值翻页
       if (phaseRef.current !== 'charge') { phaseRef.current = 'charge'; accRef.current = 0 }
-      if (!canFlip) {
-        // 边界橡皮筋：无相邻页，向滚动反方向回拉（页顶上滚=内容下坠），不累积
-        pullTargetRef.current = Math.max(-14, Math.min(14, -dy * 0.12))
-        accRef.current = 0
-        resetProgress()
-      } else {
-        // 蓄力：动量累加突破阈值翻页
-        accRef.current += dy
-        const ratio = Math.min(1, Math.abs(accRef.current) / CHARGE_THRESHOLD)
-        const maxPull = vp.clientHeight * PULL_RATIO
-        pullTargetRef.current = dir * ratio * maxPull * -1 // 下滚拉扯=内容上移（负）
-        const prog = (dir === 1 ? progLibRef : progSetRef).current
-        if (prog !== null) prog.style.transform = 'scaleX(' + ratio.toFixed(3) + ')'
-        const other = (dir === 1 ? progSetRef : progLibRef).current
-        if (other !== null) other.style.transform = 'scaleX(0)'
-        if (Math.abs(accRef.current) >= CHARGE_THRESHOLD) {
-          flipTo(dir === 1 ? 'library' : 'settings')
-          return
-        }
+      accRef.current += dy
+      const ratio = Math.min(1, Math.abs(accRef.current) / CHARGE_THRESHOLD)
+      const maxPull = vp.clientHeight * PULL_RATIO
+      pullTargetRef.current = dir * ratio * maxPull * -1 // 下滚拉扯=内容上移（负）
+      const prog = (dir === 1 ? progLibRef : progSetRef).current
+      if (prog !== null) prog.style.transform = 'scaleX(' + ratio.toFixed(3) + ')'
+      const other = (dir === 1 ? progSetRef : progLibRef).current
+      if (other !== null) other.style.transform = 'scaleX(0)'
+      if (Math.abs(accRef.current) >= CHARGE_THRESHOLD) {
+        flipTo(dir === 1 ? 'library' : 'settings')
+        return
       }
       // 超时归零衰减：250ms 无输入 → 清空动量、页面平滑弹回
       disarmDecay()
