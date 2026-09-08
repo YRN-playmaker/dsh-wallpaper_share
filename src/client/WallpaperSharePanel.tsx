@@ -433,6 +433,7 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
   // 都能停住，只有越过页底半屏才吸附翻到下一页）；右侧页签 scrollspy 跟随当前页。
   const [page, setPage] = useState<'settings' | 'library'>('settings')
   const appsOpen = page === 'library'
+  const panelRef = useRef<HTMLDivElement | null>(null)
   const viewportRef = useRef<HTMLDivElement | null>(null)
   const trackRef = useRef<HTMLDivElement | null>(null)
   const settingsRef = useRef<HTMLDivElement | null>(null)
@@ -502,10 +503,11 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
     const vp = viewportRef.current
     if (vp === null) return
     const onWheel = (e: WheelEvent): void => {
-      const tag = (e.target as HTMLElement | null)?.tagName
-      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return
+      // wallpaper_share 窗口内禁用一切原生滚轮：整个面板为监听域（含输入框、下拉框、
+      // 弹层上方、Ctrl 缩放），wheel 只进虚拟滚动引擎，绝不漏给宿主
+      e.preventDefault()
       if (e.ctrlKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return
-      if (phaseRef.current === 'anim') { e.preventDefault(); return }
+      if (phaseRef.current === 'anim') return
       let dy = e.deltaY
       if (e.deltaMode === 1) dy *= 40
       else if (e.deltaMode === 2) dy *= 800
@@ -519,41 +521,40 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
       const atBoundary = (dir === 1 && posRef.current >= pageBottom - 0.5) || (dir === -1 && posRef.current <= pageTop + 0.5)
       const canFlip = (dir === 1 && cur === 'settings') || (dir === -1 && cur === 'library')
       const charging = phaseRef.current === 'charge' && pullTargetRef.current !== 0
-      // 外层边界且无相邻页（设置页顶↑ / 壁纸库底↓）：不吞事件，放行给宿主滚动链——
-      // 面板是宿主页面的一部分，浏览器据此把面板顶部/底部滚进可视区，顶部选项不被裁剪
-      if (!charging && atBoundary && !canFlip) return
-      e.preventDefault()
       // 蓄力中反向滚 → 立即取消蓄力回归滚动
       if (charging && ((dir === 1 && pullTargetRef.current > 0) || (dir === -1 && pullTargetRef.current < 0))) {
         phaseRef.current = 'idle'
         cancelCharge()
         disarmDecay()
-        if (!atBoundary) {
-          velRef.current = dy * 0.4
-          posRef.current = Math.max(pageTop, Math.min(pageBottom, posRef.current + dy))
-          return
-        }
       }
-      if (!charging && !atBoundary) {
+      const chargingNow = phaseRef.current === 'charge' && pullTargetRef.current !== 0
+      if (!chargingNow && !atBoundary) {
         // 页内正常滚动：跟手 + 惯性（pos 由页域 clamp）
         disarmDecay()
         velRef.current = dy * 0.4
         posRef.current = Math.max(pageTop, Math.min(pageBottom, posRef.current + dy))
         return
       }
-      // 到达可翻页界 → 蓄力：动量累加突破阈值翻页
       if (phaseRef.current !== 'charge') { phaseRef.current = 'charge'; accRef.current = 0 }
-      accRef.current += dy
-      const ratio = Math.min(1, Math.abs(accRef.current) / CHARGE_THRESHOLD)
-      const maxPull = vp.clientHeight * PULL_RATIO
-      pullTargetRef.current = dir * ratio * maxPull * -1 // 下滚拉扯=内容上移（负）
-      const prog = (dir === 1 ? progLibRef : progSetRef).current
-      if (prog !== null) prog.style.transform = 'scaleX(' + ratio.toFixed(3) + ')'
-      const other = (dir === 1 ? progSetRef : progLibRef).current
-      if (other !== null) other.style.transform = 'scaleX(0)'
-      if (Math.abs(accRef.current) >= CHARGE_THRESHOLD) {
-        flipTo(dir === 1 ? 'library' : 'settings')
-        return
+      if (!canFlip) {
+        // 外边界橡皮筋：无相邻页（设置页顶↑ / 壁纸库底↓），回拉不累积、进度条不充能
+        pullTargetRef.current = Math.max(-14, Math.min(14, -dy * 0.12))
+        accRef.current = 0
+        resetProgress()
+      } else {
+        // 内部页界（设置页底↓ / 壁纸库顶↑）→ 蓄力：动量累加突破阈值翻页
+        accRef.current += dy
+        const ratio = Math.min(1, Math.abs(accRef.current) / CHARGE_THRESHOLD)
+        const maxPull = vp.clientHeight * PULL_RATIO
+        pullTargetRef.current = dir * ratio * maxPull * -1 // 下滚拉扯=内容上移（负）
+        const prog = (dir === 1 ? progLibRef : progSetRef).current
+        if (prog !== null) prog.style.transform = 'scaleX(' + ratio.toFixed(3) + ')'
+        const other = (dir === 1 ? progSetRef : progLibRef).current
+        if (other !== null) other.style.transform = 'scaleX(0)'
+        if (Math.abs(accRef.current) >= CHARGE_THRESHOLD) {
+          flipTo(dir === 1 ? 'library' : 'settings')
+          return
+        }
       }
       // 超时归零衰减：250ms 无输入 → 清空动量、页面平滑弹回
       disarmDecay()
@@ -563,7 +564,9 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
         phaseRef.current = 'idle'
       }, CHARGE_DECAY_MS)
     }
-    vp.addEventListener('wheel', onWheel, { passive: false })
+    const host = panelRef.current
+    if (host === null) return
+    host.addEventListener('wheel', onWheel, { passive: false })
     // 尺寸跟踪：壁纸库懒加载/内容变化后重算几何，并 clamp 当前位置
     const ro = new ResizeObserver(() => {
       measure()
@@ -573,7 +576,7 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
     if (trackRef.current !== null) ro.observe(trackRef.current)
     window.addEventListener('resize', measure)
     return () => {
-      vp.removeEventListener('wheel', onWheel)
+      host.removeEventListener('wheel', onWheel)
       ro.disconnect()
       window.removeEventListener('resize', measure)
     }
@@ -1153,7 +1156,7 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
   const monitors = info !== null && Array.isArray(info.monitors) && info.monitors.length > 1 ? info.monitors : null
 
   return (
-    <div className="wesync-panel">
+    <div className="wesync-panel" ref={panelRef}>
       <div className="wesync-pages" ref={viewportRef}>
         <div className="wesync-pages-track" ref={trackRef}>
         <div className="wesync-page" ref={settingsRef}>

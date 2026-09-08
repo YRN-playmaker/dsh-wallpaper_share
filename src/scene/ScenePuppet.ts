@@ -486,9 +486,16 @@ export function parsePuppetMdl(bytes: Uint8Array): PuppetModel | null {
     }
 
     // --- MDLA0006 新格式 9 列循环交错逐骨骼动画（渲染主路径；逆向定案，30fps）---
-    // 布局：每动画 boneCount 段，每段 frameCount×36B（9 f32/帧）；骨骼 b 的
-    //   pos = 段 b 帧 (frame+floor(2b/9))%frameCount 列 (2b)%9,(2b+1)%9
-    //   rot = 段 b 帧 (frame+floor(2b/9)+floor((2b+5)/9))%frameCount 列 (2b+5)%9
+    // 布局（逆向定案 v2，3465215190 抖动修复）：动画数据是一块连续 f32 流，
+    // 按 segRows = segBytes/36 行 × 9 列视图切分；骨骼 b 的数据窗口起点为
+    // 全局行 segRows*b + floor(2b/9)（每骨骼 +2 浮点漂移，行连续、可跨段）：
+    //   px  = 全局行 (R0+f) 列 (2b)%9          → 平坦索引 9*R0 + 9f + (2b)%9
+    //   py  = px 平坦索引 + 1（物理连续，跨行/跨段，即“col9 跨下一段”）
+    //   rot = 平坦索引 9*R0 + 9f + (2b+5)      → 列 (2b+5)%9、行再顺延 floor((2b+5)/9)
+    // 帧 0 读取与旧公式一致（帧0≈bind 校验通过），区别仅在循环尾段：
+    // 旧实现 %frameCount 把读取锁死在段内导致尾帧错位（人物抽动/形变的根源）。
+    // 末尾骨骼因 +2b 漂移会把最后若干帧推出块外（构建器截断，文件无此数据），
+    // 对越界帧钳制到该骨骼最后一个有效帧（保持末帧姿态），禁止回绕读到块头占位值。
     const animsV2: PuppetAnimV2[] = []
     if (mdla6 >= 0) {
       try {
@@ -506,8 +513,12 @@ export function parsePuppetMdl(bytes: Uint8Array): PuppetModel | null {
           while (p < len && bytes[p] !== 0) p++ // loop 字符串
           if (p >= len) break
           p++
-          // 扫描 f32 30.0 标记（0x41F00000 → 字节 F0 41）定位帧数
+          // 扫描 f32 30.0 标记（0x41F00000 → 字节 F0 41）定位帧数。
+          // 注意：标记前可能有大段旧格式轨道数据（实测 3465215190 偏移 611KB），
+          // 只能按文件边界扫描；垃圾动画条目（如 id=1065353216 空壳）扫到尾也没
+          // 有标记 → 直接放弃（不可用固定步数守卫，会误杀正常动画）
           while (p + 1 < len && !(bytes[p] === 0xf0 && bytes[p + 1] === 0x41)) p++
+          if (!(bytes[p] === 0xf0 && bytes[p + 1] === 0x41)) break
           p += 2
           const frameCount = u16At(bytes, p); p += 2
           p += 2 // u16 0
@@ -515,32 +526,43 @@ export function parsePuppetMdl(bytes: Uint8Array): PuppetModel | null {
           const boneCount = u32At(bytes, p); p += 4
           p += 4 // u32 0
           const segBytes = u32At(bytes, p); p += 4
-          if (boneCount > 512 || segBytes === 0 || segBytes > 0x100000) break
-          const segs: number[] = []
-          for (let b = 0; b < boneCount && p + (b + 1) * segBytes <= len; b++) segs.push(p + b * segBytes)
-          if (segs.length === 0) break
+          // 动画头合理性校验（防垃圾条目）：帧数/骨骼数有界，segBytes 必须是
+          // 36B 行且行数 ≈ frameCount+1（每骨骼 66 帧 + 1 闭合行的实测布局）
+          const segRows = segBytes / 36
+          if (
+            boneCount < 1 || boneCount > 512 ||
+            frameCount < 1 || frameCount > 8192 ||
+            !Number.isInteger(segRows) || segRows < frameCount || segRows > frameCount + 8
+          ) break
+          const dataStart = p
+          const declared = boneCount * segRows * 9 // 声明区浮点总数
+          const avail = Math.floor((len - dataStart) / 4)
+          const totalFloats = Math.min(declared, avail)
+          if (totalFloats < 9) break
           // 急切解码每骨骼每帧局部 [px, py, rotZ]（避免把原始 MDL 字节序列化到客户端）
           // 上限保护：异常大 frameCount（损坏/恶意 MDL）会导致 localFrames 爆内存
           const totalFrames = Math.max(1, Math.min(frameCount, 4096))
           const localFrames = new Array<number>(boneCount * totalFrames * 3).fill(0)
           for (let b = 0; b < boneCount; b++) {
-            const segStart = segs[b]
             const b2 = 2 * b
-            const posShift = Math.floor(b2 / 9)
-            const posCol = b2 % 9
-            const rotShift = Math.floor((b2 + 5) / 9)
-            const rotCol = (b2 + 5) % 9
+            const r0 = segRows * b + Math.floor(b2 / 9)
+            const pxFlat0 = 9 * r0 + (b2 % 9)
+            const rotFlat0 = 9 * r0 + b2 + 5
+            // 该骨骼在文件里的最大有效帧（pos 需 px+1 越界前；rot 独立判定）
+            const fPxMax = pxFlat0 + 2 <= totalFloats ? Math.floor((totalFloats - 2 - pxFlat0) / 9) : -1
+            const fRotMax = rotFlat0 <= totalFloats - 1 ? Math.floor((totalFloats - 1 - rotFlat0) / 9) : -1
             for (let f = 0; f < totalFrames; f++) {
-              const o = segStart + ((f + posShift) % totalFrames) * 36 + posCol * 4
-              const o2 = segStart + ((f + posShift + rotShift) % totalFrames) * 36 + rotCol * 4
+              const fp = fPxMax >= 0 ? Math.min(f, fPxMax) : -1
+              const fr = fRotMax >= 0 ? Math.min(f, fRotMax) : -1
               let px = Number.NaN
               let py = Number.NaN
               let rotZ = Number.NaN
-              if (o + 4 <= bytes.length && o2 + 4 <= bytes.length) {
+              if (fp >= 0) {
+                const o = dataStart + (pxFlat0 + 9 * fp) * 4
                 px = f32At(bytes, o)
                 py = f32At(bytes, o + 4)
-                rotZ = f32At(bytes, o2)
               }
+              if (fr >= 0) rotZ = f32At(bytes, dataStart + (rotFlat0 + 9 * fr) * 4)
               const base = b * totalFrames * 3 + f * 3
               localFrames[base] = px
               localFrames[base + 1] = py
@@ -548,7 +570,7 @@ export function parsePuppetMdl(bytes: Uint8Array): PuppetModel | null {
             }
           }
           animsV2.push({ id, name: nm, frameCount: totalFrames, boneCount, localFrames })
-          p += segBytes * boneCount
+          p = dataStart + segBytes * boneCount
         }
       } catch { /* 交错解析失败 → 渲染层回退 legacy animations */ }
     }
