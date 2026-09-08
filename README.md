@@ -70,15 +70,17 @@ dsh plugin --profile web add dsh-wallpaper_share   # 或见下方「安装」选
 <img width="426" height="240" alt="Video Project 29" src="https://github.com/user-attachments/assets/57daf64c-ff2b-40c7-aeef-73cac46c4c2b" />
 
 - **壁纸库**：按**本地**/**市场**/**应用启动器**分类。本地一栏管理已装内容——`dwp壁纸`（点击即挂载为全局背景，已挂载再点取消）与 `we 应用`（点击打开所在文件夹，含「▶ 启动」），带标题搜索、缩略图与计数；市场一栏浏览 `dwp-registry` 目录，支持名称 / 作者搜索、标签筛选与安装 / 更新 / 卸载；**应用启动器**：支持用户粘贴 `http(s)` 直链（`.zip`/`.7z`/`.exe`，**加密压缩包填解压密码**）或部分**云盘分享链接**（如`yun.139.com/shareweb/#/w/i/…`，提取码填在密码框），唤醒DSH 自动下载，解包并封装成**类 app 格式**（自动生成 `project.json` + 预览图卡片）入库；卡片一键「▶ 启动」，也支持卸载 / 更新预览 / 多入口切换。不依赖 WE 运行、不受新版 WE 取消应用类壁纸影响。、
-<img width="820" height="583" alt="image" src="https://github.com/user-attachments/assets/f1b78eb3-027f-43fd-98b8-3e0c34f76a60" />
+<img width="737" height="675" alt="image" src="https://github.com/user-attachments/assets/7567c226-7ea4-4fcb-a3b7-11190ee681ff" />
+
 
 -**设置页面介绍↓**
-<img width="841" height="667" alt="image" src="https://github.com/user-attachments/assets/7d652c07-8344-4de3-abbd-75620375c0b6" />
+
 | 卡片 | 内容 |
 | --- | --- |
 | **壁纸状态** | 壁纸名（标题行**右缘为插件版本号**，一键整段选中便于反馈问题）；下方副标题只承载诊断信息——scene 壁纸显示当前渲染通路（`场景 · 预览图 / 捕获 live 30fps / 浏览器模型渲染 / 回退：<原因>`），未应用壁纸时显示引导文案，其余类型整行不占；多显示器时出现「背景显示器」下拉；`⏻ 同步开启 / 关闭 / 暂停（DWP）` 三态按钮 |
 | **视觉效果** | 三档渲染模式分段按钮；「专注模式」及其展开条（眼动追踪 / 校准视线 / 文字吸附 / 实时状态）；透明度 · 模糊 · 阴影三个滑块（**专注开启时滑块隐藏**，改由任务态与透镜接管） |
 
+<img width="841" height="667" alt="image" src="https://github.com/user-attachments/assets/7d652c07-8344-4de3-abbd-75620375c0b6" />
 其他功能：
 - **DWP 壁纸与全局背景渲染**：`dwp/1.0` 协议包（纯文本 / solid / 粒子 / mesh 图层 + 12 种混合模式 + 3 种动画 + 11 种效果，确定性渲染）；挂载后经 WebGL2 真实渲染为 DSH 全局背景（低配 Canvas2D 降级），同时暂停 WE 同步避免冲突，刷新后自动恢复
 - **后台任务可视化**：收纳侧边栏时，用圆形指示感知任务进度（绿 = 空闲 / 蓝 = 进行中 / 黄 = 等待授权）
@@ -253,19 +255,7 @@ dsh plugin --profile web add github:YRN-playmaker/dsh-wallpaper_share#test
 - `CHANGELOG.md` — 版本历史
 
 ## 🆕 已知问题
-
-> 适用版本：插件 `v26.9.8` / Harness `0.1.2-rc.1`。
-
-### 兼容性（Harness 0.1.2 破坏性变更 · 已适配）
-
-`0.1.2-alpha.2` 曾打破的四项已在 `v26.9.4` 修复，并已对照 `0.1.2-rc.1` 的宿主实现核对：
-
-- **新建会话**：`workspaces.startSession` 已移除，改走 `ctx.get('uiWorkspace')?.startSession()`，老宿主回退 `workspaces`。
-- **orb 任务色**：`sessions` 改由 `ctx.inject(['sessions'], …)` 等宿主提供后再订阅，不再因 apply 期取空而卡在空闲绿。
-- **沉浸模式**：会话头部按 `[data-slot="conversation.session.header"]` 命中（插槽渲染多包了一层，旧的 `[data-phase] > header` 静默失配），正文与输入栏按 `[data-conversation-scroll]` 一并隐藏。
-- **⏻ 字形**：`.wesync-btn` 字体栈在宿主 `--dsw-font-family` 之后补 `'Segoe UI Symbol'` / `'Segoe UI Emoji'`，中英文仍走宿主字体，只有 U+23FB 落到符号字体。
-
-服务查找一律改为"用到时再取"，`0.1.0-rc.6` ~ `0.1.2-alpha.1` 的行为不受影响。
+- share页面下的滚轮翻页可能会显示不全，此时需要先将网页滚轮重置再切换share页才正常显示
 
 ### 环境限制
 
