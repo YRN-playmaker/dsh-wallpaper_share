@@ -849,10 +849,30 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
       const f = (url: string, init?: { cache?: 'no-store' }) => fetch(url, init)
       const [catalog, installed] = await Promise.all([fetchCatalog(f), fetchInstalled(f)])
       const byId = new Map(catalog.map((e: MarketEntry) => [e.id, e]))
-      setDwpCards(installed.map((it) => {
+      // 不在目录里的已装包（内置工作区脉搏 / 手动侧载）：从包 manifest 兜底名称与预览
+      //（serve 端 zip 有缓存，逐包一拉代价小；失败回落 id 展示，不阻断列表）
+      const cards = await Promise.all(installed.map(async (it) => {
         const e = byId.get(it.id)
-        return { id: it.id, name: e ? (resolveLang() === 'en' ? e.name.en : e.name.zh) : it.id, thumbnail: e?.dwp.thumbnail ?? '', version: it.version }
+        if (e !== undefined) {
+          return { id: it.id, name: resolveLang() === 'en' ? e.name.en : e.name.zh, thumbnail: e.dwp.thumbnail, version: it.version }
+        }
+        try {
+          const r = await f(`/we-sync/dwp/manifest?id=${encodeURIComponent(it.id)}`, { cache: 'no-store' })
+          if (r.ok) {
+            const m = await r.json() as { name?: Record<string, string>; preview?: string }
+            return {
+              id: it.id,
+              name: resolveLang() === 'en' ? (m.name?.en ?? it.id) : (m.name?.zh ?? it.id),
+              thumbnail: m.preview !== undefined && m.preview !== ''
+                ? `/we-sync/dwp/file?id=${encodeURIComponent(it.id)}&name=${encodeURIComponent(m.preview)}`
+                : '',
+              version: it.version,
+            }
+          }
+        } catch { /* 兜底：id 展示 */ }
+        return { id: it.id, name: it.id, thumbnail: '', version: it.version }
       }))
+      setDwpCards(cards)
     } catch { /* dwp 列表拉取失败不阻断其余 UI */ }
   }
 

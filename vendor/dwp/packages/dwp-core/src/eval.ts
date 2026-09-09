@@ -21,6 +21,20 @@ function tintMul(base: RGBA, tint?: RGBA): RGBA {
   return [base[0] * tint[0], base[1] * tint[1], base[2] * tint[2], base[3] * tint[3]];
 }
 
+/**
+ * 文本层 $var 替换（本地扩展，见 vendor README「本地补丁」）：
+ * 协议 §2 的 $name 语义是**整串替换**（数值/颜色字段）；文本层 v1 未定义 $var，
+ * 这里做附加式**子串**替换以支持组合文案（如 "工作区 ● $count"）。
+ * 未定义的变量原样保留——普通含 $ 的文案不受影响；整串 $name 会被
+ * compile 的 collectVarRefs/assertRefsDefined 收录，仍受孤儿检查约束。
+ */
+export function formatVars(value: string, vars: VarTable): string {
+  return value.replace(/\$([a-zA-Z][a-zA-Z0-9_]*)/g, (all: string, name: string) => {
+    const got = vars.get(name);
+    return got === undefined ? all : String(got);
+  });
+}
+
 interface EvalCtx {
   doc: CompiledDoc;
   input: FrameInput;
@@ -188,7 +202,7 @@ function resolveLayer(layer: Layer, cl: CompiledLayer, ctx: EvalCtx,
       return { steps: [{ op: 'quad', layer: layer.id, tex: layer.src ?? '', verts: vertsOf(w, h), uv: quadUV(), matrix, blend, alpha, ...(fold.tint ? { tint: fold.tint } : {}), ...(uvOffset ? { uvOffset } : {}) }] };
     }
     case 'text': {
-      const text = formatPlaceholders(layer.value ?? '', ctx.input.timeContext);
+      const text = formatVars(formatPlaceholders(layer.value ?? '', ctx.input.timeContext), vars);
       const { sizePx, font } = parseFont(layer.font ?? '16px sans-serif');
       const color = tintMul(parseColor(resolveColor(layer.color, vars) ?? '#ffffff'), fold.tint);
       return { steps: [{ op: 'text', layer: layer.id, blend, alpha,

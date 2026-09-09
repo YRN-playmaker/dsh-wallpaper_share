@@ -24,6 +24,9 @@ import { MarketClient } from './market/pull.ts'
 import { createMarketRoutes } from './market/routes.ts'
 import { createDwpServeRoutes } from './market/serve.ts'
 import { ApplyState } from './market/apply.ts'
+import { integrityOf } from './market/integrity.ts'
+import { WorkspacePulse } from './workspace/pulse.ts'
+import { buildPulsePackage, PULSE_ID, PULSE_VERSION } from './workspace/pack.ts'
 import { LauncherInstaller } from './launcher/installer.ts'
 import { createLauncherRoutes } from './launcher/routes.ts'
 import { Yun139Client, fileCredStore } from './launcher/yun139.ts'
@@ -72,6 +75,12 @@ const CONFIG = {
   dwpMarketCatalogUrl: 'https://raw.githubusercontent.com/YRN-playmaker/dwp-registry/main/data/catalog.json',
   /** DWP market 本地存储目录（installed.json + packages/）；留空 = ~/.dsh-dwp-market */
   dwpMarketDir: '',
+  /** 工作区脉搏（workspace-pulse DWP）扫描根目录；留空 = 插件进程工作目录（即当前工作区） */
+  workspaceDir: '',
+  /** 工作区脉搏改动保留窗口（毫秒；更早的改动从气泡流里淘汰） */
+  workspacePulseWindowMs: 90_000,
+  /** 工作区脉搏内置包自动入库（首次启动写入市场库，出现在 壁纸库→本地→dwp壁纸；卸载后重启会重装） */
+  workspacePulseAutoInstall: true,
   /** 应用启动器安装根（类 WE app 目录：project.json + preview + 软件本体）；留空 = ~/.dsh/storages/we-sync-apps */
   launcherDir: '',
   /** 7z/7za.exe 路径（.7z 包含加密包的解压）；留空 = 自动探测（插件 bin/ → Program Files） */
@@ -1478,6 +1487,39 @@ export function apply(ctx: CordisCtx): void {
   for (const route of createDwpServeRoutes({ store: market.store, apply: dwpApply })) {
     disposers.push(webServer.register(route))
   }
+
+  /** 工作区脉搏内置包：首次启动自动入库（也可经 _dev/make-workspace-pulse.mjs 手动安装/更新）。 */
+  if (CONFIG.workspacePulseAutoInstall && !market.store.has(PULSE_ID)) {
+    try {
+      const bytes = buildPulsePackage()
+      market.store.ensurePackagesDir()
+      writeFileSync(market.store.packagePath(PULSE_ID), bytes)
+      market.store.upsert({
+        id: PULSE_ID, version: PULSE_VERSION, integrity: integrityOf(bytes),
+        sourceUrl: 'builtin:workspace-pulse', path: 'packages/' + PULSE_ID + '.dwp',
+        installedAt: new Date().toISOString(), commercial: false,
+      })
+    } catch (e) {
+      console.warn('[we-sync] 内置 DWP（工作区脉搏）自动入库失败（不阻断插件）：', (e as Error).message ?? e)
+    }
+  }
+
+  /** 工作区脉搏数据源：文件系统快照差分 → 近期改动文件流（惰性扫描 + 1.5s TTL，
+   *  没有客户端轮询时零开销；无 git 依赖，未保存/二进制文件也能捕获）。 */
+  const wsRoot = CONFIG.workspaceDir.trim() !== '' ? CONFIG.workspaceDir.trim() : process.cwd()
+  const wsPulse = new WorkspacePulse(wsRoot, { windowMs: CONFIG.workspacePulseWindowMs })
+  disposers.push(webServer.register({
+    kind: 'exact',
+    path: '/we-sync/workspace/pulse',
+    handler(_req, res) {
+      sendJson(res, {
+        root: wsRoot,
+        windowMs: CONFIG.workspacePulseWindowMs,
+        truncated: wsPulse.isTruncated(),
+        changes: wsPulse.scan(),
+      })
+    },
+  }))
 
   /** 壁纸源服务器：把当前 web 壁纸目录作为独立源伺服（127.0.0.1 临时端口）。
    *  Spine/WebGL 类壁纸在 iframe 里需要"自己的同源"才能渲染（贴图不 tainted、

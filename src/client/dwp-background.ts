@@ -5,12 +5,15 @@
  */
 import { mountDwp } from './dwp-stage.ts'
 import type { Handle } from 'dwp-web'
+import type { VarValue } from 'dwp-core'
 
 export class DwpBackgroundLayer {
   private canvas: HTMLCanvasElement | null = null
   private handle: Handle | null = null
   private mountingId = ''
   private mountedId = ''
+  /** 挂载完成前到达的实时变量（workspace-pulse 喂食等），挂载成功后一次性应用。 */
+  private pendingVars: Record<string, VarValue> | null = null
 
   /** 当前正在挂载或已挂载的 DWP id（'' = 无）。 */
   currentId(): string { return this.mountedId !== '' ? this.mountedId : this.mountingId }
@@ -54,6 +57,11 @@ export class DwpBackgroundLayer {
       this.handle = handle
       this.mountedId = id
       this.mountingId = ''
+      // 挂载完成 → 应用挂载期间缓存的实时变量（首发数据不闪空场景）
+      if (this.pendingVars !== null && Object.keys(this.pendingVars).length > 0) {
+        handle.setParams(this.pendingVars)
+        this.pendingVars = null
+      }
     } catch (e) {
       if (this.mountingId === id) this.mountingId = ''
       throw e
@@ -66,6 +74,16 @@ export class DwpBackgroundLayer {
     if (c === null) return
     c.style.filter = blurPx > 0 ? 'blur(' + blurPx + 'px)' : 'none'
     c.style.transform = 'scale(' + scale.toFixed(3) + ')'
+  }
+
+  /** 实时变量喂食（workspace-pulse 的改动气泡等）：有 Handle 立即 setParams，否则缓存到挂载后应用。 */
+  setLiveVars(map: Record<string, VarValue>): void {
+    if (this.handle === null) {
+      this.pendingVars = Object.keys(map).length > 0 ? map : null
+      return
+    }
+    this.handle.setParams(map)
+    if (Object.keys(map).length === 0) this.pendingVars = null
   }
 
   private disposeHandle(): void {

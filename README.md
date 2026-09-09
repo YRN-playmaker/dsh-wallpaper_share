@@ -82,6 +82,7 @@ dsh plugin --profile web add dsh-wallpaper_share   # 或见下方「安装」选
 <img width="841" height="667" alt="image" src="https://github.com/user-attachments/assets/7d652c07-8344-4de3-abbd-75620375c0b6" />
 
 其他功能：
+- **工作区脉搏（内置 DWP）**：新内置动态壁纸 `workspace-pulse`——把**当前工作区近期改动的文件**以最多 3 个浮动气泡呈现在背景上，右上角绿 `+` / 红 `−` 徽章标示该文件体积在增加还是减少（含新增 / 删除）。不依赖 git（未保存、二进制文件也能捕获）；点击挂载后实时更新，空闲时显示呼吸提示。首次启动自动入库，出现在 壁纸库→本地→dwp壁纸
 - **DWP 壁纸与全局背景渲染**：`dwp/1.0` 协议包（纯文本 / solid / 粒子 / mesh 图层 + 12 种混合模式 + 3 种动画 + 11 种效果，确定性渲染）；挂载后经 WebGL2 真实渲染为 DSH 全局背景（低配 Canvas2D 降级），同时暂停 WE 同步避免冲突，刷新后自动恢复
 - **设置持久化**：同步开关、渲染模式、显示器锁、三档渲染模式、专注 / 眼动等偏好写入 `localStorage`（键 `we-sync.settings`），刷新或重启 DSH 后自动恢复；沉浸模式等临时视图态与任务状态一律不落盘
 - **自诊断路由** `/we-sync/diag`（仅本机可访问，含 scene renderer 状态与纹理提取结果）
@@ -220,6 +221,9 @@ dsh plugin --profile web add github:YRN-playmaker/dsh-wallpaper_share#test
 | `particleSizeScale` | `1` | 粒子尺寸缩放 |
 | `effectStrengthScale` | `1` | 特效强度缩放 |
 | `puppetMeshRender` | `true` | puppet 网格渲染开关 |
+| `workspaceDir` | `''`（= 插件进程工作目录） | 工作区脉搏的扫描根目录 |
+| `workspacePulseWindowMs` | `90000` | 工作区脉搏改动保留窗口（更早的改动从气泡流淘汰） |
+| `workspacePulseAutoInstall` | `true` | 工作区脉搏内置包自动入库（卸载后重启会重装） |
 
 > 面板里的三档切换（预览 / 捕获 / 完整）是运行时 UI 设置，与上面的 `sceneRenderMode`（后端浏览器 / 外部 renderer 选择）不同。
 
@@ -244,6 +248,7 @@ dsh plugin --profile web add github:YRN-playmaker/dsh-wallpaper_share#test
 - `src/index.ts` — Node 半：WE 状态轮询、HTTP 路由、scene renderer 子进程管理、壁纸库扫描
 - `src/scene/` — SceneAdapter 模块（协议 / 能力探测 / renderer 进程 / WebSocket / 回退 / PKGV0001 解析 / SceneModel 图层模型 / .tex 解码 / puppet mdl 解析）
 - `src/client/` — 浏览器半（主题覆盖 / 背景层 / SceneCanvas / SceneModelRenderer 子集渲染器 / ParticleRuntime / GazeLens 眼动 / 专注透镜 / 沉浸模式 / wallpaper_share 面板）
+- `src/workspace/` — 工作区脉搏（文件系统快照差分 + 内置 DWP 组包器；`_dev/make-workspace-pulse.mjs` 为手动打包脚本）
 - `native/we-capture/` — Rust 原生捕获器源码（Windows Graphics Capture → JPEG）
 - `bin/we-capture.exe` — 随包发布的原生捕获器（Windows-only）
 - `docs/` — 格式规范与技术文档（`scene-format.md` / `scene-fallback.md` / `tex-format-findings.md` / `mdl-skinning-findings.md`）
@@ -329,6 +334,7 @@ WE must be running with a wallpaper applied; otherwise the background stays empt
 
 Other features:
 
+- **Workspace Pulse (built-in DWP)**: a new built-in dynamic wallpaper `workspace-pulse` — shows **recently changed files in your workspace** as up to 3 floating bubbles on the background, each with a green `+` / red `−` badge at its top-right marking whether the file is growing or shrinking (covers additions / deletions too). No git dependency (unsaved and binary files are caught as well); updates live once mounted, with a breathing hint when idle. Auto-installed into the library on first startup — see Wallpaper library → Local → dwp wallpapers
 - **DWP wallpapers & global-background rendering**: `dwp/1.0` protocol packages (text / solid / particle / mesh layers + 12 blend modes + 3 animations + 11 effects, deterministic rendering); mounting renders them as the DSH global background via WebGL2 (Canvas2D fallback on weak GPUs) while pausing WE sync to avoid conflicts, auto-restored after a refresh
 - **Settings persistence**: sync toggle, render mode, monitor lock, the three visual sliders, focus / eye-tracking preferences are written to `localStorage` (key `we-sync.settings`) and restored after a refresh or DSH restart; transient view state such as immersive mode and task flags are deliberately not persisted
 - **Self-diagnostic route** `/we-sync/diag` (localhost only; scene renderer status & texture extraction results)
@@ -467,6 +473,9 @@ dsh plugin --profile web add github:YRN-playmaker/dsh-wallpaper_share#test
 | `particleSizeScale` | `1` | particle size scale |
 | `effectStrengthScale` | `1` | effect strength scale |
 | `puppetMeshRender` | `true` | puppet mesh rendering toggle |
+| `workspaceDir` | `''` (= plugin process cwd) | workspace root scanned by Workspace Pulse |
+| `workspacePulseWindowMs` | `90000` | Workspace Pulse retention window (older changes drop out of the bubbles) |
+| `workspacePulseAutoInstall` | `true` | auto-install the built-in Workspace Pulse package into the library (reinstalled after uninstall + restart) |
 
 > The panel's 3-mode switch (Preview / Capture / Full) is a runtime UI setting, distinct from `sceneRenderMode` (backend browser / external selection).
 
@@ -491,6 +500,7 @@ dsh plugin --profile web add github:YRN-playmaker/dsh-wallpaper_share#test
 - `src/index.ts` — node half: WE polling, HTTP routes, scene renderer subprocess, library scan
 - `src/scene/` — SceneAdapter modules (protocol / capability probe / renderer process / WebSocket / fallback / PKGV0001 parsing / SceneModel layer model / .tex decoding / puppet mdl parsing)
 - `src/client/` — browser half (theme overrides / background layers / SceneCanvas / SceneModelRenderer / ParticleRuntime / GazeLens / focus lens / immersive mode / wallpaper_share panel)
+- `src/workspace/` — Workspace Pulse (filesystem snapshot diffing + built-in DWP packer; `_dev/make-workspace-pulse.mjs` is the manual packing script)
 - `native/we-capture/` — Rust native capture renderer source (Windows Graphics Capture → JPEG)
 - `bin/we-capture.exe` — shipped native capture renderer (Windows-only)
 - `docs/` — format & implementation docs (`scene-format.md` / `scene-fallback.md` / `tex-format-findings.md` / `mdl-skinning-findings.md`)

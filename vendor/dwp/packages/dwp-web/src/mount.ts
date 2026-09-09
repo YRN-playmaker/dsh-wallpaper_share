@@ -32,6 +32,8 @@ export interface Handle {
   pause(): void;
   seek(t: number): void;
   setParam(key: string, value: VarValue): void;
+  /** 批量参数覆写：等价逐个 setParam，但只在表实际变化时重绘一次（本地扩展，见 vendor README「本地补丁」）。 */
+  setParams(map: Record<string, VarValue>): void;
   resize(): void;
   snapshotAt(t: number): Promise<Blob>;
   dispose(): void;
@@ -180,6 +182,16 @@ export async function mount(canvas: HTMLCanvasElement, opts: MountOptions): Prom
     pause() { clockPause(clock); assets.pauseVideos(); if (raf) { cancelAnimationFrame(raf); raf = 0; } },
     seek(t) { seekClock(clock, t); drawFrame(clock.t); },
     setParam(key, value) { doc = setParam(doc, key, value); drawFrame(clock.t); },
+    setParams(map) {
+      let changed = false;
+      const cur = doc.overrides ?? {};
+      for (const [k, v] of Object.entries(map)) {
+        if (cur[k] === v) continue;
+        doc = setParam(doc, k, v);
+        changed = true;
+      }
+      if (changed) drawFrame(clock.t);
+    },
     resize() { vw = canvas.clientWidth; vh = canvas.clientHeight; drawFrame(clock.t); },
     async snapshotAt(t) {
       const wasRaf = raf; if (raf) { cancelAnimationFrame(raf); raf = 0; }

@@ -71,6 +71,17 @@ done
 内联结果（`grep -c 'collectAssetRefs' lib/client.js` 应 ≥ 1，且产物内不应出现
 `require("dwp-web")`）。
 
+## 本地补丁（更新快照时需重新套用）
+
+快照在本仓内有两处附加式小补丁（上游合并/更新快照后需重新检查）：
+
+1. **dwp-core `eval.ts`：文本层 `$var` 替换** — 新增并导出 `formatVars(value, vars)`，
+   text 层求值时先 `formatPlaceholders` 再做子串级 `$name` 替换（未定义变量原样保留）。
+   协议 §2 的 `$var` 本是整串替换（数值/颜色字段）；文本组合文案（如 `"近期改动 ● $ws_count"`）
+   需要子串语义。整串 `$name` 仍被 collectVarRefs 收录、受编译期孤儿检查约束。
+2. **dwp-web `mount.ts`：`Handle.setParams(map)` 批量参数覆写** — 等价逐个 `setParam`，
+   但对 `doc.overrides` 做等值短路，只在表实际变化时重绘一次（实时数据源轮询喂食用）。
+
 ## 后续演进
 
 多人维护 / 上 CI 时，可把本目录改为 pnpm workspace 成员或改为 git-tag / npm 依赖

@@ -1,5 +1,17 @@
 # Changelog
 
+## 26.9.9 - 2026-09-09
+
+### 🫧 工作区脉搏：内置 DWP 动态壁纸（新功能）
+
+把"当前工作区近期被改动的文件"变成背景上的**浮动气泡**：最多 3 个气泡，每个右上角带**绿 `+` / 红 `−` 徽章**，一眼看出文件在增长还是缩减（新增 / 删除也各自落色）；气泡下方标注文件名与字节级增减量（`+2.5 KB`），底部一行统计 `近期改动 ● N`，空闲时显示呼吸提示"工作区安静中…"。
+
+- **数据面**：`src/workspace/pulse.ts` 文件系统快照差分（mtime+size 对比）——不依赖 git，未保存 / 二进制 / 未跟踪文件都能捕获；跳过 `node_modules`/`.git`/`dist` 等重目录，条目数 + 深度双上限防失控；90s 窗口淘汰 + 1.5s TTL 缓存（无轮询时零开销）；`GET /we-sync/workspace/pulse` 供客户端消费。`CONFIG.workspaceDir` 可换扫描根目录（默认插件进程工作目录）。
+- **壁纸面**：内置 DWP 包 `workspace-pulse`（`src/workspace/pack.ts` 零依赖组包：气泡/预览 PNG 运行时生成 + stored-zip 写入器），首次启动自动入库到 壁纸库→本地→dwp壁纸（`CONFIG.workspacePulseAutoInstall` 可关；侧载包名称/预览现在也会从包内 manifest 兜底显示）。
+- **实时通道**：客户端仅在 `workspace-pulse` 挂载时轮询数据源，变更签名去重后经 `Handle.setParams()` 批量喂给场景（等值短路、单次重绘；挂载完成前到达的数据缓存首发，不闪空场景）。
+- **vendor 补丁**（附加式，见 `vendor/dwp/README.md`「本地补丁」）：dwp-core 文本层新增子串级 `$var` 替换（`formatVars`，组合文案如 `近期改动 ● $ws_count` 得以支持）；dwp-web `Handle` 新增 `setParams(map)` 批量参数覆写。
+- **用户可调**：manifest 参数 `pulse_scale`（0.8–1.25 气泡缩放）。
+
 ## 26.9.8 - 2026-09-06
 
 ### 🖥 面板双页虚拟滚动 + 启动器体验

@@ -13,6 +13,7 @@ import { getGaze, startGaze, isGazeRunning } from './GazeLens.ts'
 import { createPersistentSettings } from './settings.ts'
 import { DwpBackgroundLayer } from './dwp-background.ts'
 import { applyDwp, unapplyDwp, fetchApplied } from './market-api.ts'
+import { pulseVars, PULSE_DWP_ID, type PulseChange } from './pulse-vars.ts'
 
 export const inject = ['slots', 'theme']
 
@@ -646,6 +647,21 @@ export function apply(ctx: CordisCtx): void {
   let polling = false
   let lastHash = ''
   let lastWebPort = -1
+  // 工作区脉搏：只在 workspace-pulse DWP 挂载时轮询其数据源，变化才喂给场景（签名去重）
+  let lastPulseSig = ''
+  async function pollWorkspacePulse(): Promise<void> {
+    if (store.settings.dwpMounted !== PULSE_DWP_ID) { lastPulseSig = ''; return }
+    try {
+      const res = await fetch('/we-sync/workspace/pulse', { cache: 'no-store' })
+      if (!res.ok) return
+      const data = await res.json() as { changes: PulseChange[] }
+      const map = pulseVars(Array.isArray(data.changes) ? data.changes : [])
+      const sig = JSON.stringify(map)
+      if (sig === lastPulseSig) return
+      lastPulseSig = sig
+      dwpBg.setLiveVars(map)
+    } catch { /* node 半未就绪：下轮重试 */ }
+  }
   async function poll(): Promise<void> {
     if (polling) return
     polling = true
@@ -669,6 +685,7 @@ export function apply(ctx: CordisCtx): void {
         lastWebPort = typeof info.webPort === 'number' ? info.webPort : lastWebPort
         applyBackground()
       }
+      await pollWorkspacePulse()
     } catch { /* host 尚未就绪，下轮重试 */ }
     polling = false
   }
