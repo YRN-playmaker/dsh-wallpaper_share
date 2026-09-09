@@ -764,4 +764,20 @@ body[data-ds-dark-theme] .wesync-gaze-status.is-error { color: #fdba74; }
 body:has(.wesync-panel) [data-width-handle] {
   display: none;
 }
+
+/* ── 「设置」页收起宿主输入框 ─────────────────────────────────────────
+   share 面板自带全套交互控件，宿主输入框在设置页只会挡住面板底部行；
+   翻到「壁纸库」（或切走标签页）自动恢复。page 由 WallpaperSharePanel
+   随 state 反射到 body[data-wesync-page]，属性消失即还原。
+   收起姿势与沉浸模式同款（opacity+pointer-events，不改布局，seat 高度
+   变量稳定）。:has([data-composer-card]) 只认真正的输入条：授权／提问/
+   子代理只读条接管编辑器期间 seat 保持可见，不会吞掉等待回答的面板。 */
+body[data-wesync-page='settings'] [data-composer-seat]:has([data-composer-card]) {
+  opacity: 0 !important;
+  pointer-events: none !important;
+  transition: opacity 0.3s ease !important;
+}
+body[data-wesync-page] [data-composer-seat] {
+  transition: opacity 0.3s ease !important;
+}
 `

@@ -540,6 +540,20 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
       cancelAnimationFrame(raf)
     }
   }, [])
+  // 「设置」页收起宿主输入框（面板自带全套控件，输入框只会挡住面板底部行），
+  // 翻到「壁纸库」恢复。page 反射到 body 属性，CSS 规则在 panelStyle.ts
+  //（[data-composer-seat] 是 ConversationRoot 的常驻节点，与沉浸模式同款
+  // opacity+pointer-events 收起，不动布局）；卸载即移除属性，自动还原。
+  useEffect(() => {
+    document.body.dataset.wesyncPage = page
+    if (page === 'settings') {
+      // 焦点若在输入框里，隐藏前先归还（否则用户会往看不见的框里继续打字）
+      const seat = document.querySelector('[data-composer-seat]')
+      const ae = document.activeElement
+      if (seat !== null && ae instanceof HTMLElement && seat.contains(ae)) ae.blur()
+    }
+    return () => { delete document.body.dataset.wesyncPage }
+  }, [page])
   // 一套滚轮全接管（passive:false）：输入框/下拉框放行原生，其余进动量引擎
   useEffect(() => {
     const vp = viewportRef.current
