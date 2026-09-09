@@ -1,0 +1,17 @@
+{
+  "name": "dwp-gl",
+  "version": "0.1.0",
+  "description": "DWP WebGL2 executor: RenderPlan -> draw calls. Context-injected (testable in Node via mock GL).",
+  "license": "MIT",
+  "type": "module",
+  "main": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "dwp-core": "workspace:*"
+  },
+  "scripts": {
+    "test": "node --test --experimental-test-isolation=none \"test/*.test.ts\""
+  }
+}

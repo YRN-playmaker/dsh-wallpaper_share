@@ -55,6 +55,7 @@
     "README.md",
     "README.zh-CN.md",
     "LICENSE",
+    "vendor/dwp/",
     "tools/scene-renderer/"
   ]
 }

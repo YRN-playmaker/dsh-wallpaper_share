@@ -13,9 +13,9 @@
     "allowImportingTsExtensions": true,
     "baseUrl": ".",
     "paths": {
-      "dwp-web": ["./dwp-runtime-web/packages/dwp-web/src/index.ts"],
-      "dwp-core": ["./dwp-runtime-web/packages/dwp-core/src/index.ts"],
-      "dwp-gl": ["./dwp-runtime-web/packages/dwp-gl/src/index.ts"]
+      "dwp-web": ["./vendor/dwp/packages/dwp-web/src/index.ts"],
+      "dwp-core": ["./vendor/dwp/packages/dwp-core/src/index.ts"],
+      "dwp-gl": ["./vendor/dwp/packages/dwp-gl/src/index.ts"]
     }
   },
   "include": ["src"]

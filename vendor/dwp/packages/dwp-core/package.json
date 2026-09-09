@@ -1,0 +1,14 @@
+{
+  "name": "dwp-core",
+  "version": "0.1.0",
+  "description": "DWP scene solver: compile, $var, animation, layout -> RenderPlan. Pure TS, zero-DOM, deterministic.",
+  "license": "MIT",
+  "type": "module",
+  "main": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "node --test --experimental-test-isolation=none \"test/*.test.ts\""
+  }
+}
