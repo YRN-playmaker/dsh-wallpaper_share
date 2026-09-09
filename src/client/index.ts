@@ -19,6 +19,9 @@ export const inject = ['slots', 'theme']
 /** 插件版本：构建期由 tsdown 的 define 从 package.json 注入（未注入的裸跑为 'dev'）。 */
 export const PLUGIN_VERSION: string = process.env.DSH_WESYNC_VERSION ?? 'dev'
 
+/** 插件 GitHub 仓库主页（版本号角标点击跳转）。 */
+export const PLUGIN_REPO_URL = 'https://github.com/YRN-playmaker/dsh-wallpaper_share'
+
 export interface WeSyncMonitor {
   key: string
   file: string

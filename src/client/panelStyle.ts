@@ -176,6 +176,13 @@ export const PANEL_CSS = `
   color: var(--dsw-alias-label-caption);
   font-variant-numeric: tabular-nums;
   user-select: all;
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+.wesync-ver:hover {
+  color: var(--dsw-alias-brand-primary);
+  text-decoration: underline;
 }
 
 .wesync-title {

@@ -4,7 +4,7 @@
  * 样式类名由 PANEL_CSS 在 apply 阶段注入，不依赖 CSS Modules。
  */
 import { useEffect, useRef, useState } from 'react'
-import { store, PLUGIN_VERSION, type WeSyncInfo } from './index'
+import { store, PLUGIN_VERSION, PLUGIN_REPO_URL, type WeSyncInfo } from './index'
 import { startGaze, stopGaze, calibrate, onGazeStatus, hasCalibrationData, type GazeStatus } from './GazeLens.ts'
 import { fetchCatalog, fetchInstalled, buildCards, searchCards, collectTags, install, uninstall, type MarketEntry, type MarketCard } from './market-api.ts'
 import { fetchInstalled as fetchLauncherInstalled, installApp, uninstallApp, launchApp, setEntry, isValidHttpUrl, humanSize, get139Auth, set139Auth, getLauncherRoot, setLauncherRoot, type InstalledApp } from './launcher-api.ts'
@@ -1205,7 +1205,13 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
       <div className="wesync-card">
         <div className="wesync-head">
           <div className="wesync-title">{title}</div>
-          <span className="wesync-ver" title={t.versionTitle}>{'v' + PLUGIN_VERSION}</span>
+          <a
+            className="wesync-ver"
+            href={PLUGIN_REPO_URL}
+            target="_blank"
+            rel="noreferrer noopener"
+            title={t.versionTitle}
+          >{'v' + PLUGIN_VERSION}</a>
         </div>
         {subtitle !== '' ? <div className="wesync-sub">{subtitle}</div> : null}
         {monitors !== null

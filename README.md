@@ -76,7 +76,7 @@ dsh plugin --profile web add dsh-wallpaper_share   # 或见下方「安装」选
 
 | 卡片 | 内容 |
 | --- | --- |
-| **壁纸状态** | 壁纸名（标题行**右缘为插件版本号**，一键整段选中便于反馈问题）；下方副标题只承载诊断信息——scene 壁纸显示当前渲染通路（`场景 · 预览图 / 捕获 live 30fps / 浏览器模型渲染 / 回退：<原因>`），未应用壁纸时显示引导文案，其余类型整行不占；多显示器时出现「背景显示器」下拉；`⏻ 同步开启 / 关闭 / 暂停（DWP）` 三态按钮 |
+| **壁纸状态** | 壁纸名（标题行**右缘为插件版本号**，点击直达 GitHub 仓库）；下方副标题只承载诊断信息——scene 壁纸显示当前渲染通路（`场景 · 预览图 / 捕获 live 30fps / 浏览器模型渲染 / 回退：<原因>`），未应用壁纸时显示引导文案，其余类型整行不占；多显示器时出现「背景显示器」下拉；`⏻ 同步开启 / 关闭 / 暂停（DWP）` 三态按钮 |
 | **视觉效果** | 三档渲染模式分段按钮；「专注模式」及其展开条（眼动追踪 / 校准视线 / 文字吸附 / 实时状态）；透明度 · 模糊 · 阴影三个滑块（**专注开启时滑块隐藏**，改由任务态与透镜接管） |
 
 <img width="841" height="667" alt="image" src="https://github.com/user-attachments/assets/7d652c07-8344-4de3-abbd-75620375c0b6" />
@@ -322,7 +322,7 @@ WE must be running with a wallpaper applied; otherwise the background stays empt
 
 | Card | Contents |
 | --- | --- |
-| **Wallpaper status** | Wallpaper name (the **plugin version sits at the right edge of the title row**; click to select the whole row for bug reports); the subtitle below carries diagnostics only — for scene wallpapers it shows the active render path (`Scene · preview image / capture live 30fps / browser model render / fallback: <reason>`), a hint when no wallpaper is applied, and takes no row at all for other types; a "background monitor" dropdown appears with multiple monitors; the `⏻` button has three states — sync on / off / paused (DWP) |
+| **Wallpaper status** | Wallpaper name (the **plugin version sits at the right edge of the title row** and links to the GitHub repo); the subtitle below carries diagnostics only — for scene wallpapers it shows the active render path (`Scene · preview image / capture live 30fps / browser model render / fallback: <reason>`), a hint when no wallpaper is applied, and takes no row at all for other types; a "background monitor" dropdown appears with multiple monitors; the `⏻` button has three states — sync on / off / paused (DWP) |
 | **Visual effects** | The 3-mode segmented control; the focus-mode button with its flyout (eye tracking / calibrate gaze / text-line snap / live status); opacity · blur · shadow sliders (**hidden while focus mode is on** — task state and the lens take over) |
 
 <img width="841" height="667" alt="image" src="https://github.com/user-attachments/assets/7d652c07-8344-4de3-abbd-75620375c0b6" />
