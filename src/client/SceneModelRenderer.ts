@@ -1374,7 +1374,11 @@ export class SceneModelRenderer {
         }
         ctx.drawImage(mc.canvas, -mc.originX, -mc.originY)
       } else if (bmp !== null) {
-        // 源 = 纹理 Image 内容区域（画布左上角）；目标 = 图层 size（缺省用 Image 尺寸）
+        // 源 = 纹理 Image 内容区域（画布左上角）；目标 = 图层 size（缺省用 Image 尺寸）。
+        // src: spritesheet 帧裁剪会把当前帧画到离屏 canvas 再替换绘制源，
+        // 绘制源类型随之从 ImageBitmap 放宽为 ImageBitmap | HTMLCanvasElement
+        //（两者都是 drawImage / WebGL texImage2D 的合法图像源）。
+        let src: ImageBitmap | HTMLCanvasElement = bmp
         const ti = this.layerTexImage.get(layer.id)
         let sw = ti !== undefined ? ti[0] : bmp.width
         let sh = ti !== undefined ? ti[1] : bmp.height
@@ -1418,7 +1422,7 @@ export class SceneModelRenderer {
             }
             this.spriteFrameCache.set(layer.id, { frame: frameIdx, sx: rx, sy: ry, sw: rw, sh: rh, canvas: frameBmp })
           }
-          bmp = frameBmp
+          src = frameBmp
           sw = rw
           sh = rh
         }
@@ -1436,10 +1440,10 @@ export class SceneModelRenderer {
           // WebGL 逐像素 UV 场扰动（独立实现的数学等价 shader）；不可用时回退条带近似
           if (this.wwGL !== null || WaterwavesGL.available) {
             if (this.wwGL === null) this.wwGL = new WaterwavesGL()
-            eff = this.wwGL.render(bmp, sw, sh, maskInfo !== undefined ? maskInfo.bmp : null, maskInfo !== undefined ? maskInfo.useA : false, wws, this.animTime, String(layer.id))
+            eff = this.wwGL.render(src, sw, sh, maskInfo !== undefined ? maskInfo.bmp : null, maskInfo !== undefined ? maskInfo.useA : false, wws, this.animTime, String(layer.id))
           }
           if (eff === null) {
-            eff = applyWaterwaves(bmp, sw, sh, wws, this.animTime, maskInfo !== undefined ? maskInfo.bmp : null)
+            eff = applyWaterwaves(src, sw, sh, wws, this.animTime, maskInfo !== undefined ? maskInfo.bmp : null)
           }
           ctx.drawImage(eff, 0, 0, sw, sh, -dw / 2, -dh / 2, dw, dh)
         } else if (nitros.length > 0) {
@@ -1458,11 +1462,11 @@ export class SceneModelRenderer {
               smoothness: e.smoothness,
               useMask: e.mask !== null && e.mask !== '',
             }))
-            eff = this.nitroGL.render(bmp, sw, sh, nt.noise, nt.masks, params, this.animTime, String(layer.id))
+            eff = this.nitroGL.render(src, sw, sh, nt.noise, nt.masks, params, this.animTime, String(layer.id))
           }
           if (eff === null) {
             // WebGL 不可用或无 nitro 纹理：直接绘制底图（无烟雾近似）
-            ctx.drawImage(bmp, 0, 0, sw, sh, -dw / 2, -dh / 2, dw, dh)
+            ctx.drawImage(src, 0, 0, sw, sh, -dw / 2, -dh / 2, dw, dh)
           } else {
             ctx.drawImage(eff, 0, 0, sw, sh, -dw / 2, -dh / 2, dw, dh)
           }
@@ -1475,9 +1479,9 @@ export class SceneModelRenderer {
           const amp = shk.strength * shk.strength * effScale
           const dx = offset * amp * fd[0] * dw
           const dy = offset * amp * fd[1] * dh
-          ctx.drawImage(bmp, 0, 0, sw, sh, -dw / 2 + dx, -dh / 2 + dy, dw, dh)
+          ctx.drawImage(src, 0, 0, sw, sh, -dw / 2 + dx, -dh / 2 + dy, dw, dh)
         } else {
-          ctx.drawImage(bmp, 0, 0, sw, sh, -dw / 2, -dh / 2, dw, dh)
+          ctx.drawImage(src, 0, 0, sw, sh, -dw / 2, -dh / 2, dw, dh)
         }
       } else {
         // 占位标记（effect/composelayer/无纹理图层）：极小圆点，避免像"错误控件"
