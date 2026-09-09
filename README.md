@@ -30,7 +30,6 @@
 
 - [⚡ 30 秒上手](#-30-秒上手)
 - [✨ 功能一览](#-功能一览)
-- [🧭 面板导览](#-面板导览)
 - [🎨 渲染模式与兼容矩阵](#-渲染模式与兼容矩阵)
 - [🖼️ Scene 渲染与回退](#-scene-渲染与回退)
 - [🔍 专注模式与眼动追踪](#-专注模式与眼动追踪)
@@ -84,7 +83,6 @@ dsh plugin --profile web add dsh-wallpaper_share   # 或见下方「安装」选
 
 其他功能：
 - **DWP 壁纸与全局背景渲染**：`dwp/1.0` 协议包（纯文本 / solid / 粒子 / mesh 图层 + 12 种混合模式 + 3 种动画 + 11 种效果，确定性渲染）；挂载后经 WebGL2 真实渲染为 DSH 全局背景（低配 Canvas2D 降级），同时暂停 WE 同步避免冲突，刷新后自动恢复
-- **面板导览**`wallpaper_share` 标签页采用**双页虚拟滚动**：「设置 ⇄ 壁纸库」两页纵向叠放、中间留断层，一套滚轮全接管——页内跟手滚动 + 惯性阻尼，滚到页界继续滚即**蓄力翻页**（250ms 无输入弹回防误触），右缘页签显示当前页（黄色高亮）与蓄力进度，点击可直达；所有操作即时生效、无需保存：
 - **设置持久化**：同步开关、渲染模式、显示器锁、三档渲染模式、专注 / 眼动等偏好写入 `localStorage`（键 `we-sync.settings`），刷新或重启 DSH 后自动恢复；沉浸模式等临时视图态与任务状态一律不落盘
 - **自诊断路由** `/we-sync/diag`（仅本机可访问，含 scene renderer 状态与纹理提取结果）
 
@@ -117,7 +115,7 @@ scene 壁纸在捕获 / 完整档下的渲染优先级与回退链：
 3. **静态纹理**：提取 pkg 内嵌高清纹理垫底。
 4. **预览图**：以上皆不可用 → WE 预览图。
 
-当前走的是哪一层，直接显示在面板副标题上（见[面板导览](#-面板导览)）；更细的状态在 `/we-sync/diag`。
+当前走的是哪一层，直接显示在面板副标题上；更细的状态在 `/we-sync/diag`。
 
 **原生捕获器原理**：WE 的 DX11 渲染窗口是 Progman 子窗口、WGC 不接受子窗口，故捕获其顶层根 Progman / WorkerW，BGRA→JPEG 按外部渲染器协议输出到 stdout。因为镜像的是 **WE 自身的渲染结果**，无需在 JS 端复刻那套 ~500KB 软渲染引擎，效果 100% 覆盖。多显示器下顶层根窗横跨整个虚拟桌面，捕获器按锁定的那块 WPE 子窗矩形用 `CopySubresourceRegion` + `D3D11_BOX` 只回读目标屏区域再编码（换算经 `ClientToScreen` / `GetClientRect` 归一化，DPI 缩放非 100% 同样正确）→ 输出严格是单块屏。`bin/we-capture.exe`（约 540KB，Windows-only）随包发布，Rust 源码在 `native/we-capture/`（`cargo build --release` 可重建，含 `--selftest` 诊断模式）；DSH 侧 `probeRenderer` 自动发现，`sceneRenderMode='auto'` 检测到原生渲染器即走 external，否则回退 browser。
 
@@ -153,7 +151,7 @@ scene 壁纸在捕获 / 完整档下的渲染优先级与回退链：
 | 档位 | 适合谁 | 安装命令 |
 | --- | --- | --- |
 | 🟢 **小白** | 不纠结版本，直接拉当前主流 Harness 环境的推荐版 | `dsh plugin --profile web add dsh-wallpaper_share` |
-| 🔵 **rc（稳定版本）** | 适配 harness 为 rc 架构的推荐版本，新功能适配较慢 | `dsh plugin --profile web add dsh-wallpaper_share@rc` |
+| 🔵 **rc（稳定版本）** | 适配 harness 为 rc 架构的推荐版本，新功能适配较慢 | `dsh plugin --profile web add dsh-wallpaper_share@rc010` |
 | 🟡 **test（测试版本）** | 用于测试的版本，可能有未完成功能 | `dsh plugin --profile web add dsh-wallpaper_share@test` |
 
 ### 🔧 其他安装方式
@@ -255,16 +253,11 @@ dsh plugin --profile web add github:YRN-playmaker/dsh-wallpaper_share#test
 - `CHANGELOG.md` — 版本历史
 
 ## 🆕 已知问题
-- share页面下的滚轮翻页可能会显示不全，此时需要先将网页滚轮重置再切换share页才正常显示
 
 ### 环境限制
 
 - **预览图不显示**：市场卡片缩略图指向 `raw.githubusercontent.com`，当前环境不可达。图片加载失败后 `onError` 隐藏显示。
 - **WE 安装目录不存在**：自动检测到目录但不存在时壁纸同步不可用（市场功能不受影响），可在 `CONFIG.wallpaperEngineDir` 手动指定。
-
-### 构建与维护（不影响已发布包）
-
-- **`dwp-runtime-web/` 未纳入版本控制**：DWP 渲染运行时（`@dwp/web`）通过 `tsdown` 的本地路径 alias 在构建时内联进 `lib/client.js`，而该目录被 `.gitignore` 忽略、也不是 npm 依赖。**终端用户从 GitHub / npm 装的是已内联的预构建 `lib/`，不受影响、DWP 正常可用**；但**干净 clone 后 `pnpm build` 会因缺该目录而构建失败或静默产出坏包**——即"重新构建"目前只在存有 `dwp-runtime-web/` 的机器上可复现。计划：多人维护 / 上 CI 前，将其纳入 pnpm workspace 或改为 git-tag 依赖，并把 alias 兜底改为"缺目录即报错"。
 
 ## 📄 License
 
@@ -279,7 +272,6 @@ GPL-3.0
 
 - [⚡ Quick Start](#-quick-start)
 - [✨ Features](#-features)
-- [🧭 Panel Tour](#-panel-tour)
 - [🎨 Render Modes & Compatibility Matrix](#-render-modes--compatibility-matrix)
 - [🖼️ Scene Rendering & Fallback](#-scene-rendering--fallback)
 - [🔍 Focus Mode & Eye Tracking](#-focus-mode--eye-tracking)
@@ -291,59 +283,55 @@ GPL-3.0
 - [🆕 Known Issues](#-known-issues)
 - [📄 License](#-license-1)
 
-Syncs the wallpaper Wallpaper Engine is currently showing into the DeepSeek Harness Web UI background, with a `wallpaper_share` tab to tune render mode, visual effects, focus mode and the wallpaper library. Full scene animation and application import are supported.
+Syncs the wallpaper Wallpaper Engine is currently showing into the DeepSeek Harness Web UI background, and supports tuning render mode, visual effects, focus mode, plus external wallpapers for the library and direct-link app downloads.
 
-> **Display-only sync**: it only reads WE state; it never controls or changes your desktop wallpaper (switch wallpapers inside WE).
+> **Display-only sync**: it only reads WE state; it never controls or changes your desktop wallpaper.
 > **No sensitive data**: the code contains no Steam username / SteamID / token; the WE install dir is auto-detected at runtime (registry `HKCU\Software\WallpaperEngine\installPath` → common Steam paths), manual config only if detection fails. Eye tracking runs fully locally — camera frames never leave the device.
 
 ## ⚡ Quick Start
 
 ```bash
-dsh plugin --profile web add dsh-wallpaper_share   # or pick a tier below
+dsh plugin --profile web add dsh-wallpaper_share   # or pick a tier in "Installation" below
 # restart dsh (web profile), then open http://127.0.0.1:3080
 ```
 
 You get three things:
 
-1. the **page background** becomes WE's current wallpaper (follows switches within ~2s), with the UI floating on top;
+1. the **page background** becomes WE's current wallpaper (follows switches within ~2s), with panels and cards floating on top;
 2. a **`wallpaper_share` tab** above the conversation (next to Chat and Trajectory) holding every toggle;
-3. a round status light on the left edge **when the sidebar is collapsed** — it also opens immersive mode.
+3. a round status light on the left edge **when the sidebar is collapsed** (green / blue / yellow) — click it to enter immersive mode.
 
-WE must be running with a wallpaper applied; otherwise the background stays empty and the panel says so. Diagnostics: `http://127.0.0.1:3080/we-sync/diag` (localhost only; use the port printed at startup — 3080 by default).
+WE must be running with a wallpaper applied; otherwise the background stays empty and the panel shows "no wallpaper applied". Diagnostics: `http://127.0.0.1:3080/we-sync/diag` (localhost only; use the port printed at startup — 3080 by default).
 
 > **Zero-config**: no API Key, no signup, no extra setup of any kind — install and go. (Note: the no-sensitive-data notice at the top is a privacy statement — the code contains no Steam username or token; you are never asked to provide one.)
 
 ## ✨ Features
 
-- **Real-time sync**: the page background follows WE's current wallpaper within ~2s
-- **Multi-monitor**: auto-follows the most recently changed; can lock a specific monitor
-- **3 render modes**: Preview / Capture / Full — see the [matrix](#-render-modes--compatibility-matrix)
-- **Native scene capture renderer**: bundled Rust `we-capture.exe` uses Windows Graphics Capture to grab WE's rendered desktop, mirroring WE's own output → GLSL / SceneScript / keyframes / particles **all covered natively**
-- **Focus mode**: a center-clear, edge-blurred reading window; follows the mouse by default
-- **Eye tracking (experimental)**: optional; uses the webcam to follow your gaze; 9-point calibration, text-line snap, anti-jitter
-- **Wallpaper library · Local / Market**: Local manages what's installed — `dwp` packages (click to mount as the global background, click again to unmount) and `we apps` (click to open their folder), with title search, thumbnails and counts; Market browses the `dwp-registry` catalog with name / author search, tag filters and **install / update / uninstall**
-- **DWP wallpapers & global-background rendering**: `dwp/1.0` protocol packages (text / solid / particle / mesh layers + 12 blend modes + 3 animations + 11 effects, deterministic rendering); mounting renders them as the DSH global background via WebGL2 (Canvas2D fallback on weak GPUs) while pausing WE sync to avoid conflicts, auto-restored after a refresh
-- **Immersive mode**: one click hides the session header, transcript and composer so the wallpaper owns the screen; web / app wallpapers become directly interactive underneath (see [Immersive mode](#-immersive-mode--task-indicator))
-- **Visual sliders**: panel opacity 0–100% / background blur 0–30px / shadow depth 0–100%, live
-- **Background task indicator**: a circular cue when the sidebar is collapsed (green idle / blue running / yellow awaiting approval)
-- **Sync toggle**: one-click on/off, with a third "paused (DWP)" state while a DWP is mounted
-- **Settings persistence**: sync, render mode, monitor lock, focus / eye-tracking preferences go to `localStorage` (key `we-sync.settings`) and restore after a refresh or restart; transient view state (immersive) and task flags never do
-- **Self-diagnostic route** `/we-sync/diag` (localhost only; scene renderer status & texture extraction results)
+- **Real-time sync**: after you switch wallpapers in WE, the harness page background follows the latest changed wallpaper automatically; with multiple monitors you can lock one as the background source. Three render modes are available to tune power draw — see [Render Modes & Compatibility Matrix](#-render-modes--compatibility-matrix)
+<img width="1917" height="1018" alt="image" src="https://github.com/user-attachments/assets/6f147644-6283-456b-a9eb-c9c6d9925079" />
 
-## 🧭 Panel Tour
+- **Sidebar immersive mode**: one click hides the session header, transcript and composer so the wallpaper owns the view; web / app wallpapers become directly mouse-interactive under immersion (see [Immersive Mode](#-immersive-mode--task-indicator))
 
-The `wallpaper_share` tab uses **two-page virtual scrolling**: "Settings ⇄ Library" stacked vertically with a gap between pages, one wheel handler for everything — momentum scrolling with inertia inside a page, and a **charge-to-flip** zone when you keep scrolling at a page boundary (springs back after 250ms idle to prevent accidents). The right-edge tab strip shows the current page (yellow highlight) plus charge progress and supports click-to-jump. Everything applies instantly — there is no save button.
+- **Focus mode**: overlays a center-clear, edge-blurred reading window on the wallpaper to focus on the task and improve text readability; follows the mouse by default, or uses the webcam to infer the gaze point so the lens follows your eyes; 9-point calibration, text-line snap, anti-jitter
+<img width="426" height="240" alt="Video Project 29" src="https://github.com/user-attachments/assets/57daf64c-ff2b-40c7-aeef-73cac46c4c2b" />
+
+- **Wallpaper library**: grouped into **Local** / **Market** / **App Launcher**. Local manages what's installed — `dwp wallpapers` (click to mount as the global background, click again to unmount) and `we apps` (click to open their folder, with a "▶ Launch" button), with title search, thumbnails and counts; Market browses the `dwp-registry` catalog with name / author search, tag filters and **install / update / uninstall**; **App Launcher** accepts pasted `http(s)` direct links (`.zip` / `.7z` / `.exe`, **fill the archive password for encrypted archives**) or some **cloud-drive share links** (e.g. `yun.139.com/shareweb/#/w/i/…`, passcode in the password field), wakes DSH to download automatically, unpacks and wraps them into **WE-app-style entries** (auto-generated `project.json` + preview card) in the library; each card offers a one-click "▶ Launch", plus uninstall / update preview / switching between multiple entries. It does not require WE to run and is unaffected by newer WE versions dropping application wallpapers.
+<img width="737" height="675" alt="image" src="https://github.com/user-attachments/assets/7567c226-7ea4-4fcb-a3b7-11190ee681ff" />
+
+**Settings page↓**
 
 | Card | Contents |
 | --- | --- |
-| **Wallpaper status** | Wallpaper name, with the **plugin version at the right edge of the title row** (single-click selects it whole, handy in bug reports); below it a subtitle reserved for diagnostics — the active render path for scene wallpapers (`Scene · preview image / capture live 30fps / browser model render / fallback: <reason>`), a hint when no wallpaper is applied, and nothing at all otherwise; a monitor dropdown when more than one display is present; the `⏻` sync button with three states |
-| **Visual effects** | The 3-mode segmented control; the focus-mode button with its flyout (eye tracking / calibration / text-line snap / live status); opacity · blur · shadow sliders — **hidden while focus mode is on**, where task state and the lens take over |
-| **Library** | "Wallpaper read locations" for custom folders (a single wallpaper dir or a collection root); launcher-installed apps merge into this list (tagged "launcher install location", rename / migrate supported); Local / Market tabs, `dwp` / `we app` filters, title search, paging (+60), and market install / update / uninstall; the **App Launcher** tab installs from direct links (`.zip`/`.7z`/`.exe`, password field for encrypted archives) and **139 share links** (passcode in the password field; raw-file download needs a one-time Authorization paste), auto-wraps into WE-app-style entries (json + preview image) with one-click launch (confirmation every time) |
+| **Wallpaper status** | Wallpaper name (the **plugin version sits at the right edge of the title row**; click to select the whole row for bug reports); the subtitle below carries diagnostics only — for scene wallpapers it shows the active render path (`Scene · preview image / capture live 30fps / browser model render / fallback: <reason>`), a hint when no wallpaper is applied, and takes no row at all for other types; a "background monitor" dropdown appears with multiple monitors; the `⏻` button has three states — sync on / off / paused (DWP) |
+| **Visual effects** | The 3-mode segmented control; the focus-mode button with its flyout (eye tracking / calibrate gaze / text-line snap / live status); opacity · blur · shadow sliders (**hidden while focus mode is on** — task state and the lens take over) |
 
-Two host-UI conventions worth knowing:
+<img width="841" height="667" alt="image" src="https://github.com/user-attachments/assets/7d652c07-8344-4de3-abbd-75620375c0b6" />
 
-- **This tab disables transcript-width dragging**: the pair of drag handles beside the conversation is hidden on `wallpaper_share` (exactly like the Trajectory tab) and still works on Chat.
-- The tab is a session-scoped slot, so it remounts when you switch sessions; locale and toggle state are restored from a module-level store rather than re-detected.
+Other features:
+
+- **DWP wallpapers & global-background rendering**: `dwp/1.0` protocol packages (text / solid / particle / mesh layers + 12 blend modes + 3 animations + 11 effects, deterministic rendering); mounting renders them as the DSH global background via WebGL2 (Canvas2D fallback on weak GPUs) while pausing WE sync to avoid conflicts, auto-restored after a refresh
+- **Settings persistence**: sync toggle, render mode, monitor lock, the three visual sliders, focus / eye-tracking preferences are written to `localStorage` (key `we-sync.settings`) and restored after a refresh or DSH restart; transient view state such as immersive mode and task flags are deliberately not persisted
+- **Self-diagnostic route** `/we-sync/diag` (localhost only; scene renderer status & texture extraction results)
 
 ## 🎨 Render Modes & Compatibility Matrix
 
@@ -355,6 +343,8 @@ The segmented control at the top of the panel decides how the wallpaper is prese
 | **Capture** (perf) | Capture WE desktop | scene uses the **native `we-capture.exe`**, mirroring WE's own rendered desktop → full effect coverage; falls back to browser rendering when WE isn't running |
 | **Full** (enhanced) | Browser pkg render | scene uses the **browser subset renderer**, parsing `.pkg` and redrawing in-browser, independent of WE |
 
+The matrix per wallpaper type (the three modes only truly differ for **scene**; for video / web / image, Capture and Full behave the same and both load the source):
+
 | Type | Preview | Capture | Full |
 | --- | --- | --- | --- |
 | `video` | static preview | plays source video (HTTP Range, seekable) | plays source video |
@@ -362,8 +352,6 @@ The segmented control at the top of the panel decides how the wallpaper is prese
 | `image` | static preview | shows source image | shows source image |
 | `scene` | static preview | **native WE desktop capture** (full coverage; falls back to browser when WE not running) | **browser pkg render** (WE-independent, subset) |
 | `application` / `other` | static preview | static preview (viewable in the library) | static preview |
-
-The three modes only truly differ for **scene**; for video / web / image, Capture and Full both load the source.
 
 ## 🖼️ Scene Rendering & Fallback
 
@@ -374,7 +362,7 @@ Priority and fallback chain for scene wallpapers under Capture / Full:
 3. **Static textures**: extracted pkg textures as a base layer.
 4. **Preview image**: if none of the above → WE preview.
 
-Which layer is live is shown in the panel subtitle (see [Panel Tour](#-panel-tour)); finer state lives in `/we-sync/diag`.
+Which layer is live is shown in the panel subtitle; finer state lives in `/we-sync/diag`.
 
 **How the capture renderer works**: WE's DX11 window is a child of Progman and WGC rejects child windows, so it captures the top-level Progman / WorkerW root, converts BGRA→JPEG and emits frames over stdout via the external-renderer protocol. Because it mirrors **WE's own rendering**, no ~500KB JS reimplementation is needed and effects are 100% covered. With multiple monitors the top-level root window spans the whole virtual desktop, so the capture renderer crops to the locked WPE child-window rect via `CopySubresourceRegion` + `D3D11_BOX` before encoding (normalized through `ClientToScreen` / `GetClientRect`, correct under non-100% DPI scaling) → the output is strictly one display. `bin/we-capture.exe` (~540KB, Windows-only) ships in the package; Rust source in `native/we-capture/` (`cargo build --release`, with a `--selftest` mode); DSH's `probeRenderer` auto-discovers it and `sceneRenderMode='auto'` prefers external when found, else browser.
 
@@ -409,9 +397,8 @@ When the sidebar is **collapsed**, a 34px round light appears on the left edge (
 
 | Tier | Who it's for | Install command |
 | --- | --- | --- |
-| 🟢 **Beginner (latest)** | Don't fuss over versions — just grab the recommended build for the current mainstream Harness | `dsh plugin --profile web add dsh-wallpaper_share` |
-| 🔵 **rc (stable)** | Recommended build for a Harness on the rc architecture; new features are adapted more slowly | `dsh plugin --profile web add dsh-wallpaper_share@rc` |
-| 🟣 **alpha (new)** | Recommended build for a Harness on the alpha architecture | `dsh plugin --profile web add dsh-wallpaper_share@alpha` |
+| 🟢 **Beginner** | Don't fuss over versions — just grab the recommended build for the current mainstream Harness | `dsh plugin --profile web add dsh-wallpaper_share` |
+| 🔵 **rc (stable)** | Recommended build for a Harness on the rc architecture; new features are adapted more slowly | `dsh plugin --profile web add dsh-wallpaper_share@rc010` |
 | 🟡 **test (testing)** | For testing only; may contain unfinished features | `dsh plugin --profile web add dsh-wallpaper_share@test` |
 
 ### 🔧 Other install methods
@@ -438,7 +425,7 @@ dsh plugin --profile web add dsh-wallpaper_share
 dsh plugin --profile web add ./dsh-wallpaper_share-26.9.8.tgz
 #   install from a local tarball (26.9.8)
 dsh plugin --profile web add github:YRN-playmaker/dsh-wallpaper_share#test
-#   install the test branch (test tier, latest dev build)
+#   install the test branch from GitHub (test tier, includes wallpaper effect tweaks, page feature updates, etc.)
 ```
 
 ```bash
@@ -514,27 +501,10 @@ dsh plugin --profile web add github:YRN-playmaker/dsh-wallpaper_share#test
 
 ## 🆕 Known Issues
 
-> Applies to plugin `v26.9.8` / Harness `0.1.2-rc.1`.
-
-### Compatibility (breaking changes in Harness 0.1.2 — adapted)
-
-All four regressions introduced by `0.1.2-alpha.2` are fixed in `v26.9.4` and were checked against the `0.1.2-rc.1` host implementation:
-
-- **New session**: `workspaces.startSession` was removed; the orb now calls `ctx.get('uiWorkspace')?.startSession()`, falling back to `workspaces` on older hosts.
-- **Orb task color**: `sessions` is now resolved through `ctx.inject(['sessions'], …)`, so the subscription attaches once the host provides it instead of reading `undefined` at apply time and staying idle-green.
-- **Immersive mode**: the session header is now matched by `[data-slot="conversation.session.header"]` (slot rendering adds a wrapper, so the old `[data-phase] > header` missed silently); the transcript and composer are hidden through `[data-conversation-scroll]`.
-- **⏻ glyph**: `.wesync-btn` appends `'Segoe UI Symbol'` / `'Segoe UI Emoji'` after the host's `--dsw-font-family`, so only U+23FB falls through to a symbol font and Latin/CJK text keeps the host font.
-
-Service lookups are all resolved lazily at use time now, so behaviour on `0.1.0-rc.6` ~ `0.1.2-alpha.1` is unchanged.
-
 ### Environment limits
 
 - **Market thumbnails do not load**: catalog thumbnails point at `raw.githubusercontent.com`, unreachable in some environments; the `onError` handler hides them.
 - **Wallpaper Engine directory missing**: when auto-detection resolves to a non-existent directory, wallpaper sync is unavailable (the market is unaffected) — set `CONFIG.wallpaperEngineDir` manually.
-
-### Build & maintenance (does not affect shipped packages)
-
-- **`dwp-runtime-web/` is not version-controlled**: the DWP render runtime (`@dwp/web`) is inlined into `lib/client.js` at build time via a `tsdown` local-path alias, but that directory is `.gitignore`d and is not an npm dependency. **End users installing from GitHub / npm get the prebuilt, already-inlined `lib/` and are unaffected — DWP works normally**; however, **a clean `git clone` + `pnpm build` fails or silently produces a broken bundle because the directory is missing** — rebuilding is currently only reproducible on a machine that has `dwp-runtime-web/`. Plan: before multi-maintainer / CI, fold it into a pnpm workspace or switch to a git-tag dependency, and make the alias fallback fail loudly when the directory is absent.
 
 ## 📄 License
 
