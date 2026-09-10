@@ -14,6 +14,7 @@ import { createPersistentSettings } from './settings.ts'
 import { DwpBackgroundLayer } from './dwp-background.ts'
 import { applyDwp, unapplyDwp, fetchApplied } from './market-api.ts'
 import { pulseVars, PULSE_DWP_ID, type PulseChange } from './pulse-vars.ts'
+import { clockSig, clockVars } from './clock-vars.ts'
 
 export const inject = ['slots', 'theme']
 
@@ -520,6 +521,11 @@ export function apply(ctx: CordisCtx): void {
   const statusObserver = new MutationObserver(() => { scheduleSync() })
   statusObserver.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-sidebar-collapsed'] })
 
+  /** 渲染模式 → DWP 纹理档位：「增强/完整」用高档纹理，其余（预览/捕获）用低档。 */
+  function qualityOf(mode: 'eco' | 'perf' | 'enhanced'): 'sd' | 'hd' {
+    return mode === 'enhanced' ? 'hd' : 'sd'
+  }
+
   function applyBackground(): void {
     // DWP 挂载优先：接管背景层，停掉所有 WE 层，忽略 WE info（避免同步 / 性能模式与 DWP 抢背景）。
     if (store.settings.dwpMounted !== null) {
@@ -533,6 +539,8 @@ export function apply(ctx: CordisCtx): void {
         'html { background-color: #0d0e12; }' +
         'body::after { content: ""; position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: -1; ' +
         'background: linear-gradient(rgba(6,8,12,' + shadowAlpha.toFixed(3) + '), rgba(6,8,12,' + (shadowAlpha * 0.85).toFixed(3) + ')); }'
+      // 档位先同步：切换渲染模式时这里会按新档位重新挂载（低档位不拉 8K 纹理）
+      dwpBg.setQuality(qualityOf(store.settings.renderMode))
       void dwpBg.mount(store.settings.dwpMounted)
         .then(() => dwpBg.applyVisuals(blurPx, scale))
         .catch((e: unknown) => { console.error('[dwp] 背景挂载失败：', e) })
@@ -662,6 +670,20 @@ export function apply(ctx: CordisCtx): void {
       dwpBg.setLiveVars(map)
     } catch { /* node 半未就绪：下轮重试 */ }
   }
+  // 时钟/昼夜/档位：任何挂载中的 DWP 都会收到 hour / night_alpha / night_on / day_on
+  // 以及 hd_on / night_sd / night_hd 七个变量，场景按需引用。
+  // 「DeepSeek 日夜」用 night_sd / night_hd 在 18:00 与 06:00 切图（边界软过渡），
+  // 并按渲染模式选档：预览/捕获 = 低档 PNG，增强/完整 = 高清 PNG。
+  // 与 workspace-pulse 的变量互不干扰：Handle.setParams 是逐键覆写（vendor/dwp 的 mount.ts）。
+  let lastClockSig = ''
+  function feedClockVars(): void {
+    if (store.settings.dwpMounted === null) { lastClockSig = ''; return }
+    const vars = clockVars(new Date(), { hd: qualityOf(store.settings.renderMode) === 'hd' })
+    const sig = clockSig(vars)
+    if (sig === lastClockSig) return
+    lastClockSig = sig
+    dwpBg.setLiveVars(vars)
+  }
   async function poll(): Promise<void> {
     if (polling) return
     polling = true
@@ -686,6 +708,7 @@ export function apply(ctx: CordisCtx): void {
         applyBackground()
       }
       await pollWorkspacePulse()
+      feedClockVars()
     } catch { /* host 尚未就绪，下轮重试 */ }
     polling = false
   }

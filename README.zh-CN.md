@@ -5,7 +5,7 @@
 <div align="center">
   <a href="https://www.npmjs.com/package/dsh-wallpaper_share"><img alt="npm version" src="https://img.shields.io/npm/v/dsh-wallpaper_share" /></a>
   <a href="https://opensource.org/licenses/GPL-3.0"><img alt="License: GPL-3.0" src="https://img.shields.io/badge/License-GPL--3.0-blue.svg" /></a>
-  <a href="https://github.com/YRN-playmaker/dsh-wallpaper_share/releases"><img alt="插件版本 v26.9.8" src="https://img.shields.io/badge/v26.9.8-4d6bfe" /></a>
+  <a href="https://github.com/YRN-playmaker/dsh-wallpaper_share/releases"><img alt="插件版本 v26.9.10-T" src="https://img.shields.io/badge/v26.9.10--T-4d6bfe" /></a>
 </div>
 
 [中文](README.zh-CN.md) | [English → README.md](README.md#english)
@@ -63,8 +63,10 @@ dsh plugin --profile web add dsh-wallpaper_share   # 或见下方「安装」选
 - **原生 scene 捕获渲染器**：随包内置 Rust 编写的 `we-capture.exe`，用 Windows Graphics Capture 抓取 WE 正在渲染的桌面，镜像 WE 自身输出 → GLSL / SceneScript / 关键帧 / 粒子等**所有 WE 效果天然全覆盖**
 - **专注透镜**：叠加一个圆心清晰、圆外模糊的阅读窗；默认跟随鼠标，开专注即生效
 - **眼动追踪（实验）**：可选，用摄像头推断注视点让透镜跟随视线；9 点校准、文字吸附、抗抖动
-- **壁纸库 · 本地 / 市场**：按**本地**与**市场**两大分类浏览。本地一栏管理已装内容——`dwp壁纸`（点击即挂载为全局背景，已挂载再点取消）与 `we 应用`（点击打开所在文件夹），带标题搜索、缩略图与计数；市场一栏浏览 `dwp-registry` 目录，支持名称 / 作者搜索、标签筛选与**安装 / 更新 / 卸载**
+- **壁纸库 · 本地 / 市场**：按**本地**与**市场**两大分类浏览。本地一栏管理已装内容——`dwp壁纸`（点击即挂载为全局背景，已挂载再点取消）与 `应用`（**大类**，下分 `we应用` 与 `应用`；点击卡片即启动，每次启动弹确认），带标题搜索、缩略图与计数；搜索框右侧的**「管理」**开关进入管理模式：卡片整体轻微晃动，**点卡片即多选**（选中项停住晃动、背景转蓝并打勾），选择条给出「已选 N / 卸载选中 / 清空选择」，可跨 `dwp壁纸` 与 `应用` 一次选完再统一卸载（确认弹层列出全部将被删除的项）；每张卡仍保留「打开源文件 / 卸载」单项操作，dwp 的「打开源文件」会在资源管理器里定位包文件——**卸载只对 dwp 壁纸与启动器装的应用开放**，WE 工坊内容点了只给提示、不参与多选（绝不删 Steam 内容）；市场一栏浏览 `dwp-registry` 目录，支持名称 / 作者搜索、标签筛选与**安装 / 更新 / 卸载**
 - **DWP 壁纸与全局背景渲染**：`dwp/1.0` 协议包（纯文本 / solid / 粒子 / mesh 图层 + 12 种混合模式 + 3 种动画 + 11 种效果，确定性渲染）；挂载后经 WebGL2 真实渲染为 DSH 全局背景（低配 Canvas2D 降级），同时暂停 WE 同步避免冲突，刷新后自动恢复
+- **DWP 时钟变量（给壁纸作者的通用能力）**：插件每 2.5s 向**挂载中的任何场景**喂 `hour` / `night_alpha` / `night_on` / `day_on` 四个变量（`Handle.setParams` 逐键覆写，与内置包「工作区脉搏」的变量互不干扰）；场景在 `variables` 里声明后即可引用——市场包 **「DeepSeek 日夜」** 就是用它做 18:00–06:00 自动换成夜景图、其余时间日景图，边界前后各 10 分钟线性过渡
+- **DWP 纹理分档（同一张壁纸两档清晰度）**：另喂 `hd_on` / `night_sd` / `night_hd` 三个变量，由渲染模式决定档位——**「预览 / 捕获」= 低档，「增强 / 完整」= 高档**；包在 scene 顶层用扩展字段 `dsh.hdAssets` 声明"只在高档位需要的资源"，低档位消费端把它们换成 1×1 占位图，因而**根本不下载、不解码**高分纹理（「DeepSeek 日夜」1.1.0 即 1920×1080 / 7680×4320 两档，切档位会按新档重新挂载）
 - **沉浸模式**：一键隐去会话头部、正文与输入栏，让壁纸独占视野；网页 / 应用类壁纸在沉浸下可直接鼠标交互（详见[沉浸模式](#-沉浸模式与任务指示)）
 - **视觉效果滑块**：面板透明度 0–100% / 背景模糊 0–30px / 阴影深度 0–100%，即时生效
 - **后台任务可视化**：收纳侧边栏时，用圆形指示感知任务进度（绿 = 空闲 / 蓝 = 进行中 / 黄 = 等待授权）
@@ -74,17 +76,19 @@ dsh plugin --profile web add dsh-wallpaper_share   # 或见下方「安装」选
 
 ## 🧭 面板导览
 
-`wallpaper_share` 标签页采用**双页虚拟滚动**：「设置 ⇄ 壁纸库」两页纵向叠放、中间留断层，一套滚轮全接管——页内跟手滚动 + 惯性阻尼，滚到页界继续滚即**蓄力翻页**（250ms 无输入弹回防误触），右缘页签显示当前页（黄色高亮）与蓄力进度，点击可直达；所有操作即时生效、无需保存：
+`wallpaper_share` 标签页采用**三页虚拟滚动**：「设置 ⇄ 壁纸库 ⇄ dwp创作」三页纵向叠放、页间留断层，一套滚轮全接管——页内跟手滚动 + 惯性阻尼，滚到页界继续滚即**蓄力翻页**（250ms 无输入弹回防误触），右缘三个页签显示当前页（黄色高亮）与蓄力进度，点击可直达；所有操作即时生效、无需保存：
 
 | 卡片 | 内容 |
 | --- | --- |
 | **壁纸状态** | 壁纸名（标题行**右缘为插件版本号**，一键整段选中便于反馈问题）；下方副标题只承载诊断信息——scene 壁纸显示当前渲染通路（`场景 · 预览图 / 捕获 live 30fps / 浏览器模型渲染 / 回退：<原因>`），未应用壁纸时显示引导文案，其余类型整行不占；多显示器时出现「背景显示器」下拉；`⏻ 同步开启 / 关闭 / 暂停（DWP）` 三态按钮 |
 | **视觉效果** | 三档渲染模式分段按钮；「专注模式」及其展开条（眼动追踪 / 校准视线 / 文字吸附 / 实时状态）；透明度 · 模糊 · 阴影三个滑块（**专注开启时滑块隐藏**，改由任务态与透镜接管） |
-| **壁纸库** | 「壁纸读取位置」可添加自定义壁纸目录（指向单个壁纸目录或集合文件夹），启动器安装位置也并入这里（带「（启动器安装位置）」标记，可更改 / 迁移）；「本地 / 市场 / 应用启动器」三栏切换，本地按 `dwp壁纸` / `we 应用` 筛选 + 标题搜索 + 分页（显示更多 +60），市场支持安装 / 更新 / 卸载，**应用启动器**支持直链安装（`.zip`/`.7z`/`.exe`，加密包可填解压密码）与 **139 分享链接**（提取码填密码框；原始文件下载需粘贴一次 Authorization 登录态），自动封装类 WE app（json + 预览图）与一键启动（每次弹确认） |
+| **壁纸库** | 「壁纸读取位置」可添加自定义壁纸目录（指向单个壁纸目录或集合文件夹），启动器安装位置也并入这里（带「（启动器安装位置）」标记，可更改 / 迁移）；「本地 / 市场 / 应用启动器」三栏切换，本地按 `dwp壁纸` / `应用`（下分 `we应用` 与 `应用`）筛选 + 标题搜索 + **「管理」**（卡片晃动 → 点卡片多选变蓝 → 「卸载选中」批量卸载，可跨分类累计；每张卡另有「打开源文件 / 卸载」）+ 分页（显示更多 +60），市场支持安装 / 更新 / 卸载，**应用启动器**只负责安装：支持直链安装（`.zip`/`.7z`/`.exe`，加密包可填解压密码）与 **139 分享链接**（提取码填密码框；原始文件下载需粘贴一次 Authorization 登录态），自动封装类 WE app（json + 预览图），卡片「详细」可查安装时间 / 地址 / exe 文件；启动与卸载统一在「本地 → 应用」里做（每次启动弹确认） |
+| **dwp创作** | 本轮为占位页：滚到这一页时宿主输入框重新出现（「设置」「壁纸库」两页会自动收起它，避免挡住卡片又可点），页面内容下一轮填充 |
 
 两点与宿主 UI 的约定：
 
 - **本标签页禁用正文宽度拖拽**：会话正文两侧那对拖拽把手在 `wallpaper_share`（与「轨迹」页一样）不出现，切回「对话记录」仍可用。
+- **宿主输入框按页显隐**：「设置」「壁纸库」两页自动收起宿主输入框（opacity + `pointer-events:none`，不改布局），只有「dwp创作」页显示它——输入框是 sticky 常驻条（实测占 126px），既会挡住卡片底部行，也会吞掉那片区域的点击（压在它下面的按钮点不到）；收起后两页的面板高度直接吃到视口底部，dwp创作页则按实测高度让开输入框。
 - 标签页是 session 作用域插槽，切换会话会重挂载面板；语言与开关状态从模块级 store 恢复，不会"弹回英语"。
 
 ## 🎨 渲染模式与兼容矩阵
@@ -158,6 +162,8 @@ scene 壁纸在捕获 / 完整档下的渲染优先级与回退链：
 | 🟣 **alpha（新版本）** | 适配 harness 为 alpha 架构的推荐版本 | `dsh plugin --profile web add dsh-wallpaper_share@alpha` |
 | 🟡 **test（测试版本）** | 用于测试的版本，可能有未完成功能 | `dsh plugin --profile web add dsh-wallpaper_share@test` |
 
+> 当前测试版：**`26.9.10-T`**（GitHub `test` 分支 / npm `test` dist-tag）。本版新增：壁纸库「管理」多选批量卸载、应用启动器卡片化简为「详细」、面板三页滚动（含占位的「dwp创作」）、宿主输入框按页显隐、**DWP 时钟变量**与**纹理分档**（预览/捕获用低清、增强/完整用高清）。
+
 ### 🔧 其他安装方式
 
 ```bash
@@ -179,10 +185,10 @@ dsh plugin --profile web add github:YRN-playmaker/dsh-wallpaper_share
 #   从 GitHub 安装（仓库自带预构建 lib/，不需要构建许可；main = 最新档）
 dsh plugin --profile web add dsh-wallpaper_share
 #   从 npm 安装（默认 = latest 最新档）
-dsh plugin --profile web add ./dsh-wallpaper_share-26.9.8.tgz
-#   本地 tarball 安装（26.9.8）
+dsh plugin --profile web add ./dsh-wallpaper_share-26.9.10-T.tgz
+#   本地 tarball 安装（26.9.10-T）
 dsh plugin --profile web add github:YRN-playmaker/dsh-wallpaper_share#test
-#   从 GitHub 安装 test 分支（测试档，含壁纸特效优化、页面功能更新等）
+#   从 GitHub 安装 test 分支（测试档，当前即 26.9.10-T：管理多选卸载 / 三页滚动 / DWP 纹理分档等）
 ```
 
 ```bash
@@ -247,7 +253,7 @@ dsh plugin --profile web add github:YRN-playmaker/dsh-wallpaper_share#test
 
 - `src/index.ts` — Node 半：WE 状态轮询、HTTP 路由、scene renderer 子进程管理、壁纸库扫描
 - `src/scene/` — SceneAdapter 模块（协议 / 能力探测 / renderer 进程 / WebSocket / 回退 / PKGV0001 解析 / SceneModel 图层模型 / .tex 解码 / puppet mdl 解析）
-- `src/client/` — 浏览器半（主题覆盖 / 背景层 / SceneCanvas / SceneModelRenderer 子集渲染器 / ParticleRuntime / GazeLens 眼动 / 专注透镜 / 沉浸模式 / wallpaper_share 面板）
+- `src/client/` — 浏览器半（主题覆盖 / 背景层 / SceneCanvas / SceneModelRenderer 子集渲染器 / ParticleRuntime / GazeLens 眼动 / 专注透镜 / 沉浸模式 / wallpaper_share 面板 / library-model.ts 壁纸库分类与详情格式化）
 - `native/we-capture/` — Rust 原生捕获器源码（Windows Graphics Capture → JPEG）
 - `bin/we-capture.exe` — 随包发布的原生捕获器（Windows-only）
 - `docs/` — 格式规范与技术文档（`scene-format.md` / `scene-fallback.md` / `tex-format-findings.md` / `mdl-skinning-findings.md`）
@@ -258,7 +264,7 @@ dsh plugin --profile web add github:YRN-playmaker/dsh-wallpaper_share#test
 
 ## 🆕 已知问题
 
-> 适用版本：插件 `v26.9.8` / Harness `0.1.2-rc.1`。
+> 适用版本：插件 `v26.9.10-T` / Harness `0.1.2-rc.1`。
 
 ### 兼容性（Harness 0.1.2 破坏性变更 · 已适配）
 

@@ -7,6 +7,7 @@
  * 范围（本轮锁定）：只做免费。付费条目在 buildCards 里直接过滤掉，
  * 不渲染、不提供购买/授权流程（付费系统暂缓实装）。
  */
+import { compareVersion } from '../market/version.ts';
 
 export interface MarketEntry {
   id: string;
@@ -26,7 +27,7 @@ export interface InstalledItem {
   installedAt: string;
 }
 
-export type InstallState = 'absent' | 'installed' | 'update';
+export type InstallState = 'absent' | 'installed' | 'update' | 'local-ahead';
 
 export interface MarketCard {
   entry: MarketEntry;
@@ -40,9 +41,13 @@ export type Fetch = (url: string, init?: { cache?: 'no-store' }) => Promise<{
 
 const defaultFetch: Fetch = (url, init) => fetch(url, init);
 
-/** 拉 catalog（node 半已缓存），返回条目数组。 */
-export async function fetchCatalog(fetchFn: Fetch = defaultFetch, url = '/we-sync/dwp/market/catalog'): Promise<MarketEntry[]> {
-  const res = await fetchFn(url, { cache: 'no-store' });
+/**
+ * 拉 catalog（node 半缓存 5 分钟）。`refresh: true` = 强制重拉：node 半据此绕开自身缓存，
+ * 并给上游 URL 加 cache-buster（catalog 挂在 raw.githubusercontent 上，不加就还是旧目录）。
+ */
+export async function fetchCatalog(fetchFn: Fetch = defaultFetch, url = '/we-sync/dwp/market/catalog', opts?: { refresh?: boolean }): Promise<MarketEntry[]> {
+  const target = opts?.refresh === true ? url + (url.includes('?') ? '&' : '?') + 'refresh=1' : url;
+  const res = await fetchFn(target, { cache: 'no-store' });
   if (!res.ok) throw new Error(`catalog ${res.status}`);
   const body = await res.json() as { entries?: MarketEntry[] };
   return Array.isArray(body.entries) ? body.entries : [];
@@ -56,15 +61,22 @@ export async function fetchInstalled(fetchFn: Fetch = defaultFetch, url = '/we-s
   return Array.isArray(body.installed) ? body.installed : [];
 }
 
-/** 合并 catalog + installed → 卡片视图模型。免费 only（commercial 过滤掉）。 */
+/**
+ * 合并 catalog + installed → 卡片视图模型。免费 only（commercial 过滤掉）。
+ * 安装状态按版本比较得出：目录比本地新 = update；**目录比本地旧 = local-ahead**
+ * （远端目录可能因为 CDN 缓存还没刷新 —— 这种卡片不给"更新"按钮，避免把新包装回旧版本）。
+ */
 export function buildCards(catalog: MarketEntry[], installed: InstalledItem[]): MarketCard[] {
   const byId = new Map(installed.map((i) => [i.id, i]));
   const cards: MarketCard[] = [];
   for (const entry of catalog) {
     if (entry.license.commercial !== false) continue;   // 本轮：跳过付费
     const rec = byId.get(entry.id);
+    const next = entry.dwp.package.version;
     const state: InstallState = rec === undefined ? 'absent'
-      : rec.version !== entry.dwp.package.version ? 'update' : 'installed';
+      : rec.version === next ? 'installed'
+        : compareVersion(next, rec.version) < 0 ? 'local-ahead'
+          : 'update';
     cards.push({ entry, state, installedVersion: rec?.version });
   }
   return cards;

@@ -14,9 +14,25 @@ export class DwpBackgroundLayer {
   private mountedId = ''
   /** 挂载完成前到达的实时变量（workspace-pulse 喂食等），挂载成功后一次性应用。 */
   private pendingVars: Record<string, VarValue> | null = null
+  /** 纹理档位：'hd' = 允许拉场景声明的高档纹理，'sd' = 高档资源用占位图顶替（见 dwp-stage.ts） */
+  private quality: 'sd' | 'hd' = 'sd'
 
   /** 当前正在挂载或已挂载的 DWP id（'' = 无）。 */
   currentId(): string { return this.mountedId !== '' ? this.mountedId : this.mountingId }
+
+  /**
+   * 切换纹理档位（渲染模式「增强/完整」→ hd，「预览/捕获」→ sd）。
+   * 档位变了必须**重新挂载**：资源集合在 mount 时就定好了（低档位根本没拉 8K 纹理），
+   * 光改变量换不出另一档的图。已挂载时这里先卸载再按新档位挂回去。
+   */
+  setQuality(q: 'sd' | 'hd'): void {
+    if (q === this.quality) return
+    this.quality = q
+    const id = this.currentId()
+    if (id === '') return
+    this.unmount()
+    void this.mount(id)
+  }
 
   /** 当前 DOM 中的舞台 canvas（mount 内部 GL→Canvas2D 降级会换新元素，按 data-dwp-stage 定位）。 */
   private liveCanvas(): HTMLCanvasElement | null {
@@ -50,6 +66,7 @@ export class DwpBackgroundLayer {
     const canvas = this.ensureCanvas()
     try {
       const handle = await mountDwp(canvas, id, {
+        quality: this.quality,
         onDegrade: (d) => { if (d.length) console.warn('[dwp] 降级/告警：', d.join(', ')) },
       })
       // 挂载期间可能被 unmount / 换 id 取代：此时丢弃这次结果

@@ -39,7 +39,11 @@ export const PANEL_CSS = `
   min-width: 0;
   min-height: 0;
   height: 100%;
-  max-height: min(100vh - 32px, 980px);
+  /* 高度上限：默认给宿主头部留 32px、再封 980px。
+     --wesync-pages-max 由面板实测覆盖（面板顶 → 宿主输入框顶）：输入框是
+     sticky + z-index 7 的常驻条，压在它下面的内容点不到（elementFromPoint
+     命中的是输入框），所以滚动视口必须止于输入框上沿。 */
+  max-height: var(--wesync-pages-max, min(100vh - 32px, 980px));
   overflow: hidden;
   position: relative;
 }
@@ -529,6 +533,107 @@ body[data-ds-dark-theme] .wesync-gaze-status.is-error { color: #fdba74; }
   padding: 10px 2px;
 }
 
+/* 壁纸库「本地」栏：应用大类下的二级分类行（全部 / we应用 / 应用）。
+   与上一行筛选 chips 分开一点点间距，视觉上从属而非并列。 */
+.wesync-apps-subs {
+  margin: 6px 0 8px;
+}
+
+/* 应用启动器卡片：操作行只剩「详细」，撑满整行——点击区域大，
+   不再是一排挤在卡片底部、字号 11px 的小按钮（原先「启动 / … / 卸载」三个）。 */
+.wesync-detail-btn {
+  flex: 1;
+  font-size: 12px;
+  padding: 6px 10px;
+}
+
+/* 壁纸库「本地」栏 · 管理模式：卡片上的操作行（打开源文件 / 卸载）。
+   只在「管理」开启时渲染，平时卡片上没有任何小按钮。 */
+.wesync-manage-row {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.wesync-manage-row .wesync-btn {
+  flex: 1;
+  font-size: 11px;
+  padding: 4px 8px;
+}
+
+/* 卸载是破坏性操作：与「打开源文件」拉开颜色差异 */
+.wesync-manage-del {
+  color: #fca5a5;
+}
+
+/* 壁纸库「本地」栏 · 管理模式：卡片进入"编辑态"——
+   整体轻微晃动（iOS 桌面编辑态的观感，每张卡由内联 animation-delay 错开相位），
+   点卡片 = 多选：选中项固定不再晃，背景转蓝并打勾。
+   只有真正可卸载的项（dwp 壁纸 / 启动器装的应用）能选中，工坊内容点了给提示。 */
+@keyframes wesync-jiggle {
+  0% { transform: rotate(-0.9deg); }
+  50% { transform: rotate(0.9deg); }
+  100% { transform: rotate(-0.9deg); }
+}
+
+.wesync-app-card-manage {
+  cursor: pointer;
+  /* 0.72s = 原 0.36s 放慢 50%（太快会显得躁，慢一点更像"编辑态待命"） */
+  animation: wesync-jiggle 0.72s ease-in-out infinite;
+}
+
+/* 选中：停住晃动 + 蓝色高亮（用户要求的"被固定、背景变蓝"） */
+.wesync-app-card-manage.wesync-app-card-selected {
+  animation: none;
+  transform: none;
+  background: rgba(59, 130, 246, 0.26);
+  border-color: rgba(59, 130, 246, 0.72);
+  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.45);
+}
+
+.wesync-app-card-selected:hover {
+  background: rgba(59, 130, 246, 0.32);
+}
+
+/* 选中角标：缩略图右上角的勾 */
+.wesync-app-selmark {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  line-height: 1;
+  color: #fff;
+  background: rgba(59, 130, 246, 0.95);
+  pointer-events: none;
+}
+
+/* 管理模式的选择计数条：已选 N + 卸载选中 + 清空选择 */
+.wesync-selbar {
+  margin: 6px 0 8px;
+}
+
+.wesync-selbar-count {
+  font-size: 12px;
+  color: var(--dsw-alias-label-primary);
+  margin-right: 2px;
+}
+
+.wesync-selbar .wesync-btn {
+  font-size: 12px;
+  padding: 4px 10px;
+}
+
+/* 无障碍：系统开启「减少动态效果」时不晃，选中态仍然清晰 */
+@media (prefers-reduced-motion: reduce) {
+  .wesync-app-card-manage { animation: none; }
+}
+
 /* 壁纸库：本地 / 市场 分类行 + 类型筛选 chips + 标题搜索 */
 .wesync-apps-cats {
   display: flex;
@@ -746,15 +851,6 @@ body[data-ds-dark-theme] .wesync-gaze-status.is-error { color: #fdba74; }
 .wesync-confirm-actions { display: flex; gap: 8px; justify-content: flex-end; }
 .wesync-confirm-actions .wesync-market-install { flex: 0 0 auto; padding: 6px 18px; }
 
-/* ── 应用启动器：本地库 we应用 瓷砖的 ▶ 启动按钮 ──────────────────── */
-.wesync-app-launch {
-  flex: 0 0 auto;
-  font-size: 11px;
-  padding: 2px 8px;
-  border-radius: 999px;
-  color: #fca5a5;
-}
-
 /* 禁用会话正文两侧的「拖拽调整宽度」把手，与轨迹页表现一致。
    harness 只在检测到 composer-overlay 标记时隐藏这对把手（见
    ui-conversation ConversationRoot.module.css），而本面板不接管
@@ -765,14 +861,18 @@ body:has(.wesync-panel) [data-width-handle] {
   display: none;
 }
 
-/* ── 「设置」页收起宿主输入框 ─────────────────────────────────────────
-   share 面板自带全套交互控件，宿主输入框在设置页只会挡住面板底部行；
-   翻到「壁纸库」（或切走标签页）自动恢复。page 由 WallpaperSharePanel
-   随 state 反射到 body[data-wesync-page]，属性消失即还原。
-   收起姿势与沉浸模式同款（opacity+pointer-events，不改布局，seat 高度
-   变量稳定）。:has([data-composer-card]) 只认真正的输入条：授权／提问/
-   子代理只读条接管编辑器期间 seat 保持可见，不会吞掉等待回答的面板。 */
-body[data-wesync-page='settings'] [data-composer-seat]:has([data-composer-card]) {
+/* ── 「设置」「壁纸库」全程收起宿主输入框，只有「dwp创作」页显示 ────────
+   两层原因：
+   1) 观感：输入框固定占着会话列底部（实测 126px），两页的卡片底部行被它压住；
+   2) 可点性：它是 sticky + z-index 7 的常驻条，压在它下面的控件点不到——
+      elementFromPoint 命中的是输入框的「+」按钮 / 模式行，而不是卡片按钮
+      （实测 1280×800：应用启动器卡片的按钮点击全被输入框吞掉）。
+   收起姿势与沉浸模式同款（opacity + pointer-events，不改布局、seat 高度稳定）：
+   看不见，但点击穿透到面板。dwp创作页（唯一需要输入框的页）不加这条规则，
+   其可用高度由面板实测的 --wesync-pages-max 扣掉输入框高度。
+   :has([data-composer-card]) 只认真正的输入条：授权／提问／子代理只读条
+   接管编辑器期间 seat 保持可见，不会把等待回答的输入框一起藏掉。 */
+body[data-wesync-page]:not([data-wesync-page='dwp']) [data-composer-seat]:has([data-composer-card]) {
   opacity: 0 !important;
   pointer-events: none !important;
   transition: opacity 0.3s ease !important;

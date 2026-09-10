@@ -1481,6 +1481,39 @@ export function apply(ctx: CordisCtx): void {
     disposers.push(webServer.register(route))
   }
 
+  /** 「本地 → 管理 → 打开源文件」（DWP 壁纸）：在资源管理器里定位 packages/<id>.dwp。
+   *  explorer /select 是唯一能"选中文件"的方式，但它成功时也常返回非 0 退出码，
+   *  所以只看 spawn 本身是否失败，失败才回退为打开包目录（与 /we-sync/apps/open 同款）。 */
+  disposers.push(webServer.register({
+    kind: 'exact',
+    path: '/we-sync/dwp/market/reveal',
+    handler(req, res) {
+      const url = req.url ?? ''
+      const q = url.indexOf('?')
+      const id = q >= 0 ? decodeURIComponent(url.slice(q + 1).replace(/^id=/, '')) : ''
+      // id 直接参与拼路径且这里的动作是"用资源管理器打开"，先挡掉穿越写法（/、\、..）
+      if (id === '' || /[\\/]/.test(id) || id.includes('..')) {
+        res.statusCode = 400
+        sendJson(res, { error: 'bad request' })
+        return
+      }
+      const file = normalize(market.store.packagePath(id))
+      if (!existsSync(file)) {
+        res.statusCode = 404
+        sendJson(res, { error: 'package not found' })
+        return
+      }
+      const dir = file.slice(0, file.lastIndexOf('/'))
+      execFile('explorer.exe', ['/select,' + file.replace(/\//g, '\\')], { windowsHide: true }, (err) => {
+        if (err === null) return
+        execFile('powershell.exe', ['-NoProfile', '-Command', "Invoke-Item -LiteralPath '" + dir.replace(/'/g, "''") + "'"], { windowsHide: true }, (err2) => {
+          if (err2 !== null) console.log('[we-sync] reveal 打开包目录失败:', err2.message)
+        })
+      })
+      sendJson(res, { ok: true, file, dir })
+    },
+  }))
+
   /** DWP 渲染面伺服：把已装 .dwp 解包，按需提供 scene/manifest/资源 + 管理"当前应用"。
    *  client 半用 @dwp/web 的 mount() 拉这些端点组装背景层。 */
   const dwpApply = new ApplyState(marketDir)

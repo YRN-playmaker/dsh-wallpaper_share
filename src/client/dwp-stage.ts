@@ -6,6 +6,7 @@
  */
 import { mount, collectAssetRefs, type Handle, type PackageFiles } from 'dwp-web';
 import type { Scene, Manifest, VarValue } from 'dwp-core';
+import { TINY_PNG } from './tiny-png.ts';
 
 type FetchFn = (url: string, init?: RequestInit) => Promise<Response>;
 
@@ -15,7 +16,22 @@ export interface MountDwpOptions {
   params?: Record<string, VarValue>;
   autoplay?: boolean;
   forceCanvas2D?: boolean;
+  /** 'hd' = 允许拉取场景声明的高档纹理（scene.dsh.hdAssets）；'sd'（缺省）= 用 1×1 占位图顶替它们 */
+  quality?: 'sd' | 'hd';
   onDegrade?: (degraded: string[]) => void;
+}
+
+/**
+ * 低档位用 1×1 全透明 PNG 顶替高档资源（字节见 tiny-png.ts，带回归测试）。
+ * 为什么是"顶替"而不是"不传"：@dwp/web 的 loadAssets 对缺失资源直接抛错（整次挂载失败），
+ * 所以必须给一个合法但极小的位图；这些图层在低档位 alpha 恒 0，画面上完全看不出来。
+ */
+
+/** 读取 scene 顶层的插件扩展字段 dsh.hdAssets（未知键 core 会忽略，这里防御式读取）。 */
+function hdAssetsOf(scene: Scene): string[] {
+  const ext = (scene as unknown as { dsh?: { hdAssets?: unknown } }).dsh
+  const list = ext?.hdAssets
+  return Array.isArray(list) ? list.filter((p): p is string => typeof p === 'string') : []
 }
 
 /** 拉取并挂载一个已装 DWP 到 canvas，返回可播放/截图/销毁的 Handle。 */
@@ -33,8 +49,12 @@ export async function mountDwp(canvas: HTMLCanvasElement, id: string, opts: Moun
     if (mres.ok) manifest = (await mres.json()) as Manifest
   } catch { /* 无 manifest：走 scene 内联变量 */ }
 
+  // 低档位：高档资源换成占位图 —— 不下载、不解码 8K 纹理（预览/捕获档才真的省）
+  const stub = new Set(opts.quality === 'hd' ? [] : hdAssetsOf(scene))
+
   const files: PackageFiles = new Map();
   for (const ref of collectAssetRefs(scene)) {
+    if (stub.has(ref.path)) { files.set(ref.path, new Blob([TINY_PNG], { type: 'image/png' })); continue }
     const r = await fetchFn(`${base}/file?id=${encodeURIComponent(id)}&name=${encodeURIComponent(ref.path)}`);
     if (r.ok) files.set(ref.path, await r.blob());   // 缺资源不阻断：mount 内部按缺资源降级
   }

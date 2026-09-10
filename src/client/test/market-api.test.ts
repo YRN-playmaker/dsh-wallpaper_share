@@ -26,6 +26,26 @@ test('buildCards：过滤付费 + 合并安装状态（absent/installed/update�
   assert.equal(cards.find(c => c.entry.id === 'c')!.state, 'absent');
 });
 
+test('buildCards：目录比本机旧 → local-ahead（不给"更新"，避免误装回旧版本）', () => {
+  // 2026-09-10 的真实事故：刚发布的 1.1.0 被目录里尚未刷新的 1.0.0 覆盖
+  const cards = buildCards([free('d', '1.0.0'), free('e', '26.9.9')], [inst('d', '1.1.0'), inst('e', '26.9.10')]);
+  assert.equal(cards.find(c => c.entry.id === 'd')!.state, 'local-ahead');
+  assert.equal(cards.find(c => c.entry.id === 'd')!.installedVersion, '1.1.0');
+  assert.equal(cards.find(c => c.entry.id === 'e')!.state, 'local-ahead', '按版本比较而不是字符串比较');
+  assert.equal(buildCards([free('d', '1.1.0')], [inst('d', '1.0.0')])[0]!.state, 'update', '反过来仍然是 update');
+});
+
+test('fetchCatalog(refresh)：强制重拉时带上 refresh=1', async () => {
+  const seen: string[] = [];
+  const f: Fetch = async (url) => { seen.push(url); return { ok: true, status: 200, json: async () => ({ entries: [] }) }; };
+  await fetchCatalog(f, '/we-sync/dwp/market/catalog');
+  await fetchCatalog(f, '/we-sync/dwp/market/catalog', { refresh: true });
+  assert.deepEqual(seen, [
+    '/we-sync/dwp/market/catalog',
+    '/we-sync/dwp/market/catalog?refresh=1',
+  ]);
+});
+
 test('searchCards：关键词命中名称/作者/描述；标签精确匹配', () => {
   const cards = buildCards([free('rain', '1', ['weather']), free('snow', '1', ['weather']), free('cat', '1', ['pet'])], []);
   assert.deepEqual(searchCards(cards, 'rain').map(c => c.entry.id), ['rain']);

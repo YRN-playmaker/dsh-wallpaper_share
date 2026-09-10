@@ -18,3 +18,6 @@ tools/*.txt
 tools/*.png
 tools/*.svg
 _dev/*.txt
+# 本地打包产物（.dwp / tarball 等构建输出，不进版本库）
+_dist/
+.build-junc/

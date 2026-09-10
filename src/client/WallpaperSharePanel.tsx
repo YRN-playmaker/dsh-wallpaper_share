@@ -8,6 +8,7 @@ import { store, PLUGIN_VERSION, PLUGIN_REPO_URL, type WeSyncInfo } from './index
 import { startGaze, stopGaze, calibrate, onGazeStatus, hasCalibrationData, type GazeStatus } from './GazeLens.ts'
 import { fetchCatalog, fetchInstalled, buildCards, searchCards, collectTags, install, uninstall, type MarketEntry, type MarketCard } from './market-api.ts'
 import { fetchInstalled as fetchLauncherInstalled, installApp, uninstallApp, launchApp, setEntry, isValidHttpUrl, humanSize, get139Auth, set139Auth, getLauncherRoot, setLauncherRoot, type InstalledApp } from './launcher-api.ts'
+import { appsForSub, formatInstalledAt, launcherAppDir, matchLauncherRecord, partitionApps, type AppSub } from './library-model.ts'
 
 /* =========================================================================
  * 1. 国际化字典 (i18n Dictionary)
@@ -95,22 +96,52 @@ const DICT = {
     openFolderFailed: '打开文件夹失败',
     mountFailed: '挂载失败',
     typeDwp: 'dwp壁纸',
-    typeWeApp: 'we 应用',
+    // 「应用」是壁纸库本地栏的大类，其下再分 we应用（WE 工坊）与 应用（启动器装的）
+    typeApps: '应用',
+    typeWeApp: 'we应用',
     typeLauncherApp: '应用',
+    appSubAll: '全部',
+    manage: '管理',
+    manageDone: '完成',
+    openSource: '打开源文件',
+    detail: '详细',
+    detailHide: '收起',
+    detailInstalledAt: '安装时间',
+    detailAddr: '地址',
+    detailExe: 'exe 文件',
+    launcherManageHint: '启动与卸载到「本地 → 应用」里操作。',
+    confirmUninstallTitle: '确认卸载？',
+    confirmUninstallBody: '将删除以下内容的本地文件（dwp 壁纸可在市场重装）：',
+    // 管理模式：晃动 → 点选变蓝 → 批量卸载
+    manageSelected: '已选',
+    bulkUninstall: '卸载选中',
+    clearSel: '清空选择',
+    manageNotDeletable: 'WE 工坊内容不在此卸载（可用「打开源文件」定位）',
+    confirmBulkTitle: (n: number) => '确认卸载选中的 ' + String(n) + ' 项？',
+    flashBulkUninstalled: (n: number) => '已卸载 ' + String(n) + ' 项',
+    flashBulkPartial: (n: number, fail: string) => '已卸载 ' + String(n) + ' 项，失败：' + fail,
     pageSettings: '设置',
     pageLibrary: '壁纸库',
+    pageDwp: 'dwp创作',
+    dwpStudioHint: '这一页留给 DWP 壁纸创作：滚到这里宿主输入框会重新出现，用来和 agent 讨论、生成 DWP。页面内容下一轮再填。',
     pageHint: '滚动切页 · 用力滚才翻页',
     pageGapHint: '继续滚动翻页 · 轻滑弹回',
     mounted: '已挂载',
     searchPlaceholder: '搜索标题…',
     showMore: '显示更多',
     dwpEmpty: '还没有已安装的 DWP 壁纸，去壁纸库「市场」一栏拉取。',
-    weAppEmpty: '没有 WE 应用类壁纸。',
+    weAppEmpty: '没有应用类内容。',
     appsCount: (total: number, matched: number) => (total === matched ? `共 ${String(total)} 个` : `共 ${String(total)} 个 · 匹配 ${String(matched)} 个`),
 
     // 市场一栏（浏览 dwp-registry 目录 + 安装/更新/卸载）
     marketRefresh: '刷新', marketSearch: '搜索名称 / 作者…', marketAll: '全部',
     marketInstall: '安装', marketInstalling: '安装中…', marketUpdate: '更新', marketUninstall: '卸载', marketInstalled: '已安装',
+    marketLocalAhead: '本地更新',
+    marketLocalAheadHint: '本机版本比目录里的新（远端目录可能还没刷新）；不提供回退，避免误装回旧版本',
+    // DWP 纹理档位（副标题）：让"渲染模式"对 DWP 壁纸的影响可见
+    dwpTierLead: 'DWP 壁纸 · 纹理档：',
+    dwpTierHd: '高清（增强 / 完整）',
+    dwpTierSd: '标准（预览 / 捕获）',
     marketEmpty: '目录为空', marketLoading: '加载中…', marketNoMatch: '无匹配结果',
     marketLoadFailed: '目录加载失败（node 半 market 路由未就绪？）',
     marketBy: '作者', marketInstalledAt: '已装',
@@ -276,23 +307,53 @@ const DICT = {
     loadFailed: 'Failed to load list',
     openFolderFailed: 'Failed to open folder',
     mountFailed: 'Mount failed',
-    typeDwp: 'DWP',
-    typeWeApp: 'WE Apps',
+    // "Apps" is the local-library top category; it splits into WE apps and launcher-installed apps
+    typeApps: 'Apps',
+    typeWeApp: 'WE app',
     typeLauncherApp: 'App',
+    appSubAll: 'All',
+    manage: 'Manage',
+    manageDone: 'Done',
+    openSource: 'Open source file',
+    detail: 'Details',
+    detailHide: 'Hide',
+    detailInstalledAt: 'Installed',
+    detailAddr: 'Location',
+    detailExe: 'Executable',
+    launcherManageHint: 'Launch and uninstall from Library → Apps.',
+    confirmUninstallTitle: 'Uninstall?',
+    confirmUninstallBody: 'This deletes the local files of (DWP wallpapers can be reinstalled from the market):',
+    // Manage mode: jiggle → tap to turn blue → bulk uninstall
+    manageSelected: 'Selected',
+    bulkUninstall: 'Uninstall selected',
+    clearSel: 'Clear',
+    manageNotDeletable: 'WE Workshop content is not uninstalled here (use "Open source file" to locate it)',
+    confirmBulkTitle: (n: number) => 'Uninstall the ' + String(n) + ' selected item(s)?',
+    flashBulkUninstalled: (n: number) => 'Uninstalled ' + String(n) + ' item(s)',
+    flashBulkPartial: (n: number, fail: string) => 'Uninstalled ' + String(n) + ', failed: ' + fail,
     pageSettings: 'Settings',
     pageLibrary: 'Library',
+    pageDwp: 'DWP Studio',
+    dwpStudioHint: 'Reserved for DWP authoring: the host composer reappears on this page so you can talk to the agent about building DWP wallpapers. Content lands in a later round.',
     pageHint: 'Scroll to flip · keep scrolling firmly to turn the page',
     pageGapHint: 'Keep scrolling to flip · release to bounce back',
     mounted: 'Mounted',
     searchPlaceholder: 'Search titles…',
     showMore: 'Show more',
     dwpEmpty: 'No installed DWP wallpapers yet — pull some in the library "Market" tab.',
-    weAppEmpty: 'No WE application wallpapers.',
+    typeDwp: 'DWP',
+    weAppEmpty: 'No application wallpapers yet.',
     appsCount: (total: number, matched: number) => (total === matched ? `Total ${String(total)}` : `Total ${String(total)} · Matched ${String(matched)}`),
 
     // Market tab (browse dwp-registry catalog + install/update/uninstall)
     marketRefresh: 'Refresh', marketSearch: 'Search name / author…', marketAll: 'All',
     marketInstall: 'Install', marketInstalling: 'Installing…', marketUpdate: 'Update', marketUninstall: 'Uninstall', marketInstalled: 'Installed',
+    marketLocalAhead: 'Local is newer',
+    marketLocalAheadHint: 'The installed version is newer than the catalog (the remote catalog may not have refreshed yet); downgrading on purpose is not offered here',
+    // DWP texture tier (subtitle): makes the render mode's effect on DWP wallpapers visible
+    dwpTierLead: 'DWP wallpaper · texture tier: ',
+    dwpTierHd: 'high-res (Enhanced)',
+    dwpTierSd: 'standard (Eco / Perf)',
     marketEmpty: 'Catalog is empty', marketLoading: 'Loading…', marketNoMatch: 'No matches',
     marketLoadFailed: 'Failed to load catalog (node market route not ready?)',
     marketBy: 'by', marketInstalledAt: 'installed',
@@ -425,60 +486,110 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
   const [gazeSnapText, setGazeSnapText] = useState(store.settings.gazeSnapText)
   const [needsCalib, setNeedsCalib] = useState(false)
   useEffect(() => onGazeStatus((s, err) => { setGazeStatus(s); setGazeError(err) }), [])
-  // —— 双页虚拟滚动：一套滚轮全接管（设置 ⇄ 壁纸库）——
+  // —— 三页虚拟滚动：一套滚轮全接管（设置 ⇄ 壁纸库 ⇄ dwp创作）——
   const CHARGE_THRESHOLD = 600 // deltaY 累积阻力阈值（常规轻滑不翻页）
   const CHARGE_DECAY_MS = 250 // 停止滚动多久后清零弹回
   const PULL_RATIO = 0.07 // 未突破阈值时的最大拉扯位移（视口高度比）
-  // 不拦截 wheel：面板自身是滚动容器（scroll-snap 页界吸附防误触——页内任意位置
-  // 都能停住，只有越过页底半屏才吸附翻到下一页）；右侧页签 scrollspy 跟随当前页。
-  const [page, setPage] = useState<'settings' | 'library'>('settings')
+  // 页序必须与 track 内 DOM 顺序一致：页顶偏移/页内滚动域都由它索引。
+  const PAGES = ['settings', 'library', 'dwp'] as const
+  type PanelPage = typeof PAGES[number]
+  const pageIdx = (p: PanelPage): number => PAGES.indexOf(p)
+  const [page, setPage] = useState<PanelPage>('settings')
   const appsOpen = page === 'library'
   const panelRef = useRef<HTMLDivElement | null>(null)
   const viewportRef = useRef<HTMLDivElement | null>(null)
   const trackRef = useRef<HTMLDivElement | null>(null)
   const settingsRef = useRef<HTMLDivElement | null>(null)
   const gapRef = useRef<HTMLDivElement | null>(null)
+  const libRef = useRef<HTMLDivElement | null>(null)
+  const gap2Ref = useRef<HTMLDivElement | null>(null)
+  const dwpRef = useRef<HTMLDivElement | null>(null)
   const progSetRef = useRef<HTMLSpanElement | null>(null)
   const progLibRef = useRef<HTMLSpanElement | null>(null)
+  const progDwpRef = useRef<HTMLSpanElement | null>(null)
+  const progRefs = [progSetRef, progLibRef, progDwpRef]
   const libLoadedRef = useRef(false)
-  const pageRef = useRef<'settings' | 'library'>('settings')
+  const capRef = useRef<(() => void) | null>(null) // 引擎测出的可用高度重算入口（页切换时调用）
+  const pageRef = useRef<PanelPage>('settings')
   pageRef.current = page
   const loadLibraryData = (): void => {
     if (libLoadedRef.current) return
     libLoadedRef.current = true
     void loadApps(); void loadDwp(); void loadMarket(); void loadLauncher()
   }
-  // 虚拟滚动几何：设置页域 [0, boundary]；壁纸库域 [libTop, maxPos]；pos 恒 clamp 在当前页域内
-  const geoRef = useRef({ maxPos: 0, boundary: 0, libTop: 0 })
+  // 虚拟滚动几何：tops[i]/bottoms[i] 为每页页顶与页内可滚动下界；pos 恒 clamp 在当前页域内
+  const geoRef = useRef({ maxPos: 0, tops: [0, 0, 0] as number[], bottoms: [0, 0, 0] as number[] })
   const posRef = useRef(0)
   const velRef = useRef(0) // 页内惯性速度
   const accRef = useRef(0) // 蓄力动量累加
   const pullRef = useRef(0) // 拉扯位移（弹性渲染值）
   const pullTargetRef = useRef(0)
   const phaseRef = useRef<'idle' | 'charge' | 'anim'>('idle')
-  const animRef = useRef<{ from: number; to: number; start: number; target: 'settings' | 'library' } | null>(null)
+  const animRef = useRef<{ from: number; to: number; start: number; target: PanelPage } | null>(null)
   const decayTimerRef = useRef<number | null>(null)
+  /** 当前页（翻页动画期间取目标页）：决定可用高度——只有 dwp创作页要避让宿主输入框 */
+  const effectivePage = (): PanelPage => {
+    const a = animRef.current
+    return phaseRef.current === 'anim' && a !== null ? a.target : pageRef.current
+  }
   const measure = (): void => {
     const vp = viewportRef.current
     const track = trackRef.current
     const s = settingsRef.current
     const gap = gapRef.current
-    if (vp === null || track === null || s === null || gap === null) return
+    const lib = libRef.current
+    const gap2 = gap2Ref.current
+    const dwp = dwpRef.current
+    if (vp === null || track === null || s === null || gap === null || lib === null || gap2 === null || dwp === null) return
     const vpH = vp.clientHeight
     // 每页至少撑满一个视口高（CSS var 注入）：否则矮页翻页后，相邻页的尾巴会留在
     // 视口上方露出来（如设置页目录列表的最后一行出现在壁纸库页顶）
     vp.style.setProperty('--wesync-vph', Math.max(0, vpH) + 'px')
-    const libTop = Math.max(0, s.offsetHeight + gap.offsetHeight)
     const maxPos = Math.max(0, track.scrollHeight - vpH)
-    geoRef.current = {
-      maxPos,
-      libTop: Math.min(libTop, maxPos),
-      boundary: Math.min(Math.max(0, s.offsetHeight - vpH), maxPos),
+    const hs = [s.offsetHeight, lib.offsetHeight, dwp.offsetHeight]
+    const tops = [0, hs[0] + gap.offsetHeight, hs[0] + gap.offsetHeight + hs[1] + gap2.offsetHeight]
+    // 非最后一页停在"该页底边贴视口底"（断层不外露，方向感知的页界判定依赖它）；
+    // 最后一页吃到 maxPos，滚动尽头即内容尽头。
+    const bottoms = tops.map((top, i) => i === PAGES.length - 1
+      ? maxPos
+      : Math.max(top, Math.min(top + hs[i] - vpH, maxPos)))
+    geoRef.current = { maxPos, tops, bottoms }
+  }
+  const rangeOf = (i: number): { top: number; bottom: number } => {
+    const g = geoRef.current
+    const k = Math.max(0, Math.min(PAGES.length - 1, i))
+    return { top: g.tops[k], bottom: g.bottoms[k] }
+  }
+  /**
+   * 可用高度：面板顶 → 底部边界，写进 --wesync-pages-max。
+   *
+   * 宿主输入框（composer）是 sticky + z-index 7 的常驻条，固定占着会话列底部
+   * （实测 126px，多行输入还会变高）。压在它下面的内容点不到——elementFromPoint
+   * 命中的是输入框的「+」按钮 / 模式行，而不是卡片按钮。
+   * 现在「设置」「壁纸库」两页由 CSS 把输入框整体淡出并放行指针（点得到、看不见），
+   * 只有 dwp创作页显示它，所以也只有那页需要把它的高度让出来。
+   * 其余页用视口底部当边界——顺带修掉原来写死 32px 造成的底部溢出
+   * （实测 1100×700 面板底边超出视口 44px，而宿主滚动被钉住、滚不回来）。
+   */
+  const syncViewportCap = (): void => {
+    const host = panelRef.current
+    if (host === null) return
+    const seat = effectivePage() === 'dwp' ? document.querySelector('[data-composer-seat]') : null
+    const limit = seat !== null
+      ? Math.min(seat.getBoundingClientRect().top, window.innerHeight - 8)
+      : window.innerHeight - 8
+    let avail = Math.round(limit - host.getBoundingClientRect().top)
+    if (avail < 240) avail = 0 // 量不到 / 空间异常 → 撤掉覆盖值，交回 CSS 兜底
+    if (avail > 0) host.style.setProperty('--wesync-pages-max', avail + 'px')
+    else host.style.removeProperty('--wesync-pages-max')
+    measure()
+    if (phaseRef.current !== 'anim') {
+      const r = rangeOf(pageIdx(pageRef.current))
+      posRef.current = Math.max(r.top, Math.min(r.bottom, posRef.current))
     }
   }
   const resetProgress = (): void => {
-    if (progSetRef.current !== null) progSetRef.current.style.transform = 'scaleX(0)'
-    if (progLibRef.current !== null) progLibRef.current.style.transform = 'scaleX(0)'
+    for (const p of progRefs) if (p.current !== null) p.current.style.transform = 'scaleX(0)'
   }
   const cancelCharge = (): void => {
     accRef.current = 0
@@ -489,13 +600,15 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
     if (decayTimerRef.current !== null) { window.clearTimeout(decayTimerRef.current); decayTimerRef.current = null }
   }
   /** 蓄力翻页：引擎动画滚过断层到相邻页顶，到达后再切页签高亮 */
-  const flipTo = (target: 'settings' | 'library'): void => {
-    const g = geoRef.current
+  const flipTo = (target: PanelPage): void => {
     phaseRef.current = 'anim'
     cancelCharge()
     disarmDecay()
-    const to = target === 'library' ? g.libTop : 0
-    animRef.current = { from: posRef.current, to, start: performance.now(), target }
+    // 目标页决定可用高度（dwp创作页要避让输入框）：先把新高度定下来再算目标偏移，
+    // 否则动画按旧几何落点、落地后还得跳一下。
+    animRef.current = { from: posRef.current, to: posRef.current, start: performance.now(), target }
+    syncViewportCap()
+    animRef.current.to = rangeOf(pageIdx(target)).top
     if (target === 'library') loadLibraryData()
   }
   // —— 宿主滚动容器锁定：share 视图激活期间禁用原生滚轮 + 隐藏滚动条 + 复位滚动位置 ——
@@ -570,12 +683,11 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
       if (dy === 0) return
       const g = geoRef.current
       const dir: 1 | -1 = dy > 0 ? 1 : -1
-      const cur = pageRef.current
-      const pageTop = cur === 'library' ? g.libTop : 0
-      const pageBottom = cur === 'library' ? g.maxPos : g.boundary
+      const cur = pageIdx(pageRef.current)
+      const { top: pageTop, bottom: pageBottom } = rangeOf(cur)
       // 方向感知的页界判定：只有「朝页界滚」才算到达边界
       const atBoundary = (dir === 1 && posRef.current >= pageBottom - 0.5) || (dir === -1 && posRef.current <= pageTop + 0.5)
-      const canFlip = (dir === 1 && cur === 'settings') || (dir === -1 && cur === 'library')
+      const canFlip = (dir === 1 && cur < PAGES.length - 1) || (dir === -1 && cur > 0)
       const charging = phaseRef.current === 'charge' && pullTargetRef.current !== 0
       // 蓄力中反向滚 → 立即取消蓄力回归滚动
       if (charging && ((dir === 1 && pullTargetRef.current > 0) || (dir === -1 && pullTargetRef.current < 0))) {
@@ -598,17 +710,18 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
         accRef.current = 0
         resetProgress()
       } else {
-        // 内部页界（设置页底↓ / 壁纸库顶↑）→ 蓄力：动量累加突破阈值翻页
+        // 内部页界（下滚到页底 / 上滚到页顶）→ 蓄力：动量累加突破阈值翻页
         accRef.current += dy
         const ratio = Math.min(1, Math.abs(accRef.current) / CHARGE_THRESHOLD)
         const maxPull = vp.clientHeight * PULL_RATIO
         pullTargetRef.current = dir * ratio * maxPull * -1 // 下滚拉扯=内容上移（负）
-        const prog = (dir === 1 ? progLibRef : progSetRef).current
-        if (prog !== null) prog.style.transform = 'scaleX(' + ratio.toFixed(3) + ')'
-        const other = (dir === 1 ? progSetRef : progLibRef).current
-        if (other !== null) other.style.transform = 'scaleX(0)'
+        // 目标页的进度条充能，当前页的清零（三页时方向决定是 next 还是 prev）
+        const prog = progRefs[cur + dir]
+        if (prog !== undefined && prog.current !== null) prog.current.style.transform = 'scaleX(' + ratio.toFixed(3) + ')'
+        const other = progRefs[cur]
+        if (other !== undefined && other.current !== null) other.current.style.transform = 'scaleX(0)'
         if (Math.abs(accRef.current) >= CHARGE_THRESHOLD) {
-          flipTo(dir === 1 ? 'library' : 'settings')
+          flipTo(PAGES[cur + dir])
           return
         }
       }
@@ -623,21 +736,34 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
     const host = panelRef.current
     if (host === null) return
     host.addEventListener('wheel', onWheel, { passive: false })
+    // 可用高度（--wesync-pages-max）由 syncViewportCap 统一算，见其定义处的说明。
+    // 这里只负责触发时机：挂载、宿主输入框尺寸变化、窗口尺寸变化、翻页（capRef）。
+    capRef.current = syncViewportCap
+    syncViewportCap()
+    const seatEl = document.querySelector('[data-composer-seat]')
+    const seatRo = seatEl !== null ? new ResizeObserver(syncViewportCap) : null
+    if (seatEl !== null && seatRo !== null) seatRo.observe(seatEl)
     // 尺寸跟踪：壁纸库懒加载/内容变化后重算几何，并 clamp 当前位置
     const ro = new ResizeObserver(() => {
       measure()
-      const g = geoRef.current
-      posRef.current = Math.max(0, Math.min(g.maxPos, posRef.current))
+      const r = rangeOf(pageIdx(pageRef.current))
+      posRef.current = Math.max(r.top, Math.min(r.bottom, posRef.current))
     })
     if (trackRef.current !== null) ro.observe(trackRef.current)
-    window.addEventListener('resize', measure)
+    window.addEventListener('resize', syncViewportCap)
     return () => {
       host.removeEventListener('wheel', onWheel)
       ro.disconnect()
-      window.removeEventListener('resize', measure)
+      seatRo?.disconnect()
+      window.removeEventListener('resize', syncViewportCap)
+      host.style.removeProperty('--wesync-pages-max')
+      capRef.current = null
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+  // 页切换（翻页动画落地时 setPage）：可用高度只在这一刻变（dwp创作页显隐输入框），
+  // 复算一次让几何跟着新高度走，避免落点与视口错位。
+  useEffect(() => { capRef.current?.() }, [page])
   // rAF 主循环：翻页缓动 / 惯性积分 / 拉扯弹性，全部直写 DOM（不走 React 渲染）
   useEffect(() => {
     let raf = 0
@@ -664,10 +790,8 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
         if (Math.abs(velRef.current) > 0.4) {
           posRef.current += velRef.current
           velRef.current *= 0.9
-          const cur = pageRef.current
-          const pageTop = cur === 'library' ? g.libTop : 0
-          const pageBottom = cur === 'library' ? g.maxPos : g.boundary
-          posRef.current = Math.max(pageTop, Math.min(pageBottom, posRef.current))
+          const r = rangeOf(pageIdx(pageRef.current))
+          posRef.current = Math.max(r.top, Math.min(r.bottom, posRef.current))
         } else {
           velRef.current = 0
         }
@@ -681,12 +805,12 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
     return () => cancelAnimationFrame(raf)
   }, [])
   /** 页签点击：引擎动画滚到对应页顶 */
-  const scrollToPage = (target: 'settings' | 'library'): void => {
+  const scrollToPage = (target: PanelPage): void => {
     if (phaseRef.current === 'anim') return
-    measure()
     if (target === pageRef.current) {
-      const g = geoRef.current
-      const top = target === 'library' ? g.libTop : 0
+      // 同页：先按当前页复算可用高度（输入框显隐会让高度变），再动画回页顶
+      syncViewportCap()
+      const { top } = rangeOf(pageIdx(target))
       phaseRef.current = 'anim'
       animRef.current = { from: posRef.current, to: top, start: performance.now(), target }
       return
@@ -696,7 +820,16 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
   const [libTab, setLibTab] = useState<'local' | 'market' | 'launcher'>('local')
   const [apps, setApps] = useState<Array<{ id: string; title: string; file: string; type: string; hasPreview: boolean; source?: string }>>([])
   const [appsCounts, setAppsCounts] = useState<Record<string, number>>({})
-  const [typeFilter, setTypeFilter] = useState('dwp')
+  // 本地栏一级分类：dwp壁纸 / 应用（应用下再分 we应用 与 应用）
+  const [typeFilter, setTypeFilter] = useState<'dwp' | 'apps'>('dwp')
+  const [appSub, setAppSub] = useState<AppSub>('all')
+  // 「管理」模式：卡片晃动，点卡片多选（选中=蓝色），批量卸载
+  const [manageMode, setManageMode] = useState(false)
+  const [libFlash, setLibFlash] = useState('')
+  /** 管理模式的多选集合：key = 'dwp|<id>' / 'app|<启动器 slug>'（只有可卸载的项能进来） */
+  const [sel, setSel] = useState<Record<string, true>>({})
+  /** 待确认的卸载目标：单卡卸载是 1 项，批量是 N 项，共用同一个确认弹层与执行路径 */
+  const [uninstallFor, setUninstallFor] = useState<Array<{ kind: 'dwp' | 'app'; id: string; title: string; path: string }> | null>(null)
   const [search, setSearch] = useState('')
   const [visible, setVisible] = useState(60)
   const [appsError, setAppsError] = useState('')
@@ -736,6 +869,28 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
   const [lEntryFor, setLEntryFor] = useState<string | null>(null) // 正在展开候选切换的 app id
   const [lDetailFor, setLDetailFor] = useState<string | null>(null) // 正在展开详情（来源/哈希）的 app id
   const [lChoices, setLChoices] = useState<Record<string, string[]>>({}) // 安装时返回的多入口候选（按 id）
+
+  // 展开「详细」后把内容滚进可视区：卡片贴在裁剪区下沿时，详情会长到裁剪区之外
+  // （实测 1500×950 下 185px 只露 41px），看起来就像"点了没反应"。
+  // 量出缺口写进引擎的 posRef，由 rAF 主循环下一帧落到 transform（不额外起动画）。
+  useEffect(() => {
+    if (lDetailFor === null) return
+    const raf = requestAnimationFrame(() => {
+      const host = panelRef.current
+      const vp = viewportRef.current
+      if (host === null || vp === null) return
+      const el = Array.from(host.querySelectorAll('[data-wesync-detail]'))
+        .find((x) => x.getAttribute('data-wesync-detail') === lDetailFor) ?? null
+      if (el === null) return
+      measure()
+      const overflow = el.getBoundingClientRect().bottom - vp.getBoundingClientRect().bottom + 12 // 留 12px 余量
+      if (overflow <= 0) return
+      const r = rangeOf(pageIdx('library'))
+      posRef.current = Math.max(r.top, Math.min(r.bottom, posRef.current + overflow))
+    })
+    return () => cancelAnimationFrame(raf)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lDetailFor])
 
   // store 是唯一事实源：每次 notify 都把设置项镜像回本地 state。
   // 面板只在挂载时读一次 store 的话，外部对设置的修正（显示器锁失效回退自动、眼动启动失败回拨 off）
@@ -903,11 +1058,11 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
   }
 
   // 市场一栏：浏览 dwp-registry 目录 + 安装/更新/卸载（免费 only，不含"应用"——挂载走本地栏）
-  const loadMarket = async (): Promise<void> => {
+  const loadMarket = async (refresh = false): Promise<void> => {
     setMLoading(true); setMError('')
     try {
       const f = (url: string, init?: { cache?: 'no-store' }) => fetch(url, init)
-      const [catalog, installed] = await Promise.all([fetchCatalog(f), fetchInstalled(f)])
+      const [catalog, installed] = await Promise.all([fetchCatalog(f, undefined, { refresh }), fetchInstalled(f)])
       setMCards(buildCards(catalog, installed))
     } catch (e) {
       setMError(String((e as Error).message ?? e))
@@ -931,6 +1086,74 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
       void loadMarket(); void loadDwp(); flashM(t.flashMUninstalled)
     } else flashM(t.flashMFailed)
   }
+
+  // ── 本地栏「管理」：打开源文件 / 卸载（卸载一律先过确认弹层）────────────
+  const flashLib = (msg: string): void => { setLibFlash(msg); window.setTimeout(() => setLibFlash(''), 3000) }
+
+  /** dwp 壁纸的「打开源文件」：node 半在资源管理器里定位 packages/<id>.dwp。 */
+  const onRevealDwp = (id: string): void => {
+    void fetch('/we-sync/dwp/market/reveal?id=' + encodeURIComponent(id), { cache: 'no-store' }).then((res) => {
+      if (!res.ok) flashLib(t.openFolderFailed)
+    }).catch(() => flashLib(t.openFolderFailed))
+  }
+
+  /** 确认后的卸载：按列表逐项执行（单选=1 项，多选=N 项）；dwp 正挂载先撤背景。 */
+  const onConfirmUninstall = async (): Promise<void> => {
+    const targets = uninstallFor
+    setUninstallFor(null)
+    if (targets === null || targets.length === 0) return
+    let ok = 0
+    const failed: string[] = []
+    for (const t of targets) {
+      if (t.kind === 'dwp') {
+        const r = await uninstall((url, init) => fetch(url, init), t.id)
+        if (!r.ok) { failed.push(t.title); continue }
+        if (store.settings.dwpMounted === t.id) await store.actions.unmountDwp()
+        ok += 1
+      } else {
+        const r = await uninstallApp(t.id, (u) => fetch(u))
+        if (!r.ok) { failed.push(t.title); continue }
+        ok += 1
+      }
+    }
+    void loadDwp(); void loadMarket(); void loadApps(); void loadLauncher()
+    setSel({})
+    flashLib(failed.length === 0
+      ? (targets.length === 1 ? t.flashMUninstalled : t.flashBulkUninstalled(ok))
+      : t.flashBulkPartial(ok, failed.join('、')))
+  }
+
+  // ── 管理模式的多选：点卡片切蓝；只有可卸载的项进选择集 ──────────────────
+  const selKey = (kind: 'dwp' | 'app', id: string): string => kind + '|' + id
+  const toggleSel = (key: string): void => {
+    setSel((s) => {
+      const n = { ...s }
+      if (n[key] === true) delete n[key]
+      else n[key] = true
+      return n
+    })
+  }
+  const selCount = Object.keys(sel).length
+  /** 选中集 → 卸载目标列表（标题与路径现查，保证与实际安装记录一致）。 */
+  const collectSelTargets = (): Array<{ kind: 'dwp' | 'app'; id: string; title: string; path: string }> => {
+    const out: Array<{ kind: 'dwp' | 'app'; id: string; title: string; path: string }> = []
+    for (const key of Object.keys(sel)) {
+      const cut = key.indexOf('|')
+      const kind = key.slice(0, cut)
+      const id = key.slice(cut + 1)
+      if (kind === 'dwp') {
+        const card = dwpCards.find((d) => d.id === id)
+        out.push({ kind: 'dwp', id, title: card !== undefined ? card.name : id, path: 'packages/' + id + '.dwp' })
+      } else {
+        const rec = lApps.find((r) => r.id === id)
+        out.push({ kind: 'app', id, title: rec !== undefined ? rec.title : id, path: launcherAppDir(lRoot, rec !== undefined ? rec.slug : id) })
+      }
+    }
+    return out
+  }
+  // 退出管理模式 / 换大分类 → 清空选择（跨子分类保留：可一次选完 dwp 与 应用 再统一卸载）
+  useEffect(() => { if (!manageMode) setSel({}) }, [manageMode])
+  useEffect(() => { setSel({}) }, [libTab])
 
   const onAppOpen = (id: string): void => {
     void fetch('/we-sync/apps/open?id=' + encodeURIComponent(id), { cache: 'no-store' }).then((res) => {
@@ -1115,11 +1338,7 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
     else flashLErr(t.flashLFailed + (r.error !== undefined ? '：' + r.error : ''))
   }
 
-  const onLauncherUninstall = async (rec: InstalledApp): Promise<void> => {
-    const r = await uninstallApp(rec.id, (u) => fetch(u))
-    if (r.ok) { flashL(t.flashLUninstalled); void loadLauncher(); void loadApps() }
-    else flashL(t.flashLFailed + (r.error !== undefined ? '：' + r.error : ''))
-  }
+  // 启动器标签页不放「卸载」按钮：卸载统一走「本地 → 管理 → 卸载」（先弹确认弹层）。
 
   const onUpdatePreview = async (rec: InstalledApp): Promise<void> => {
     const dataUrl = makeLauncherCard(rec.title)
@@ -1197,10 +1416,10 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
     } catch { /* 忽略 */ }
   }
 
-  // 壁纸库：两组（dwp壁纸 / we应用）+ 标题搜索前端筛选
-  const weApps = apps.filter((a) => a.type === 'application')
+  // 壁纸库「本地」栏：dwp壁纸 / 应用（应用下再分 we应用 与 应用）+ 标题搜索前端筛选
+  const appGroups = partitionApps(apps)
   const kw = search.trim().toLowerCase()
-  const filteredApps = weApps.filter((a) => kw === '' || a.title.toLowerCase().includes(kw))
+  const filteredApps = appsForSub(apps, appSub).filter((a) => kw === '' || a.title.toLowerCase().includes(kw))
   const filteredDwp = dwpCards.filter((d) => kw === '' || d.name.toLowerCase().includes(kw))
   const shownApps = filteredApps.slice(0, visible)
   const shownDwp = filteredDwp.slice(0, visible)
@@ -1216,18 +1435,21 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
   // 原先拼的 wallpaper.type 与 Scene[...] 语义重复、静态预览有无属内部产物、
   // 显示器名在多显示器时上方下拉框的 <output> 已经显示 —— 三段全部删除，
   // 非场景壁纸因此不再显示副标题（整行不渲染，而不是留一行空字）。
+  // DWP 挂载时改为显示纹理档位：渲染模式对 DWP 的作用只有这一处，不给反馈就"看起来没反应"。
   const scene = info !== null && info.source.kind === 'scene' ? info.scene : null
-  const subtitle = wallpaper === null
-    ? t.applyHint
-    : scene === null
-      ? ''
-      : renderMode === 'eco'
-        ? t.sceneEco
-        : scene.live === true
-          ? t.sceneExternal + ' ' + String(scene.status?.fps ?? '?') + 'fps'
-          : scene.model === true
-            ? t.sceneModel
-            : t.sceneFallback + scene.fallback
+  const subtitle = store.settings.dwpMounted !== null
+    ? t.dwpTierLead + (renderMode === 'enhanced' ? t.dwpTierHd : t.dwpTierSd)
+    : wallpaper === null
+      ? t.applyHint
+      : scene === null
+        ? ''
+        : renderMode === 'eco'
+          ? t.sceneEco
+          : scene.live === true
+            ? t.sceneExternal + ' ' + String(scene.status?.fps ?? '?') + 'fps'
+            : scene.model === true
+              ? t.sceneModel
+              : t.sceneFallback + scene.fallback
 
   const monitors = info !== null && Array.isArray(info.monitors) && info.monitors.length > 1 ? info.monitors : null
 
@@ -1412,7 +1634,7 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
           <span className="wesync-page-hint">{t.pageGapHint}</span>
           <span className="wesync-page-gap-line" />
         </div>
-        <div className="wesync-page wesync-page-library">
+        <div className="wesync-page wesync-page-library" ref={libRef}>
           {/* 壁纸库页：独立卡片，蓄力翻页滚过断层进入 */}
           <div className="wesync-card">
             <div className="wesync-apps">
@@ -1432,8 +1654,8 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
                             <button className={['wesync-chip', typeFilter === 'dwp' ? 'wesync-chip-on' : ''].join(' ')} onClick={() => { setTypeFilter('dwp'); setVisible(60) }}>
                               {t.typeDwp + ' ' + String(dwpCards.length)}
                             </button>
-                            <button className={['wesync-chip', typeFilter === 'weapp' ? 'wesync-chip-on' : ''].join(' ')} onClick={() => { setTypeFilter('weapp'); setVisible(60) }}>
-                              {t.typeWeApp + ' ' + String(weApps.length)}
+                            <button className={['wesync-chip', typeFilter === 'apps' ? 'wesync-chip-on' : ''].join(' ')} onClick={() => { setTypeFilter('apps'); setVisible(60) }}>
+                              {t.typeApps + ' ' + String(appGroups.all.length)}
                             </button>
                             <input
                               className="wesync-app-search"
@@ -1441,7 +1663,42 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
                               value={search}
                               onChange={(e) => { setSearch(e.target.value); setVisible(60) }}
                             />
+                            <button
+                              className={['wesync-chip', manageMode ? 'wesync-chip-on' : ''].join(' ')}
+                              title={manageMode ? t.manageDone : t.manage}
+                              onClick={() => { setManageMode(!manageMode) }}
+                            >{manageMode ? t.manageDone : t.manage}</button>
                           </div>
+                          {/* 「应用」大类的二级分类：全部 / we应用（WE 工坊）/ 应用（启动器装的） */}
+                          {typeFilter === 'apps'
+                            ? (
+                                <div className="wesync-apps-filters wesync-apps-subs">
+                                  <button className={['wesync-chip', appSub === 'all' ? 'wesync-chip-on' : ''].join(' ')} onClick={() => { setAppSub('all'); setVisible(60) }}>
+                                    {t.appSubAll + ' ' + String(appGroups.all.length)}
+                                  </button>
+                                  <button className={['wesync-chip', appSub === 'we' ? 'wesync-chip-on' : ''].join(' ')} onClick={() => { setAppSub('we'); setVisible(60) }}>
+                                    {t.typeWeApp + ' ' + String(appGroups.we.length)}
+                                  </button>
+                                  <button className={['wesync-chip', appSub === 'launcher' ? 'wesync-chip-on' : ''].join(' ')} onClick={() => { setAppSub('launcher'); setVisible(60) }}>
+                                    {t.typeLauncherApp + ' ' + String(appGroups.launcher.length)}
+                                  </button>
+                                </div>
+                              )
+                            : null}
+                          {libFlash !== '' ? <div className="wesync-market-flash">{libFlash}</div> : null}
+                          {manageMode
+                            ? (
+                                <div className="wesync-apps-filters wesync-selbar">
+                                  <span className="wesync-selbar-count">{t.manageSelected} {String(selCount)}</span>
+                                  <button
+                                    className="wesync-btn wesync-manage-del"
+                                    disabled={selCount === 0}
+                                    onClick={() => setUninstallFor(collectSelTargets())}
+                                  >{t.bulkUninstall}</button>
+                                  <button className="wesync-btn" disabled={selCount === 0} onClick={() => setSel({})}>{t.clearSel}</button>
+                                </div>
+                              )
+                            : null}
                           {typeFilter === 'dwp'
                             ? (
                                 dwpCards.length === 0
@@ -1452,17 +1709,43 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
                                         <>
                                           <div className="wesync-apps-count">{t.appsCount(dwpCards.length, filteredDwp.length)}</div>
                                           <div className="wesync-apps-grid">
-                                            {shownDwp.map((d) => (
-                                              <div key={d.id} className="wesync-app-card" title={(store.settings.dwpMounted === d.id ? t.unmountHint : t.mountHint) + d.name} onClick={() => { void onToggleDwp(d.id) }}>
-                                                <div className="wesync-app-thumbwrap">
-                                                  {d.thumbnail !== ''
-                                                    ? <img className="wesync-app-thumb" src={d.thumbnail} alt={d.name} loading="lazy" onError={(e) => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden' }} />
-                                                    : <div className="wesync-app-thumb" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{t.noPreview}</div>}
-                                                  <span className={'wesync-app-badge wesync-badge-' + (store.settings.dwpMounted === d.id ? 'video' : 'image')}>{store.settings.dwpMounted === d.id ? t.mounted : t.typeDwp}</span>
+                                            {shownDwp.map((d, di) => {
+                                              const key = selKey('dwp', d.id)
+                                              const picked = sel[key] === true
+                                              return (
+                                                <div
+                                                  key={d.id}
+                                                  className={[
+                                                    'wesync-app-card',
+                                                    manageMode ? 'wesync-app-card-manage' : '',
+                                                    picked ? 'wesync-app-card-selected' : '',
+                                                  ].join(' ')}
+                                                  style={manageMode ? { animationDelay: (-0.24 * (di % 5)).toFixed(2) + 's' } : undefined}
+                                                  title={manageMode ? d.name : (store.settings.dwpMounted === d.id ? t.unmountHint : t.mountHint) + d.name}
+                                                  onClick={manageMode ? () => { toggleSel(key) } : () => { void onToggleDwp(d.id) }}
+                                                >
+                                                  <div className="wesync-app-thumbwrap">
+                                                    {d.thumbnail !== ''
+                                                      ? <img className="wesync-app-thumb" src={d.thumbnail} alt={d.name} loading="lazy" onError={(e) => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden' }} />
+                                                      : <div className="wesync-app-thumb" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{t.noPreview}</div>}
+                                                    <span className={'wesync-app-badge wesync-badge-' + (store.settings.dwpMounted === d.id ? 'video' : 'image')}>{store.settings.dwpMounted === d.id ? t.mounted : t.typeDwp}</span>
+                                                    {picked ? <span className="wesync-app-selmark">✓</span> : null}
+                                                  </div>
+                                                  <div className="wesync-app-title">{d.name}</div>
+                                                  {manageMode
+                                                    ? (
+                                                        <div className="wesync-manage-row">
+                                                          <button className="wesync-btn" onClick={(e) => { e.stopPropagation(); onRevealDwp(d.id) }}>{t.openSource}</button>
+                                                          <button
+                                                            className="wesync-btn wesync-manage-del"
+                                                            onClick={(e) => { e.stopPropagation(); setUninstallFor([{ kind: 'dwp', id: d.id, title: d.name, path: 'packages/' + d.id + '.dwp' }]) }}
+                                                          >{t.marketUninstall}</button>
+                                                        </div>
+                                                      )
+                                                    : null}
                                                 </div>
-                                                <div className="wesync-app-title">{d.name}</div>
-                                              </div>
-                                            ))}
+                                              )
+                                            })}
                                           </div>
                                           {filteredDwp.length > shownDwp.length
                                             ? <button className="wesync-btn wesync-show-more" onClick={() => setVisible((v) => v + 60)}>{t.showMore + ' (+60)'}</button>
@@ -1471,32 +1754,61 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
                                       )
                               )
                             : (
-                                weApps.length === 0
+                                appGroups.all.length === 0
                                   ? <div className="wesync-app-empty">{t.weAppEmpty}</div>
                                   : filteredApps.length === 0
                                     ? <div className="wesync-app-empty">{t.appsNoMatch}</div>
                                     : (
                                         <>
-                                          <div className="wesync-apps-count">{t.appsCount(weApps.length, filteredApps.length)}</div>
+                                          <div className="wesync-apps-count">{t.appsCount(appGroups.all.length, filteredApps.length)}</div>
                                           <div className="wesync-apps-grid">
-                                            {shownApps.map((app) => (
-                                              <div key={app.id} className="wesync-app-card" title={t.openFolder + app.title} onClick={() => onAppOpen(app.id)}>
-                                                <div className="wesync-app-thumbwrap">
-                                                  {app.hasPreview
-                                                    ? <img className="wesync-app-thumb" src={'/we-sync/apps/preview?id=' + encodeURIComponent(app.id)} alt={app.title} loading="lazy" />
-                                                    : <div className="wesync-app-thumb" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{t.noPreview}</div>}
-                                                  <span className="wesync-app-badge wesync-badge-launcher">{app.source === 'launcher' ? t.typeLauncherApp : t.typeWeApp}</span>
+                                            {shownApps.map((app, ai) => {
+                                              // 卸载只对启动器安装的包开放；工坊 / 自定义目录扫到的应用只给「打开源文件」，
+                                              // 也不参与多选（选中集里的每一项都必须真能删，否则批量卸载会给出假承诺）
+                                              const rec = matchLauncherRecord(app, lApps)
+                                              const isLauncher = (app.source ?? '') === 'launcher'
+                                              const key = rec !== null ? selKey('app', rec.id) : ''
+                                              const picked = rec !== null && sel[key] === true
+                                              return (
+                                                <div
+                                                  key={app.id}
+                                                  className={[
+                                                    'wesync-app-card',
+                                                    manageMode ? 'wesync-app-card-manage' : '',
+                                                    picked ? 'wesync-app-card-selected' : '',
+                                                  ].join(' ')}
+                                                  style={manageMode ? { animationDelay: (-0.24 * (ai % 5)).toFixed(2) + 's' } : undefined}
+                                                  title={manageMode ? app.title : t.launcherLaunch + app.title}
+                                                  onClick={manageMode
+                                                    ? () => { if (rec === null) flashLib(t.manageNotDeletable); else toggleSel(key) }
+                                                    : () => { onLaunch(app.id, app.title, app.file, null) }}
+                                                >
+                                                  <div className="wesync-app-thumbwrap">
+                                                    {app.hasPreview
+                                                      ? <img className="wesync-app-thumb" src={'/we-sync/apps/preview?id=' + encodeURIComponent(app.id)} alt={app.title} loading="lazy" />
+                                                      : <div className="wesync-app-thumb" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{t.noPreview}</div>}
+                                                    <span className={'wesync-app-badge ' + (isLauncher ? 'wesync-badge-launcher' : 'wesync-badge-application')}>{isLauncher ? t.typeLauncherApp : t.typeWeApp}</span>
+                                                    {picked ? <span className="wesync-app-selmark">✓</span> : null}
+                                                  </div>
+                                                  <div className="wesync-app-title">{app.title}</div>
+                                                  {manageMode
+                                                    ? (
+                                                        <div className="wesync-manage-row">
+                                                          <button className="wesync-btn" onClick={(e) => { e.stopPropagation(); onAppOpen(app.id) }}>{t.openSource}</button>
+                                                          {rec === null
+                                                            ? null
+                                                            : (
+                                                                <button
+                                                                  className="wesync-btn wesync-manage-del"
+                                                                  onClick={(e) => { e.stopPropagation(); setUninstallFor([{ kind: 'app', id: rec.id, title: app.title, path: launcherAppDir(lRoot, rec.slug) }]) }}
+                                                                >{t.marketUninstall}</button>
+                                                              )}
+                                                        </div>
+                                                      )
+                                                    : null}
                                                 </div>
-                                                <div className="wesync-app-title" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                                  <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{app.title}</span>
-                                                  <button
-                                                    className="wesync-btn wesync-app-launch"
-                                                    title={t.launcherLaunch}
-                                                    onClick={(e) => { e.stopPropagation(); onLaunch(app.id, app.title, app.file, null) }}
-                                                  >{t.launcherLaunch}</button>
-                                                </div>
-                                              </div>
-                                            ))}
+                                              )
+                                            })}
                                           </div>
                                           {filteredApps.length > shownApps.length
                                             ? <button className="wesync-btn wesync-show-more" onClick={() => setVisible((v) => v + 60)}>{t.showMore + ' (+60)'}</button>
@@ -1520,7 +1832,7 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
                                 value={mSearch}
                               onChange={(e) => setMSearch(e.target.value)}
                             />
-                            <button className="wesync-btn" onClick={() => { void loadMarket() }}>{t.marketRefresh}</button>
+                            <button className="wesync-btn" onClick={() => { void loadMarket(true) }}>{t.marketRefresh}</button>
                           </div>
                           {mFlash !== '' ? <div className="wesync-market-flash">{mFlash}</div> : null}
                           {mLoading
@@ -1554,7 +1866,14 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
                                                       {busyId ? t.marketInstalling : c.state === 'update' ? t.marketUpdate : t.marketInstall}
                                                     </button>
                                                   : null}
+                                                {/* 目录比本机旧：只提示、不给安装按钮（点了会把新包装回旧版本） */}
+                                                {c.state === 'local-ahead'
+                                                  ? <button className="wesync-btn" disabled title={t.marketLocalAheadHint}>{t.marketLocalAhead}</button>
+                                                  : null}
                                                 {c.state === 'installed'
+                                                  ? <button className="wesync-btn wesync-market-uninstall" disabled={busyId} onClick={() => { void mUninstall(c.entry.id) }}>{t.marketUninstall}</button>
+                                                  : null}
+                                                {c.state === 'local-ahead'
                                                   ? <button className="wesync-btn wesync-market-uninstall" disabled={busyId} onClick={() => { void mUninstall(c.entry.id) }}>{t.marketUninstall}</button>
                                                   : null}
                                               </div>
@@ -1671,6 +1990,8 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
                                           onChange={(e) => setLSearch(e.target.value)}
                                         />
                                       </div>
+                                      {/* 启动器只负责「装」：启动、卸载都在「本地 → 应用」里（此处不再放按钮） */}
+                                      <div className="wesync-market-meta">{t.launcherManageHint}</div>
                                       {filteredL.length === 0
                                         ? <div className="wesync-app-empty">{t.launcherNoMatch}</div>
                                         : (
@@ -1687,15 +2008,17 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
                                                     <div className="wesync-app-title">{rec.title}</div>
                                                     <div className="wesync-market-meta">{humanSize(rec.size)} · {rec.file}</div>
                                                     <div className="wesync-market-actions">
-                                                      <button className="wesync-btn wesync-market-install" onClick={() => onLaunch(rec.id, rec.title, rec.file, rec)}>
-                                                        {t.launcherLaunch}
-                                                      </button>
-                                                      <button className="wesync-btn" onClick={() => { setLDetailFor(lDetailFor === rec.id ? null : rec.id) }}>{'…'}</button>
-                                                      <button className="wesync-btn wesync-market-uninstall" onClick={() => { void onLauncherUninstall(rec) }}>{t.launcherUninstall}</button>
+                                                      <button
+                                                        className="wesync-btn wesync-detail-btn"
+                                                        onClick={() => { setLDetailFor(lDetailFor === rec.id ? null : rec.id) }}
+                                                      >{lDetailFor === rec.id ? t.detailHide : t.detail}</button>
                                                     </div>
                                                     {lDetailFor === rec.id
                                                       ? (
-                                                          <div className="wesync-market-meta" style={{ width: '100%' }}>
+                                                          <div className="wesync-market-meta" data-wesync-detail={rec.id} style={{ width: '100%' }}>
+                                                            <div>{t.detailInstalledAt}: {formatInstalledAt(rec.installedAt)}</div>
+                                                            <div>{t.detailAddr}: <span style={{ wordBreak: 'break-all' }}>{launcherAppDir(lRoot, rec.slug)}</span></div>
+                                                            <div>{t.detailExe}: <span style={{ wordBreak: 'break-all' }}>{rec.file}</span></div>
                                                             <div>{t.launcherSource}: <span style={{ wordBreak: 'break-all' }}>{rec.sourceUrl}</span></div>
                                                             <div>{t.launcherSha}: <span style={{ wordBreak: 'break-all' }}>{rec.sha512.slice(0, 32)}…</span></div>
                                                             <button className="wesync-btn" style={{ marginTop: 4 }} onClick={() => { void onUpdatePreview(rec) }}>{t.launcherUpdatePreview}</button>
@@ -1729,6 +2052,20 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
             </div>
           </div>
         </div>
+        <div className="wesync-page-gap" ref={gap2Ref}>
+          <span className="wesync-page-gap-line" />
+          <span className="wesync-page-hint">{t.pageGapHint}</span>
+          <span className="wesync-page-gap-line" />
+        </div>
+        <div className="wesync-page wesync-page-dwp" ref={dwpRef}>
+          {/* dwp创作页：本轮先放占位说明。宿主输入框只在滚到这一页时显示
+              （见 panelStyle 的 body[data-wesync-page] 规则），可用高度也只在这一页
+              扣掉输入框高度——它是唯一需要避开底部输入框的页。 */}
+          <div className="wesync-card">
+            <div className="wesync-sub">{t.pageDwp}</div>
+            <div className="wesync-app-empty" style={{ padding: '6px 2px' }}>{t.dwpStudioHint}</div>
+          </div>
+        </div>
         </div>
       </div>
       {/* 启动确认弹层：挂在轨道外（transform 祖先会劫持 fixed 定位且视口会裁剪它） */}
@@ -1749,24 +2086,46 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
             </div>
           )
         : null}
+      {/* 卸载确认弹层（本地栏「管理 → 卸载」与「卸载选中」共用）：挂在轨道外，列出将被删除的项 */}
+      {uninstallFor !== null
+        ? (
+            <div className="wesync-confirm-mask" onClick={() => setUninstallFor(null)}>
+              <div className="wesync-confirm" onClick={(e) => { e.stopPropagation() }}>
+                <div className="wesync-confirm-title">
+                  {uninstallFor.length === 1 ? t.confirmUninstallTitle : t.confirmBulkTitle(uninstallFor.length)}
+                </div>
+                <div className="wesync-confirm-body">
+                  {t.confirmUninstallBody}
+                  {uninstallFor.slice(0, 8).map((x) => (
+                    <code className="wesync-confirm-path" key={x.kind + x.id}>{x.title}</code>
+                  ))}
+                  {/* 单项卸载时把将被删掉的路径也列出来（批量时只列标题，避免弹层过长） */}
+                  {uninstallFor.length === 1 ? <code className="wesync-confirm-path">{uninstallFor[0].path}</code> : null}
+                  {uninstallFor.length > 8
+                    ? <div style={{ marginTop: 4, opacity: 0.75 }}>{'… +' + String(uninstallFor.length - 8)}</div>
+                    : null}
+                </div>
+                <div className="wesync-confirm-actions">
+                  <button className="wesync-btn" onClick={() => setUninstallFor(null)}>{t.launcherConfirmCancel}</button>
+                  <button className="wesync-btn wesync-market-uninstall" onClick={() => { void onConfirmUninstall() }}>{t.marketUninstall}</button>
+                </div>
+              </div>
+            </div>
+          )
+        : null}
       {/* 右缘页签：当前页高亮 + 蓄力进度条（引擎直写，不走 React），点击翻页 */}
       <div className="wesync-pager">
-        <button
-          className={['wesync-pager-dot', page === 'settings' ? 'wesync-pager-dot-on' : ''].join(' ')}
-          title={t.pageSettings}
-          onClick={() => scrollToPage('settings')}
-        >
-          <span className="wesync-pager-label">{t.pageSettings}</span>
-          <span className="wesync-pager-progress" ref={progSetRef} />
-        </button>
-        <button
-          className={['wesync-pager-dot', page === 'library' ? 'wesync-pager-dot-on' : ''].join(' ')}
-          title={t.pageLibrary}
-          onClick={() => scrollToPage('library')}
-        >
-          <span className="wesync-pager-label">{t.pageLibrary}</span>
-          <span className="wesync-pager-progress" ref={progLibRef} />
-        </button>
+        {PAGES.map((p, i) => (
+          <button
+            key={p}
+            className={['wesync-pager-dot', page === p ? 'wesync-pager-dot-on' : ''].join(' ')}
+            title={p === 'settings' ? t.pageSettings : p === 'library' ? t.pageLibrary : t.pageDwp}
+            onClick={() => scrollToPage(p)}
+          >
+            <span className="wesync-pager-label">{p === 'settings' ? t.pageSettings : p === 'library' ? t.pageLibrary : t.pageDwp}</span>
+            <span className="wesync-pager-progress" ref={progRefs[i]} />
+          </button>
+        ))}
       </div>
     </div>
   )

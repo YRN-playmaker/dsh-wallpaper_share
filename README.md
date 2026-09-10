@@ -7,7 +7,7 @@
   <a href="https://www.npmjs.com/package/dsh-wallpaper_share"><img alt="npm downloads" src="https://img.shields.io/npm/dm/dsh-wallpaper_share" /></a>
   <a href="https://github.com/YRN-playmaker/dsh-wallpaper_share/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/YRN-playmaker/dsh-wallpaper_share" /></a>
   <a href="https://opensource.org/licenses/GPL-3.0"><img alt="License: GPL-3.0" src="https://img.shields.io/badge/License-GPL--3.0-blue.svg" /></a>
-  <a href="https://github.com/YRN-playmaker/dsh-wallpaper_share/releases"><img alt="插件版本 v26.9.8" src="https://img.shields.io/badge/v26.9.8-4d6bfe" /></a><br /><br />
+  <a href="https://github.com/YRN-playmaker/dsh-wallpaper_share/releases"><img alt="插件版本 v26.9.10-T" src="https://img.shields.io/badge/v26.9.10--T-4d6bfe" /></a><br /><br />
   <img alt="壁纸同步" src="https://img.shields.io/badge/-%E5%A3%81%E7%BA%B8%E5%90%8C%E6%AD%A5-4d6bfe" /> <img alt="场景渲染" src="https://img.shields.io/badge/-%E5%9C%BA%E6%99%AF%E6%B8%B2%E6%9F%93-4d6bfe" /> <img alt="DWP 市场" src="https://img.shields.io/badge/-DWP%20%E5%B8%82%E5%9C%BA-4d6bfe" /> <img alt="眼动追踪" src="https://img.shields.io/badge/-%E7%9C%BC%E5%8A%A8%E8%BF%BD%E8%B8%AA-4d6bfe" /> <img alt="专注模式" src="https://img.shields.io/badge/-%E4%B8%93%E6%B3%A8%E6%A8%A1%E5%BC%8F-4d6bfe" /> <img alt="多显示器" src="https://img.shields.io/badge/-%E5%A4%9A%E6%98%BE%E7%A4%BA%E5%99%A8-4d6bfe" /><br /><br />
 </div>
 
@@ -68,7 +68,7 @@ dsh plugin --profile web add dsh-wallpaper_share   # 或见下方「安装」选
 - **专注模式**：叠加一个圆心清晰、圆外模糊的阅读窗,以专注于任务，提升文字可读性；默认跟随鼠标，也可用摄像头推断注视点让透镜跟随视线；9 点校准、文字吸附、抗抖动
 <img width="426" height="240" alt="Video Project 29" src="https://github.com/user-attachments/assets/57daf64c-ff2b-40c7-aeef-73cac46c4c2b" />
 
-- **壁纸库**：按**本地**/**市场**/**应用启动器**分类。本地一栏管理已装内容——`dwp壁纸`（点击即挂载为全局背景，已挂载再点取消）与 `we 应用`（点击打开所在文件夹，含「▶ 启动」），带标题搜索、缩略图与计数；市场一栏浏览 `dwp-registry` 目录，支持名称 / 作者搜索、标签筛选与安装 / 更新 / 卸载；**应用启动器**：支持用户粘贴 `http(s)` 直链（`.zip`/`.7z`/`.exe`，**加密压缩包填解压密码**）或部分**云盘分享链接**（如`yun.139.com/shareweb/#/w/i/…`，提取码填在密码框），唤醒DSH 自动下载，解包并封装成**类 app 格式**（自动生成 `project.json` + 预览图卡片）入库；卡片一键「▶ 启动」，也支持卸载 / 更新预览 / 多入口切换。不依赖 WE 运行、不受新版 WE 取消应用类壁纸影响。、
+- **壁纸库**：按**本地**/**市场**/**应用启动器**分类。本地一栏管理已装内容——`dwp壁纸`（点击即挂载为全局背景，已挂载再点取消）与 `应用`（**大类**，下分 `we应用` 与 `应用`；点击卡片即启动，每次启动弹确认），带标题搜索、缩略图与计数；搜索框右侧的**「管理」**开关进入管理模式：卡片整体轻微晃动，**点卡片即多选**（选中项停住晃动、背景转蓝并打勾），选择条给出「已选 N / 卸载选中 / 清空选择」，可跨 `dwp壁纸` 与 `应用` 一次选完再统一卸载（确认弹层列出全部将被删除的项）；每张卡仍保留「打开源文件 / 卸载」单项操作，dwp 的「打开源文件」会在资源管理器里定位包文件——**卸载只对 dwp 壁纸与启动器装的应用开放**，WE 工坊内容点了只给提示、不参与多选（绝不删 Steam 内容）；市场一栏浏览 `dwp-registry` 目录，支持名称 / 作者搜索、标签筛选与安装 / 更新 / 卸载；**应用启动器**：支持用户粘贴 `http(s)` 直链（`.zip`/`.7z`/`.exe`，**加密压缩包填解压密码**）或部分**云盘分享链接**（如`yun.139.com/shareweb/#/w/i/…`，提取码填在密码框），唤醒DSH 自动下载，解包并封装成**类 app 格式**（自动生成 `project.json` + 预览图卡片）入库；卡片只留「详细」按钮（安装时间 / 地址 / exe 文件，另含来源、SHA512、更新预览与多入口切换）——启动与卸载统一到「本地 → 应用」里做。不依赖 WE 运行、不受新版 WE 取消应用类壁纸影响。、
 <img width="737" height="675" alt="image" src="https://github.com/user-attachments/assets/7567c226-7ea4-4fcb-a3b7-11190ee681ff" />
 
 
@@ -155,6 +155,8 @@ scene 壁纸在捕获 / 完整档下的渲染优先级与回退链：
 | 🔵 **rc（稳定版本）** | 适配 harness 为 rc 架构的推荐版本，新功能适配较慢 | `dsh plugin --profile web add dsh-wallpaper_share@rc010` |
 | 🟡 **test（测试版本）** | 用于测试的版本，可能有未完成功能 | `dsh plugin --profile web add dsh-wallpaper_share@test` |
 
+> 当前测试版：**`26.9.10-T`**（GitHub `test` 分支 / npm `test` dist-tag）。本版新增：壁纸库「管理」多选批量卸载、应用启动器卡片化简为「详细」、面板三页滚动（含占位的「dwp创作」）、宿主输入框按页显隐、**DWP 时钟变量**与**纹理分档**（预览/捕获用低清、增强/完整用高清）。
+
 ### 🔧 其他安装方式
 
 ```bash
@@ -176,10 +178,10 @@ dsh plugin --profile web add github:YRN-playmaker/dsh-wallpaper_share
 #   从 GitHub 安装（仓库自带预构建 lib/，不需要构建许可；main = 最新档）
 dsh plugin --profile web add dsh-wallpaper_share
 #   从 npm 安装（默认 = latest 最新档）
-dsh plugin --profile web add ./dsh-wallpaper_share-26.9.8.tgz
-#   本地 tarball 安装（26.9.8）
+dsh plugin --profile web add ./dsh-wallpaper_share-26.9.10-T.tgz
+#   本地 tarball 安装（26.9.10-T）
 dsh plugin --profile web add github:YRN-playmaker/dsh-wallpaper_share#test
-#   从 GitHub 安装 test 分支（测试档，含壁纸特效优化、页面功能更新等）
+#   从 GitHub 安装 test 分支（测试档，当前即 26.9.10-T：管理多选卸载 / 三页滚动 / DWP 纹理分档等）
 ```
 
 ```bash
@@ -247,8 +249,9 @@ dsh plugin --profile web add github:YRN-playmaker/dsh-wallpaper_share#test
 
 - `src/index.ts` — Node 半：WE 状态轮询、HTTP 路由、scene renderer 子进程管理、壁纸库扫描
 - `src/scene/` — SceneAdapter 模块（协议 / 能力探测 / renderer 进程 / WebSocket / 回退 / PKGV0001 解析 / SceneModel 图层模型 / .tex 解码 / puppet mdl 解析）
-- `src/client/` — 浏览器半（主题覆盖 / 背景层 / SceneCanvas / SceneModelRenderer 子集渲染器 / ParticleRuntime / GazeLens 眼动 / 专注透镜 / 沉浸模式 / wallpaper_share 面板）
+- `src/client/` — 浏览器半（主题覆盖 / 背景层 / SceneCanvas / SceneModelRenderer 子集渲染器 / ParticleRuntime / GazeLens 眼动 / 专注透镜 / 沉浸模式 / wallpaper_share 面板 / library-model.ts 壁纸库分类与详情格式化）
 - `src/workspace/` — 工作区脉搏（文件系统快照差分 + 内置 DWP 组包器；`_dev/make-workspace-pulse.mjs` 为手动打包脚本）
+- `src/daynight/` — 「DeepSeek 日夜」组包器（两张全画布 PNG + `$night_alpha` 分层；`_dev/make-daynight-dwp.mjs` 打包并装入本地市场，`_dev/verify-daynight-dwp.mjs` 静态校验 + 昼夜链路自检）
 - `native/we-capture/` — Rust 原生捕获器源码（Windows Graphics Capture → JPEG）
 - `bin/we-capture.exe` — 随包发布的原生捕获器（Windows-only）
 - `docs/` — 格式规范与技术文档（`scene-format.md` / `scene-fallback.md` / `tex-format-findings.md` / `mdl-skinning-findings.md`）
@@ -320,7 +323,7 @@ WE must be running with a wallpaper applied; otherwise the background stays empt
 - **Focus mode**: overlays a center-clear, edge-blurred reading window on the wallpaper to focus on the task and improve text readability; follows the mouse by default, or uses the webcam to infer the gaze point so the lens follows your eyes; 9-point calibration, text-line snap, anti-jitter
 <img width="426" height="240" alt="Video Project 29" src="https://github.com/user-attachments/assets/57daf64c-ff2b-40c7-aeef-73cac46c4c2b" />
 
-- **Wallpaper library**: grouped into **Local** / **Market** / **App Launcher**. Local manages what's installed — `dwp wallpapers` (click to mount as the global background, click again to unmount) and `we apps` (click to open their folder, with a "▶ Launch" button), with title search, thumbnails and counts; Market browses the `dwp-registry` catalog with name / author search, tag filters and **install / update / uninstall**; **App Launcher** accepts pasted `http(s)` direct links (`.zip` / `.7z` / `.exe`, **fill the archive password for encrypted archives**) or some **cloud-drive share links** (e.g. `yun.139.com/shareweb/#/w/i/…`, passcode in the password field), wakes DSH to download automatically, unpacks and wraps them into **WE-app-style entries** (auto-generated `project.json` + preview card) in the library; each card offers a one-click "▶ Launch", plus uninstall / update preview / switching between multiple entries. It does not require WE to run and is unaffected by newer WE versions dropping application wallpapers.
+- **Wallpaper library**: grouped into **Local** / **Market** / **App Launcher**. Local manages what's installed — `dwp wallpapers` (click to mount as the global background, click again to unmount) and `apps` (a top category split into `WE app` and `App`; click a card to launch, with a confirm dialog each time), with title search, thumbnails and counts; the **Manage** toggle next to the search box puts the cards into an edit state — they jiggle, **clicking a card multi-selects it** (selected cards stop jiggling, turn blue and get a check mark), and the selection bar offers "selected N / uninstall selected / clear" so you can pick across `dwp wallpapers` and `apps` and uninstall them in one go (the confirm dialog lists everything that will be deleted); each card also keeps a per-item "open source file / uninstall" row — **uninstall is only offered for DWP wallpapers and launcher-installed apps**, WE Workshop content just shows a hint and cannot be selected (Steam content is never deleted); Market browses the `dwp-registry` catalog with name / author search, tag filters and **install / update / uninstall**; **App Launcher** only installs: it accepts pasted `http(s)` direct links (`.zip` / `.7z` / `.exe`, **fill the archive password for encrypted archives**) or some **cloud-drive share links** (e.g. `yun.139.com/shareweb/#/w/i/…`, passcode in the password field), wakes DSH to download automatically, unpacks and wraps them into **WE-app-style entries** (auto-generated `project.json` + preview card) in the library; each card keeps a "Details" button (install time / location / executable, plus source, SHA512, update preview and entry switching) — launching and uninstalling happen in Local → Apps. It does not require WE to run and is unaffected by newer WE versions dropping application wallpapers.
 <img width="737" height="675" alt="image" src="https://github.com/user-attachments/assets/7567c226-7ea4-4fcb-a3b7-11190ee681ff" />
 
 **Settings page↓**
@@ -336,6 +339,8 @@ Other features:
 
 - **Workspace Pulse (built-in DWP)**: a new built-in dynamic wallpaper `workspace-pulse` — shows **recently changed files in your workspace** as up to 3 floating bubbles on the background, each with a green `+` / red `−` badge at its top-right marking whether the file is growing or shrinking (covers additions / deletions too). No git dependency (unsaved and binary files are caught as well); updates live once mounted, with a breathing hint when idle. Auto-installed into the library on first startup — see Wallpaper library → Local → dwp wallpapers
 - **DWP wallpapers & global-background rendering**: `dwp/1.0` protocol packages (text / solid / particle / mesh layers + 12 blend modes + 3 animations + 11 effects, deterministic rendering); mounting renders them as the DSH global background via WebGL2 (Canvas2D fallback on weak GPUs) while pausing WE sync to avoid conflicts, auto-restored after a refresh
+- **DWP clock variables (a generic capability for wallpaper authors)**: every 2.5s the plugin feeds `hour` / `night_alpha` / `night_on` / `day_on` into **whatever scene is mounted** (`Handle.setParams` overwrites key by key, so it never clashes with the built-in Workspace Pulse variables); declare them in `variables` and reference them — the market package **"DeepSeek Day & Night"** uses `$night_alpha` to swap in a night image from 18:00 to 06:00 and back, with a 10-minute linear crossfade at both boundaries
+- **DWP texture tiers (one wallpaper, two resolutions)**: `hd_on` / `night_sd` / `night_hd` are fed too, and the render mode picks the tier — **Eco / Perf = low, Enhanced = high**; a package lists what only the high tier needs in the scene-level extension field `dsh.hdAssets`, and the consumer stubs those with a 1×1 placeholder in the low tier, so the high-res textures are **never fetched or decoded** there ("DeepSeek Day & Night" 1.1.0 ships 1920×1080 / 7680×4320 tiers; switching tiers remounts with the new asset set)
 - **Settings persistence**: sync toggle, render mode, monitor lock, the three visual sliders, focus / eye-tracking preferences are written to `localStorage` (key `we-sync.settings`) and restored after a refresh or DSH restart; transient view state such as immersive mode and task flags are deliberately not persisted
 - **Self-diagnostic route** `/we-sync/diag` (localhost only; scene renderer status & texture extraction results)
 
@@ -407,6 +412,8 @@ When the sidebar is **collapsed**, a 34px round light appears on the left edge (
 | 🔵 **rc (stable)** | Recommended build for a Harness on the rc architecture; new features are adapted more slowly | `dsh plugin --profile web add dsh-wallpaper_share@rc010` |
 | 🟡 **test (testing)** | For testing only; may contain unfinished features | `dsh plugin --profile web add dsh-wallpaper_share@test` |
 
+> Current test build: **`26.9.10-T`** (GitHub `test` branch / npm `test` dist-tag). New in this build: library "Manage" multi-select bulk uninstall, launcher cards reduced to a "Details" button, a third scrolling page (a placeholder "DWP Studio"), the host composer hidden per page, plus **DWP clock variables** and **texture tiers** (Eco/Perf = low-res, Enhanced = high-res).
+
 ### 🔧 Other install methods
 
 ```bash
@@ -428,10 +435,10 @@ dsh plugin --profile web add github:YRN-playmaker/dsh-wallpaper_share
 #   install from GitHub (repo ships prebuilt lib/, no build permission needed; main = latest tier)
 dsh plugin --profile web add dsh-wallpaper_share
 #   install from npm (default = latest tier)
-dsh plugin --profile web add ./dsh-wallpaper_share-26.9.8.tgz
-#   install from a local tarball (26.9.8)
+dsh plugin --profile web add ./dsh-wallpaper_share-26.9.10-T.tgz
+#   install from a local tarball (26.9.10-T)
 dsh plugin --profile web add github:YRN-playmaker/dsh-wallpaper_share#test
-#   install the test branch from GitHub (test tier, includes wallpaper effect tweaks, page feature updates, etc.)
+#   install the test branch from GitHub (test tier — currently 26.9.10-T: multi-select uninstall, three-page scroll, DWP texture tiers, …)
 ```
 
 ```bash
@@ -499,8 +506,9 @@ dsh plugin --profile web add github:YRN-playmaker/dsh-wallpaper_share#test
 
 - `src/index.ts` — node half: WE polling, HTTP routes, scene renderer subprocess, library scan
 - `src/scene/` — SceneAdapter modules (protocol / capability probe / renderer process / WebSocket / fallback / PKGV0001 parsing / SceneModel layer model / .tex decoding / puppet mdl parsing)
-- `src/client/` — browser half (theme overrides / background layers / SceneCanvas / SceneModelRenderer / ParticleRuntime / GazeLens / focus lens / immersive mode / wallpaper_share panel)
+- `src/client/` — browser half (theme overrides / background layers / SceneCanvas / SceneModelRenderer / ParticleRuntime / GazeLens / focus lens / immersive mode / wallpaper_share panel / library-model.ts library categories & detail formatting)
 - `src/workspace/` — Workspace Pulse (filesystem snapshot diffing + built-in DWP packer; `_dev/make-workspace-pulse.mjs` is the manual packing script)
+- `src/daynight/` — "DeepSeek Day & Night" packer (two full-canvas PNGs layered by `$night_alpha`; `_dev/make-daynight-dwp.mjs` packs + installs into the local market, `_dev/verify-daynight-dwp.mjs` static validation + day/night chain self-check)
 - `native/we-capture/` — Rust native capture renderer source (Windows Graphics Capture → JPEG)
 - `bin/we-capture.exe` — shipped native capture renderer (Windows-only)
 - `docs/` — format & implementation docs (`scene-format.md` / `scene-fallback.md` / `tex-format-findings.md` / `mdl-skinning-findings.md`)

@@ -87,3 +87,62 @@ test('GET /updates → 200 数组', async () => {
   assert.equal(res.statusCode, 200);
   assert.ok(Array.isArray(bodyOf(res).updates));
 });
+
+// —— 目录新鲜度与降级护栏（2026-09-10：目录 CDN 还没刷新，点"更新"把 1.1.0 装回了 1.0.0）——
+
+test('GET /catalog?refresh=1 → 重拉且带 cache-buster（绕开 CDN 缓存）', async () => {
+  const asked: string[] = [];
+  const market = new MarketClient({
+    dir: mkdtempSync(join(tmpdir(), 'dwp-routes-')),
+    fetchFn: async (url) => {
+      asked.push(url);
+      return { ok: true, status: 200, json: async () => ({ schemaVersion: 1, generatedAt: '', count: 1, entries: [free] }), arrayBuffer: async () => new ArrayBuffer(0) };
+    },
+    now: () => '2026-08-29T00:00:00Z',
+  });
+  let clock = 1_000;
+  const routes = new Map(createMarketRoutes({ market, catalogUrl: 'https://reg/catalog.json', catalogTtlMs: 300_000, now: () => clock }).map((r) => [r.path, r]));
+  const cat = routes.get('/we-sync/dwp/market/catalog')!;
+
+  await call(cat, '/we-sync/dwp/market/catalog');
+  assert.deepEqual(asked, ['https://reg/catalog.json'], '首次按原 URL 拉');
+
+  clock += 1000;
+  await call(cat, '/we-sync/dwp/market/catalog');
+  assert.equal(asked.length, 1, 'TTL 内走缓存');
+
+  await call(cat, '/we-sync/dwp/market/catalog?refresh=1');
+  assert.equal(asked.length, 2, 'refresh=1 强制重拉');
+  assert.match(asked[1]!, /^https:\/\/reg\/catalog\.json\?t=\d+$/, '必须带 cache-buster，否则 CDN 还你旧目录');
+
+  clock += 300_001;
+  await call(cat, '/we-sync/dwp/market/catalog');
+  assert.equal(asked.length, 3, 'TTL 过期自动重拉');
+});
+
+test('GET /install：目录版本更旧 → 409 拒绝；force=1 才允许回退', async () => {
+  const market = new MarketClient({
+    dir: mkdtempSync(join(tmpdir(), 'dwp-routes-')),
+    fetchFn: async (url) => (url.endsWith('.json')
+      ? { ok: true, status: 200, json: async () => ({ schemaVersion: 1, generatedAt: '', count: 1, entries: [{ ...free, dwp: { ...free.dwp, package: { ...free.dwp.package, version: '1.0.0' } } }] }), arrayBuffer: async () => new ArrayBuffer(0) }
+      : { ok: true, status: 200, json: async () => ({}), arrayBuffer: async () => pkgBytes.slice().buffer }),
+    now: () => '2026-08-29T00:00:00Z',
+  });
+  // 先装一份"更新"的本地版本（模拟本机已是 1.1.0）
+  market.store.upsert({
+    id: 'yrn.demo', version: '1.1.0', integrity: INTEG, sourceUrl: 'x',
+    path: 'packages/yrn.demo.dwp', installedAt: '2026-09-10T00:00:00Z', commercial: false,
+  });
+  const routes = new Map(createMarketRoutes({ market, catalogUrl: 'https://reg/catalog.json' }).map((r) => [r.path, r]));
+  const install = routes.get('/we-sync/dwp/market/install')!;
+
+  const blocked = await call(install, '/we-sync/dwp/market/install?id=yrn.demo');
+  assert.equal(blocked.statusCode, 409, '目录更旧时不得静默降级');
+  assert.equal(bodyOf(blocked).installed, '1.1.0');
+  assert.equal(market.store.get('yrn.demo')!.version, '1.1.0', '本地记录未被改写');
+
+  const forced = await call(install, '/we-sync/dwp/market/install?id=yrn.demo&force=1');
+  assert.equal(forced.statusCode, 200, 'force=1 允许显式回退');
+  assert.equal(market.store.get('yrn.demo')!.version, '1.0.0');
+});
+
