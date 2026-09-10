@@ -7,7 +7,7 @@ import { useEffect, useRef, useState } from 'react'
 import { store, PLUGIN_VERSION, PLUGIN_REPO_URL, type WeSyncInfo } from './index'
 import { startGaze, stopGaze, calibrate, onGazeStatus, hasCalibrationData, type GazeStatus } from './GazeLens.ts'
 import { fetchCatalog, fetchInstalled, buildCards, searchCards, collectTags, install, uninstall, type MarketEntry, type MarketCard } from './market-api.ts'
-import { fetchInstalled as fetchLauncherInstalled, installApp, uninstallApp, launchApp, setEntry, isValidHttpUrl, humanSize, get139Auth, set139Auth, getLauncherRoot, setLauncherRoot, type InstalledApp } from './launcher-api.ts'
+import { fetchInstalled as fetchLauncherInstalled, installApp, uninstallApp, launchApp, setEntry, isValidHttpUrl, humanSize, get139Auth, set139Auth, getBaiduAuth, setBaiduAuth, getLauncherRoot, setLauncherRoot, type InstalledApp } from './launcher-api.ts'
 import { appsForSub, formatInstalledAt, launcherAppDir, matchLauncherRecord, partitionApps, type AppSub } from './library-model.ts'
 
 /* =========================================================================
@@ -161,10 +161,9 @@ const DICT = {
 
     // 应用启动器（launcher 标签：直链下载 → 类 WE app 封装 → 一键启动）
     launcherTab: '应用启动器',
-    launcherUrlPlaceholder: '粘贴直链（.zip/.7z/.exe）或 139 分享页链接…',
-    launcherTitlePlaceholder: '标题（留空自动取文件名）',
+    launcherUrlPlaceholder: '粘贴直链（.zip/.7z/.exe）或 139/百度网盘分享页链接…',    launcherTitlePlaceholder: '标题（留空自动取文件名）',
     launcherPwdPlaceholder: '解压密码（加密包选填）',
-    launcherCodePlaceholder: '提取码（139 分享选填）',
+    launcherCodePlaceholder: '提取码（139/百度网盘选填）',
     launcherPwdNeed: '压缩包已加密，请填写解压密码后重试',
     launcherPwdWrong: '解压密码错误，或压缩包已损坏',
     launcherAuthTitle: '139 登录态',
@@ -197,9 +196,17 @@ const DICT = {
     launcherRootSaved: '✔ 安装位置已更新，之后的安装存到新位置',
     launcherRootMoved: '✔ 已迁移应用',
     launcherRootFail: '更改安装位置失败',
-    launcherShareCode: '该 139 分享需要提取码：请在提取码框填入后重试',
-    launcherShareCodeWrong: '139 提取码错误，请核对后重试',
-    launcherShareFail: '139 分享解析失败（详情见括号内服务端信息）',
+    launcherShareCode: '该分享需要提取码：请在提取码框填入后重试',
+    launcherShareCodeWrong: '提取码错误，请核对后重试',
+    launcherShareFail: '分享解析失败（详情见括号内服务端信息）',
+    launcherBaiduTitle: '百度网盘登录态',
+    launcherBaiduPlaceholder: 'BDUSS=xxxx…（建议连 STOKEN 一起粘贴）',
+    launcherBaiduHint: '手动方式：登录 pan.baidu.com 后，F12 → 应用(Application) → Cookie → pan.baidu.com → 复制 BDUSS 的值（建议连 STOKEN 一起）粘贴到这里',
+    launcherBaiduSaved: '百度网盘登录态已保存',
+    launcherBaiduNeed: '百度网盘文件下载需要登录态（BDUSS），请在下方粘贴',
+    launcherBaiduNeedShort: '该百度网盘链接需要登录态：',
+    launcherShareCode139: '该 139 分享需要提取码：请在提取码框填入后重试',
+    launcherShareCode139Wrong: '139 提取码错误，请核对后重试',
     launcherInstall: '下载安装',
     launcherInstalling: '下载安装中…',
     launcherEmpty: '还没有安装的应用。粘贴直链后点「下载安装」。',
@@ -372,10 +379,10 @@ const DICT = {
     dirRemoved: 'Dir removed',
 
     launcherTab: 'App Launcher',
-    launcherUrlPlaceholder: 'Paste a direct link (.zip/.7z/.exe) or a 139 share page URL…',
+    launcherUrlPlaceholder: 'Paste a direct link (.zip/.7z/.exe) or a 139/Baidu share page URL…',
     launcherTitlePlaceholder: 'Title (defaults to filename)',
     launcherPwdPlaceholder: 'Archive password (optional)',
-    launcherCodePlaceholder: 'Share passcode (139, optional)',
+    launcherCodePlaceholder: 'Share passcode (139/Baidu, optional)',
     launcherPwdNeed: 'Archive is encrypted — enter the password and retry',
     launcherPwdWrong: 'Wrong password, or the archive is corrupted',
     launcherAuthTitle: '139 Login (Authorization)',
@@ -408,9 +415,17 @@ const DICT = {
     launcherRootSaved: '✔ Install location updated — future installs go there',
     launcherRootMoved: '✔ Apps moved',
     launcherRootFail: 'Failed to update install location',
-    launcherShareCode: 'This 139 share needs a passcode — enter it in the passcode box and retry',
-    launcherShareCodeWrong: 'Wrong 139 passcode — check it and retry',
-    launcherShareFail: '139 share resolve failed (see server detail in brackets)',
+    launcherShareCode: 'This share needs a passcode — enter it in the passcode box and retry',
+    launcherShareCodeWrong: 'Wrong passcode — check it and retry',
+    launcherShareFail: 'Share resolve failed (see server detail in brackets)',
+    launcherBaiduTitle: 'Baidu Netdisk Login (Cookie)',
+    launcherBaiduPlaceholder: 'BDUSS=xxxx… (STOKEN recommended too)',
+    launcherBaiduHint: 'Manual: sign in at pan.baidu.com, open DevTools → Application → Cookies → pan.baidu.com → copy the BDUSS value (STOKEN recommended too) and paste it here',
+    launcherBaiduSaved: 'Baidu login cookie saved',
+    launcherBaiduNeed: 'Baidu file download needs a login cookie (BDUSS) — paste it below',
+    launcherBaiduNeedShort: 'This Baidu link needs a login state:',
+    launcherShareCode139: 'This 139 share needs a passcode — enter it in the passcode box and retry',
+    launcherShareCode139Wrong: 'Wrong 139 passcode — check it and retry',
     launcherInstall: 'Download & Install',
     launcherInstalling: 'Downloading…',
     launcherEmpty: 'No apps installed yet. Paste a direct link and click "Download & Install".',
@@ -851,13 +866,17 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
   const [lTitle, setLTitle] = useState('')
   const [lPwd, setLPwd] = useState('') // 解压密码（选填）：压缩包解密用，仅随安装请求传一次，不落任何记录
   const [lPwdErr, setLPwdErr] = useState(false) // 解压密码语义错误时高亮密码框
-  const [lCode, setLCode] = useState('') // 139 分享提取码（选填）：只用于分享链接校验
+  const [lCode, setLCode] = useState('') // 139/百度 分享提取码（选填）：只用于分享链接校验
   const [lCodeErr, setLCodeErr] = useState(false) // 提取码语义错误时高亮提取码框
   const [lAuthOpen, setLAuthOpen] = useState(false) // 139 登录态设置行展开
   const [lAuth, setLAuth] = useState('') // 139 Authorization 输入
   const [lAuthPresent, setLAuthPresent] = useState('') // 已配置的掩码账号（'' = 未配置）
   const [lAuthBusy, setLAuthBusy] = useState(false)
   const [lAuthWaiting, setLAuthWaiting] = useState(false) // A1 一键登录：已打开 139 页，轮询等待助手同步
+  const [lBaiduAuthOpen, setLBaiduAuthOpen] = useState(false) // 百度登录态设置行展开
+  const [lBaiduAuth, setLBaiduAuth] = useState('') // 百度 BDUSS Cookie 输入
+  const [lBaiduAuthPresent, setLBaiduAuthPresent] = useState('') // 已配置的 BDUSS 掩码（'' = 未配置）
+  const [lBaiduAuthBusy, setLBaiduAuthBusy] = useState(false)
   const [lRoot, setLRoot] = useState('') // 安装位置（存储根，绝对路径）
   const [lRootOpen, setLRootOpen] = useState(false) // 安装位置编辑行展开
   const [lRootDraft, setLRootDraft] = useState('') // 安装位置输入草稿
@@ -1173,6 +1192,8 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
       setLApps(await fetchLauncherInstalled((url, init) => fetch(url, init)))
       const a = await get139Auth((url, init) => fetch(url, init))
       setLAuthPresent(a.present ? a.account : '')
+      const b = await getBaiduAuth((url, init) => fetch(url, init))
+      setLBaiduAuthPresent(b.present ? b.account : '')
       setLRoot(await getLauncherRoot((url, init) => fetch(url, init)))
     } catch { /* launcher 路由未就绪不阻断 */ }
   }
@@ -1206,6 +1227,9 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
   //    新标签打开 yun.139.com（用户手势内 window.open，浏览器允许），期间 2s 轮询
   //    /139auth；油猴助手一旦同步成功 → 绿灯提示。最多等 10 分钟。 ──────────
   const is139Share = (u: string): boolean => /yun\.139\.com\/shareweb\/#\/w\/i\//i.test(u.trim())
+  const isBaiduShare = (u: string): boolean => /pan\.baidu\.com\/(s\/1|share\/init\?surl=)/i.test(u.trim())
+  // 粘贴了百度网盘链接且未配置登录态 → 自动展开登录态输入行（BDUSS 需手动粘贴，无一键助手）
+  useEffect(() => { if (isBaiduShare(lUrl) && lBaiduAuthPresent === '') setLBaiduAuthOpen(true) }, [lUrl, lBaiduAuthPresent])
 
   const onOpen139Login = async (): Promise<void> => {
     window.open('https://yun.139.com/', '_blank', 'noopener')
@@ -1283,16 +1307,26 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
           flashLErr(t.flashLFailed + '：' + (out.code === 'password_required' ? t.launcherPwdNeed : t.launcherPwdWrong))
           return
         }
-        // 139 提取码错误：高亮提取码框；需要登录态 → 自动展开登录态设置行
+        // 提取码错误：高亮提取码框（按链接类型给对应文案）
         if (out.code === 'share_passcode_required' || out.code === 'share_passcode_wrong') {
           setLCodeErr(true)
-          flashLErr(t.flashLFailed + '：' + (out.code === 'share_passcode_required' ? t.launcherShareCode : t.launcherShareCodeWrong) + (out.error !== undefined ? '（' + out.error + '）' : ''))
+          const req = out.code === 'share_passcode_required'
+            ? (isBaiduShare(url) ? t.launcherShareCode : is139Share(url) ? t.launcherShareCode139 : t.launcherShareCode)
+            : (isBaiduShare(url) ? t.launcherShareCodeWrong : is139Share(url) ? t.launcherShareCode139Wrong : t.launcherShareCodeWrong)
+          flashLErr(t.flashLFailed + '：' + req + (out.error !== undefined ? '（' + out.error + '）' : ''))
           return
         }
         if (out.code === 'share_auth_required') {
-          setLAuthOpen(true)
-          void get139Auth((u) => fetch(u)).then((a) => { setLAuthPresent(a.present ? a.account : '') })
-          flashLErr(t.flashLFailed + '：' + t.launcherAuthNeed + (out.error !== undefined ? '（' + out.error + '）' : ''))
+          // 按链接类型展开对应的登录态行
+          if (isBaiduShare(url)) {
+            setLBaiduAuthOpen(true)
+            void getBaiduAuth((u) => fetch(u)).then((b) => { setLBaiduAuthPresent(b.present ? b.account : '') })
+            flashLErr(t.flashLFailed + '：' + t.launcherBaiduNeed + (out.error !== undefined ? '（' + out.error + '）' : ''))
+          } else {
+            setLAuthOpen(true)
+            void get139Auth((u) => fetch(u)).then((a) => { setLAuthPresent(a.present ? a.account : '') })
+            flashLErr(t.flashLFailed + '：' + t.launcherAuthNeed + (out.error !== undefined ? '（' + out.error + '）' : ''))
+          }
           return
         }
         if (out.code === 'share_api_error' || out.code === 'share_not_file') {
@@ -1334,6 +1368,19 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
       setLAuthPresent(a.present ? a.account : '')
       flashL(t.launcherAuthSaved)
     } finally { setLAuthBusy(false) }
+  }
+
+  /** 百度网盘登录态保存/清除（整串 Cookie 或裸 BDUSS 值；服务端归一并校验）。 */
+  const onBaiduAuthSave = async (): Promise<void> => {
+    setLBaiduAuthBusy(true)
+    try {
+      const r = await setBaiduAuth(lBaiduAuth.trim(), (u, i) => fetch(u, i))
+      if (!r.ok) { flashL(t.flashLFailed + '：' + (r.error ?? '')); return }
+      setLBaiduAuth('')
+      const b = await getBaiduAuth((u) => fetch(u))
+      setLBaiduAuthPresent(b.present ? b.account : '')
+      flashL(t.launcherBaiduSaved)
+    } finally { setLBaiduAuthBusy(false) }
   }
   const onConfirmGo = async (): Promise<void> => {
     const rec = lConfirm
@@ -1960,6 +2007,26 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
                                     onChange={(e) => setLAuth(e.target.value)}
                                   />
                                   <button className="wesync-btn" disabled={lAuthBusy || lAuth.trim() === ''} onClick={() => { void on139AuthSave() }}>
+                                    {t.launcherAuthSave}
+                                  </button>
+                                </div>
+                              )
+                            : null}
+                          {/* 百度网盘登录态（粘贴 Baidu 链接且未配置时自动展开；已配置常驻显示状态） */}
+                          {lBaiduAuthOpen || lBaiduAuthPresent !== ''
+                            ? (
+                                <div className="wesync-dir-row" style={{ alignItems: 'center' }}>
+                                  <span style={{ flex: '0 0 auto', fontSize: 12, opacity: 0.75 }} title={t.launcherBaiduHint}>
+                                    {t.launcherBaiduTitle}{lBaiduAuthPresent !== '' ? `（${lBaiduAuthPresent}）` : ''}
+                                  </span>
+                                  <input
+                                    className="wesync-dir-input"
+                                    type="password"
+                                    placeholder={t.launcherBaiduPlaceholder}
+                                    value={lBaiduAuth}
+                                    onChange={(e) => setLBaiduAuth(e.target.value)}
+                                  />
+                                  <button className="wesync-btn" disabled={lBaiduAuthBusy || lBaiduAuth.trim() === ''} onClick={() => { void onBaiduAuthSave() }}>
                                     {t.launcherAuthSave}
                                   </button>
                                 </div>

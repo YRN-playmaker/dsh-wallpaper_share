@@ -1,5 +1,11 @@
 # Changelog
 
+## 26.9.11-T - 2026-09-10
+
+### ✨ 新增功能
+
+- **应用启动器支持百度网盘分享链接**：粘贴 `pan.baidu.com/s/1…` 分享页链接即可像 139 一样直接下载安装。带提取码的分享在「提取码」框填入（URL 带 `?pwd=` 亦可）；下载需百度登录态——面板新增「百度网盘登录态」行，粘贴 BDUSS Cookie（建议连 STOKEN），存 `~/.dsh/storages/we-sync-baidu-auth.json`，入库前严格归一校验（只留 BDUSS/STOKEN，拒收 URL 等杂讯）。解析链路：`share/wxlist` →（errno 9019 时）`share/verify` 换 BDCLND Cookie → wxlist 文件列表；wxlist 未给直链时回落内容页解析 `yunData.sign/timestamp/shareid` 再 `/api/download` 换 dlink；dlink 下载统一带 `User-Agent: netdisk` + 登录态 Cookie（`installer.download` 支持自定义请求头）。errno 语义映射成面板可读提示（9019=需要提取码、2/-12=提取码错误、-62/-64/-70=风控稍后再试），未知 errno 原文透传便于排查。根目录非单文件（文件夹/多文件）明确报错，与 139 适配器同语义。新增 12 条 fixture 回归（共 185 测试）。参考 syhyz1990/baiduyun 仅限协议行为（该项目 AGPL，未复制任何代码，本实现为原创）。
+
 ## 26.9.10-T - 2026-09-10
 
 ### ✨ 新增功能

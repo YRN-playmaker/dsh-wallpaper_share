@@ -354,21 +354,22 @@ export class LauncherInstaller {
    *  Transfer-Encoding 冲突，undici 报 "Parse Error … invalid content-length"，
    *  面板只能看到笼统的「不合法的 length」）。这类错误对同 URL 的重试往往自愈，
    *  故命中特征时自动带 Range 头重试一次；Range（206）响应不含 Content-Length，
-   *  解析器不会再踩同一个坑。Range 重试也失败才把真实错误链抛给上层。 */
-  async download(url: string): Promise<{ bytes: Uint8Array; fileName: string }> {
+   *  解析器不会再踩同一个坑。Range 重试也失败才把真实错误链抛给上层。
+   *  `init.headers` 可注入下载头（百度网盘 dlink 需要 UA=netdisk + 用户 Cookie）。 */
+  async download(url: string, init?: FetchInitLike): Promise<{ bytes: Uint8Array; fileName: string }> {
     let parsed: URL
     try { parsed = new URL(url) } catch { throw new LauncherError(`URL 非法: ${url}`) }
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') throw new LauncherError(`仅支持 http(s) 直链: ${parsed.protocol}`)
     let res: FetchLike
     let lastErrText = ''
     try {
-      res = await this.fetchFn(url)
+      res = await this.fetchFn(url, init)
     } catch (e) {
       lastErrText = fetchCauseText(e)
       // HTTP 头解析类错误（invalid content-length 等）：带 Range 头重试一次
       if (isHttpHeaderParseError(lastErrText)) {
         try {
-          res = await this.fetchFn(url, { headers: { Range: 'bytes=0-' } })
+          res = await this.fetchFn(url, { ...(init ?? {}), headers: { ...(init?.headers ?? {}), Range: 'bytes=0-' } })
         } catch (e2) {
           throw new LauncherError(`下载请求失败（含 Range 重试）: ${fetchCauseText(e2)}`)
         }

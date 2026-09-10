@@ -110,6 +110,24 @@ export async function set139Auth(authorization: string, fetchFn: Fetch = default
   return { ok: true }
 }
 
+/** 百度网盘登录态：查询是否已配置（返回 BDUSS 掩码）与保存（整串 Cookie 或裸 BDUSS 值）。 */
+export async function getBaiduAuth(fetchFn: Fetch = defaultFetch): Promise<{ present: boolean; account: string }> {
+  const res = await fetchFn('/we-sync/launcher/baiduauth', { cache: 'no-store' })
+  const body = await res.json().catch(() => ({})) as { present?: boolean; account?: string }
+  return { present: body.present === true, account: typeof body.account === 'string' ? body.account : '' }
+}
+
+export async function setBaiduAuth(cookie: string, fetchFn: Fetch = defaultFetch): Promise<{ ok: boolean; error?: string }> {
+  const res = await fetchFn('/we-sync/launcher/baiduauth', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ cookie }),
+  })
+  const body = await res.json().catch(() => ({})) as { error?: string }
+  if (!res.ok) return { ok: false, error: body.error ?? `HTTP ${res.status}` }
+  return { ok: true }
+}
+
 /** 安装位置：查询当前根目录。 */
 export async function getLauncherRoot(fetchFn: Fetch = defaultFetch): Promise<string> {
   const res = await fetchFn('/we-sync/launcher/root', { cache: 'no-store' })

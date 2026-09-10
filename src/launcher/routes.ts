@@ -1,4 +1,4 @@
-﻿/**
+/**
  * launcher 的 HTTP 路由（node 半）：注册到 share 的 WebServer，与 market/routes.ts 同契约。
  * 控制面 API（localhost）：
  *   GET  <base>/installed                 → 已装应用列表
@@ -16,6 +16,7 @@ import { join } from 'node:path'
 import { LauncherInstaller, LauncherError, type InstalledAppRecord } from './installer.ts'
 import { CryptZipError } from './crypt-zip.ts'
 import { parse139ShareUrl, Yun139Client, Yun139Error, normalize139Authorization } from './yun139.ts'
+import { parseBaiduShareUrl, BaiduClient, BaiduError, normalizeBaiduCookie, bdussOf, type CredStore } from './baiduyun.ts'
 import { HELPER_139_SCRIPT, HELPER_139_URL } from './helper139.ts'
 import { integrityOf, verifyIntegrity } from '../market/integrity.ts'
 
@@ -28,6 +29,11 @@ export interface Yun139Resolver {
   resolve(shareUrl: string, passcode?: string): Promise<{ downloadUrl: string; fileName?: string; size?: number }>
 }
 
+/** 百度网盘分享解析的最小结构（测试注入假实现）。 */
+export interface BaiduResolver {
+  resolve(shareUrl: string, passcode?: string): Promise<{ downloadUrl: string; fileName?: string; size?: number; headers?: Record<string, string> }>
+}
+
 export interface LauncherRoutesDeps {
   installer: LauncherInstaller
   base?: string // 默认 /we-sync/launcher
@@ -35,6 +41,10 @@ export interface LauncherRoutesDeps {
   yun139?: Yun139Resolver
   /** 139 登录态存储（缺省内存态，不落盘） */
   cred139?: { read(): string; write(v: string): void }
+  /** 百度网盘分享适配器；缺省 new BaiduClient()（读 credBaidu） */
+  baidu?: BaiduResolver
+  /** 百度登录态存储（缺省内存态，不落盘） */
+  credBaidu?: CredStore
   /** 安装根变更回调（持久化覆盖值 + 重注册壁纸读取位置）；缺省仅内存生效 */
   onRootChanged?: (newRoot: string) => void
 }
@@ -92,6 +102,8 @@ export function createLauncherRoutes(deps: LauncherRoutesDeps): Route[] {
   const installer = deps.installer
   const yun139: Yun139Resolver = deps.yun139 ?? new Yun139Client()
   const cred139 = deps.cred139 ?? { read: () => '', write: () => {} }
+  const credBaidu = deps.credBaidu ?? { read: () => '', write: () => {} }
+  const baidu: BaiduResolver = deps.baidu ?? new BaiduClient({ getAuth: () => credBaidu.read() })
   const onRootChanged = deps.onRootChanged ?? (() => {})
 
   const installed: Route = { kind: 'exact', path: base + '/installed', handler: (_req, res) => {
@@ -149,9 +161,10 @@ export function createLauncherRoutes(deps: LauncherRoutesDeps): Route[] {
       previewMime = pv.mime
     }
     try {
-      // 1) 下载（139 分享页链接 → 适配器换直链再下；提取码走 passcode 字段）
+      // 1) 下载（139 / 百度网盘分享页链接 → 各自适配器换直链再下；提取码走 passcode 字段）
       let url = opts.url
       let shareFileName: string | undefined
+      let dlHeaders: Record<string, string> | undefined
       if (parse139ShareUrl(url) !== null) {
         try {
           const meta = await yun139.resolve(url, passcode)
@@ -163,8 +176,20 @@ export function createLauncherRoutes(deps: LauncherRoutesDeps): Route[] {
           }
           throw e
         }
+      } else if (parseBaiduShareUrl(url) !== null) {
+        try {
+          const meta = await baidu.resolve(url, passcode)
+          url = meta.downloadUrl
+          shareFileName = meta.fileName
+          dlHeaders = meta.headers // dlink 必须 UA=netdisk + 用户 Cookie，否则拿不到文件流
+        } catch (e) {
+          if (e instanceof BaiduError) {
+            return json(res, 422, { error: e.message, code: e.code })
+          }
+          throw e
+        }
       }
-      const dl = await installer.download(url)
+      const dl = await installer.download(url, dlHeaders !== undefined ? { headers: dlHeaders } : undefined)
       const bytes = dl.bytes
       const fileName = shareFileName ?? dl.fileName
       // 2) 可选完整性校验
@@ -336,7 +361,40 @@ export function createLauncherRoutes(deps: LauncherRoutesDeps): Route[] {
     res.end(HELPER_139_SCRIPT)
   } }
 
-  return [installed, install, entry, preview, uninstall, previewFile, auth139, helper139, rootRoute]
+  /** 百度网盘登录态：POST {cookie} 保存（空串清除；接受整串 Cookie 或裸 BDUSS 值）；
+   *  GET 查是否已配置（只回布尔与 BDUSS 掩码）。入库前经 normalizeBaiduCookie 校验，拒收杂讯。 */
+  const authBaidu: Route = { kind: 'exact', path: base + '/baiduauth', handler: async (req, res) => {
+    if (req.method === 'GET') {
+      const v = credBaidu.read()
+      const mask = v === ''
+        ? ''
+        : (() => {
+            try {
+              const b = bdussOf(v)
+              return b === '' ? '已配置' : b.length > 8 ? b.slice(0, 5) + '****' + b.slice(-3) : b
+            } catch { return '已配置' }
+          })()
+      return json(res, 200, { present: v !== '', account: mask })
+    }
+    let body: unknown
+    try {
+      const raw = await readBody(req)
+      body = JSON.parse(new TextDecoder().decode(raw)) as unknown
+    } catch (e) { return json(res, 400, { error: `请求体非法: ${(e as Error).message ?? e}` }) }
+    const opts = body as { cookie?: unknown }
+    if (typeof opts.cookie !== 'string') return json(res, 400, { error: '缺 cookie' })
+    const v = opts.cookie.trim()
+    if (v !== '') {
+      // 入库前校验：BDUSS 缺失/形态不对/杂讯一律拒收
+      try { normalizeBaiduCookie(v) } catch (e) {
+        return json(res, 422, { error: `拒绝保存，不是有效的百度网盘登录态：${(e as Error).message}` })
+      }
+    }
+    credBaidu.write(v)
+    json(res, 200, { ok: true, present: v !== '' })
+  } }
+
+  return [installed, install, entry, preview, uninstall, previewFile, auth139, authBaidu, helper139, rootRoute]
 }
 
 /** 供 index.ts 类型引用（避免直接 import installer 内部类型绕路）。 */

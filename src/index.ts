@@ -30,6 +30,7 @@ import { buildPulsePackage, PULSE_ID, PULSE_VERSION } from './workspace/pack.ts'
 import { LauncherInstaller, resolveEntryInside, isLauncherInternalDir } from './launcher/installer.ts'
 import { createLauncherRoutes } from './launcher/routes.ts'
 import { Yun139Client, fileCredStore } from './launcher/yun139.ts'
+import { baiduFileCredStore } from './launcher/baiduyun.ts'
 
 /** 最小化的 Cordis 上下文结构（独立构建不依赖 @deepseek-ai/cordis 的类型包） */
 interface CordisCtx {
@@ -1192,10 +1193,13 @@ export function apply(ctx: CordisCtx): void {
   // 139 登录态：存 ~/.dsh/storages/we-sync-139-auth.json；每请求实时读（面板改完即生效，无需重启）
   const cred139 = fileCredStore(normalize(homedir() + '/.dsh/storages/we-sync-139-auth.json'))
   const yun139 = new Yun139Client({ getAuth: () => cred139.read() })
+  // 百度网盘登录态：同款做法，存 we-sync-baidu-auth.json（面板粘贴 BDUSS Cookie）
+  const credBaidu = baiduFileCredStore(normalize(homedir() + '/.dsh/storages/we-sync-baidu-auth.json'))
   for (const route of createLauncherRoutes({
     installer: launcher,
     yun139,
     cred139,
+    credBaidu,
     // 换安装位置后：持久化覆盖值 + 重注册壁纸读取位置（新根立刻被 scanApps 扫到）
     onRootChanged: (next) => {
       try { writeFileSync(launcherRootFile, JSON.stringify({ root: next }, null, 2) + '\n', 'utf8') } catch { /* 忽略持久化失败 */ }
