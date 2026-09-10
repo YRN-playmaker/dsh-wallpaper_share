@@ -1,7 +1,10 @@
-# 发布当前 main 分支到 npm（latest 标签）。
-# 触发：Actions 页面手动 Run workflow（选 main 分支）。
+# 发布当前分支的包到 npm。
+# 触发：Actions 页面手动 Run workflow（选分支）。
 # 凭证：仓库 secret NPM_TOKEN（npmjs.com → Access Tokens → Publish 类型）。
 # 仓库自带预构建 lib/，无需 install/build，直接 publish。
+# 版本语义：纯数字版本（26.9.10）→ latest；预发布版本必须显式 --tag（npm 拒绝把
+#   预发布版挂上 latest，2026-09-10 run #4 失败即此因）：-T → test，-rc* → rc，
+#   其它后缀原样作 tag；也可用 tag 输入覆盖。
 name: Publish to npm
 
 on:
@@ -11,6 +14,10 @@ on:
         description: 只演练（--dry-run），不真正发布
         type: boolean
         default: false
+      tag:
+        description: dist-tag（留空 = 预发布版按后缀自动选：T→test，rc*→rc）
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -20,14 +27,38 @@ jobs:
   publish:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
 
       - name: Publish
-        run: npm publish --provenance ${{ inputs.dry_run && '--dry-run' || '' }}
+        shell: bash
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          DRY_RUN: ${{ inputs.dry_run == true && '--dry-run' || '' }}
+          TAG_INPUT: ${{ inputs.tag }}
+        run: |
+          V=$(node -p "require('./package.json').version")
+          TAG=""
+          if [ -n "$TAG_INPUT" ]; then
+            TAG="$TAG_INPUT"
+          elif [[ "$V" == *-* ]]; then
+            SUFFIX="${V##*-}"
+            case "$SUFFIX" in
+              [Tt]|test) TAG=test ;;
+              rc*) TAG=rc ;;
+              *) TAG="$SUFFIX" ;;
+            esac
+          fi
+          if [ -n "$TAG" ]; then
+            npm publish --provenance --tag "$TAG" $DRY_RUN
+          else
+            npm publish --provenance $DRY_RUN
+          fi
+
+      - name: Show result
+        if: ${{ inputs.dry_run != true }}
+        run: npm view dsh-wallpaper_share dist-tags
