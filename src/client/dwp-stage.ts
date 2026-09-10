@@ -52,10 +52,14 @@ export async function mountDwp(canvas: HTMLCanvasElement, id: string, opts: Moun
   // 低档位：高档资源换成占位图 —— 不下载、不解码 8K 纹理（预览/捕获档才真的省）
   const stub = new Set(opts.quality === 'hd' ? [] : hdAssetsOf(scene))
 
+  // 资源 URL 带上包版本：serve 端 /file 给的是长缓存（max-age=1y, immutable），
+  // 不带版本号时"更新了包但沿用同名图片"会让浏览器继续用旧素材（新场景配旧图）。
+  const vq = manifest?.version !== undefined && manifest.version !== '' ? '&v=' + encodeURIComponent(manifest.version) : ''
+
   const files: PackageFiles = new Map();
   for (const ref of collectAssetRefs(scene)) {
     if (stub.has(ref.path)) { files.set(ref.path, new Blob([TINY_PNG], { type: 'image/png' })); continue }
-    const r = await fetchFn(`${base}/file?id=${encodeURIComponent(id)}&name=${encodeURIComponent(ref.path)}`);
+    const r = await fetchFn(`${base}/file?id=${encodeURIComponent(id)}&name=${encodeURIComponent(ref.path)}${vq}`);
     if (r.ok) files.set(ref.path, await r.blob());   // 缺资源不阻断：mount 内部按缺资源降级
   }
 

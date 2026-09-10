@@ -678,8 +678,11 @@ export function apply(ctx: CordisCtx): void {
   let lastClockSig = ''
   function feedClockVars(): void {
     if (store.settings.dwpMounted === null) { lastClockSig = ''; return }
+    const mounted = store.settings.dwpMounted
     const vars = clockVars(new Date(), { hd: qualityOf(store.settings.renderMode) === 'hd' })
-    const sig = clockSig(vars)
+    // 签名必须带上**壁纸身份**：A 切到 B 时若只看时间/档位，变量没变就不推送，
+    // 新挂载的壁纸会一直停在 scene 里的默认值（夜间切入日夜壁纸却显示白天）。
+    const sig = mounted + '|' + clockSig(vars)
     if (sig === lastClockSig) return
     lastClockSig = sig
     dwpBg.setLiveVars(vars)
@@ -726,7 +729,10 @@ export function apply(ctx: CordisCtx): void {
     if (store.settings.dwpMounted === null) dwpPrevEnabled = store.settings.enabled
     store.settings.dwpMounted = id
     store.settings.enabled = false                                              // 冲突①：关 WE 同步，避免抢背景
-    if (store.settings.renderMode === 'perf') store.settings.renderMode = 'enhanced'  // 冲突②：性能(捕获 WE 桌面)→增强
+    // 冲突②（原「性能(捕获 WE 桌面)→增强」）已移除：挂载 DWP 时 applyBackground 直接走 DWP 分支、
+    // 整条 WE 管线（含捕获）根本不跑，所以那个改写是多余的；而它现在还有个副作用——
+    // 渲染模式同时是 DWP 的**纹理档位**选择器，把「捕获」改写成「完整」等于偷偷切到高清档，
+    // 白占约 265MB 纹理内存（两张 7680×4320 的 RGBA 各约 133MB）。模式保持用户选择即可。
     store.notify()
     applyBackground()
     return true
@@ -744,7 +750,7 @@ export function apply(ctx: CordisCtx): void {
     dwpPrevEnabled = true   // 刷新后无从得知挂载前的同步值，按"开"恢复（常见情形）
     store.settings.dwpMounted = applied.id
     store.settings.enabled = false
-    if (store.settings.renderMode === 'perf') store.settings.renderMode = 'enhanced'
+    // 不改写 renderMode：它同时是 DWP 的纹理档位（见 mountDwp 处的说明）
     store.notify()
     applyBackground()
   }).catch(() => { /* node 半未就绪，忽略 */ })

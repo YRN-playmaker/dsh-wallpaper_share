@@ -12,8 +12,17 @@ export class DwpBackgroundLayer {
   private handle: Handle | null = null
   private mountingId = ''
   private mountedId = ''
-  /** 挂载完成前到达的实时变量（workspace-pulse 喂食等），挂载成功后一次性应用。 */
-  private pendingVars: Record<string, VarValue> | null = null
+  /**
+   * 最新实时变量（按键累积）。不同来源互不覆盖（时钟 vs 工作区脉搏），
+   * 每次挂载成功后整表重放一次 —— 于是"切到另一张壁纸""切档位重新挂载"都能立刻拿到当前
+   * 时间/档位，而不是干等下一次变量变化（夜间切入日夜壁纸却一直显示白天就是这么来的）。
+   */
+  private liveVars: Record<string, VarValue> = {}
+  /**
+   * 挂载序号：每次 mount/unmount 自增，异步结果只有在序号仍是最新时才允许接管状态。
+   * 只比 id 是不够的 —— 同一张壁纸切画质时新旧请求的 id 相同，旧（低清）结果可能后到达并覆盖新的。
+   */
+  private seq = 0
   /** 纹理档位：'hd' = 允许拉场景声明的高档纹理，'sd' = 高档资源用占位图顶替（见 dwp-stage.ts） */
   private quality: 'sd' | 'hd' = 'sd'
 
@@ -58,10 +67,11 @@ export class DwpBackgroundLayer {
     return this.canvas
   }
 
-  /** 挂载指定 DWP 为背景。同 id 幂等；换 id 先销毁旧的。异步（拉 scene+资源）。 */
-  async mount(id: string): Promise<void> {
-    if (this.mountingId === id || this.mountedId === id) return
+  /** 挂载指定 DWP 为背景。同 id 幂等（除非 force）；换 id / 换档位先销毁旧的。异步（拉 scene+资源）。 */
+  async mount(id: string, opts?: { force?: boolean }): Promise<void> {
+    if (opts?.force !== true && (this.mountingId === id || this.mountedId === id)) return
     this.disposeHandle()
+    const mySeq = ++this.seq
     this.mountingId = id
     const canvas = this.ensureCanvas()
     try {
@@ -69,18 +79,15 @@ export class DwpBackgroundLayer {
         quality: this.quality,
         onDegrade: (d) => { if (d.length) console.warn('[dwp] 降级/告警：', d.join(', ')) },
       })
-      // 挂载期间可能被 unmount / 换 id 取代：此时丢弃这次结果
-      if (this.mountingId !== id) { handle.dispose(); return }
+      // 过期判定：期间发生过 unmount / 换壁纸 / 换档位 → 丢弃这次结果（按序号，不按 id）
+      if (mySeq !== this.seq) { handle.dispose(); return }
       this.handle = handle
       this.mountedId = id
       this.mountingId = ''
-      // 挂载完成 → 应用挂载期间缓存的实时变量（首发数据不闪空场景）
-      if (this.pendingVars !== null && Object.keys(this.pendingVars).length > 0) {
-        handle.setParams(this.pendingVars)
-        this.pendingVars = null
-      }
+      // 挂载完成 → 重放最新变量（首发不闪空场景，切换壁纸也立刻拿到时间/档位）
+      if (Object.keys(this.liveVars).length > 0) handle.setParams(this.liveVars)
     } catch (e) {
-      if (this.mountingId === id) this.mountingId = ''
+      if (mySeq === this.seq) this.mountingId = ''
       throw e
     }
   }
@@ -93,15 +100,19 @@ export class DwpBackgroundLayer {
     c.style.transform = 'scale(' + scale.toFixed(3) + ')'
   }
 
-  /** 实时变量喂食（workspace-pulse 的改动气泡等）：有 Handle 立即 setParams，否则缓存到挂载后应用。 */
+  /**
+   * 实时变量喂食（时钟、工作区脉搏等）。
+   * 挂载中/未挂载时先累加到 liveVars（**按键合并**，不同来源互不覆盖），
+   * 已挂载则把本次的键立即推给运行时（Handle.setParams 本身也是逐键覆写）。
+   */
   setLiveVars(map: Record<string, VarValue>): void {
-    if (this.handle === null) {
-      this.pendingVars = Object.keys(map).length > 0 ? map : null
-      return
-    }
+    this.liveVars = { ...this.liveVars, ...map }
+    if (this.handle === null) return
     this.handle.setParams(map)
-    if (Object.keys(map).length === 0) this.pendingVars = null
   }
+
+  /** 当前累积的实时变量（测试/诊断用）。 */
+  currentVars(): Record<string, VarValue> { return { ...this.liveVars } }
 
   private disposeHandle(): void {
     if (this.handle !== null) { this.handle.dispose(); this.handle = null }
@@ -109,8 +120,9 @@ export class DwpBackgroundLayer {
     this.mountingId = ''
   }
 
-  /** 卸载：停渲染 + 移除画布。 */
+  /** 卸载：停渲染 + 移除画布。序号自增 → 任何在途挂载的结果都会被丢弃。 */
   unmount(): void {
+    this.seq++
     this.disposeHandle()
     const c = this.liveCanvas() ?? this.canvas
     if (c !== null) c.remove()

@@ -27,7 +27,7 @@ import { ApplyState } from './market/apply.ts'
 import { integrityOf } from './market/integrity.ts'
 import { WorkspacePulse } from './workspace/pulse.ts'
 import { buildPulsePackage, PULSE_ID, PULSE_VERSION } from './workspace/pack.ts'
-import { LauncherInstaller } from './launcher/installer.ts'
+import { LauncherInstaller, resolveEntryInside, isLauncherInternalDir } from './launcher/installer.ts'
 import { createLauncherRoutes } from './launcher/routes.ts'
 import { Yun139Client, fileCredStore } from './launcher/yun139.ts'
 
@@ -939,6 +939,10 @@ export function apply(ctx: CordisCtx): void {
       let entries: string[]
       try { entries = readdirSync(root) } catch { return }
       for (const name of entries) {
+        // 跳过 dot 目录与安装器的暂存/备份目录：安装根也在用户自定义目录里，
+        // 而那些目录**同样带着 project.json**（备份就是被改名前的正式目录），
+        // 不跳过就会以「重名应用」的形态混进本地列表（2026-09-10 复核确认）
+        if (isLauncherInternalDir(name)) continue
         const dir = normalize(root + '/' + name)
         if (exists(dir + '/project.json')) visitWallpaperDir(dir)
       }
@@ -1020,11 +1024,10 @@ export function apply(ctx: CordisCtx): void {
     kind: 'exact',
     path: '/we-sync/apps',
     handler(_req, res) {
-      if (state.weDir === '') {
-        sendJson(res, { error: 'we not detected', apps: [] })
-        return
-      }
-      const workshopDir = resolveWorkshopDir(state.weDir)
+      // 没有 WE 也要扫：启动器装的应用与用户自定义目录都在 scanApps 的 roots 里，
+      // 它们与 WE 无关。旧实现在 weDir === '' 时直接回空列表 —— 这一版又把启动/卸载统一挪到
+      // 本地列表，于是"能装上、却没有正常操作入口"（2026-09-10 复核确认）。
+      const workshopDir = state.weDir !== '' ? resolveWorkshopDir(state.weDir) : ''
       const apps = getCachedApps(state.weDir, workshopDir)
       // 各分类计数，供前端筛选 chips 显示（all 恒有；其余仅 >0 时前端展示）
       const counts: Record<string, number> = { all: apps.length, scene: 0, video: 0, image: 0, application: 0, web: 0, other: 0 }
@@ -1135,11 +1138,20 @@ export function apply(ctx: CordisCtx): void {
         sendJson(res, { error: '该壁纸没有可启动的可执行文件' })
         return
       }
-      const exe = normalize(app.dir + '/' + app.file)
-      // 防逃逸：入口必须解析到壁纸目录内部
-      if (!exe.startsWith(app.dir + '/') || !exists(exe)) {
+      // 入口解析 + 防逃逸：交给 installer 的同一套判据（词法解析 `..` + 目录包含 + realpath 复核）。
+      // 旧实现是 `normalize(dir + '/' + file).startsWith(dir + '/')` —— 只做字符串前缀比较，
+      // project.json 里写 `../outside.exe` 就能通过，用户点"启动"会执行应用目录之外的程序。
+      let exe = ''
+      try {
+        exe = resolveEntryInside(app.dir, app.file)
+      } catch (e) {
         res.statusCode = 404
-        sendJson(res, { error: '可执行文件不存在或不在壁纸目录内: ' + app.file })
+        sendJson(res, { error: e instanceof Error ? e.message : String(e) })
+        return
+      }
+      if (!exists(exe)) {
+        res.statusCode = 404
+        sendJson(res, { error: '可执行文件不存在: ' + app.file })
         return
       }
       const lower = exe.toLowerCase()

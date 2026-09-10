@@ -112,3 +112,32 @@ test('apply 未装 id → 404', async () => {
   const { routes } = await mk();
   assert.equal((await call(routes.get('/we-sync/dwp/apply')!, '/we-sync/dwp/apply?id=ghost')).statusCode, 404);
 });
+
+test('/file 带 v= → 长期不可变缓存；不带 v= → no-cache', async () => {
+  const { routes } = await mk();
+  const url = '/we-sync/dwp/file?id=yrn.demo&name=' + encodeURIComponent('assets/tex.png');
+  const versioned = await call(routes.get('/we-sync/dwp/file')!, url + '&v=1.0.0');
+  assert.equal(versioned.headers['Cache-Control'], 'public, max-age=31536000, immutable');
+  const plain = await call(routes.get('/we-sync/dwp/file')!, url);
+  assert.equal(plain.headers['Cache-Control'], 'no-cache');
+});
+
+test('/scene 与 /manifest → no-store（避免"新场景配旧素材"）', async () => {
+  const { routes } = await mk();
+  for (const [path, id] of [['/we-sync/dwp/scene', 'yrn.demo'], ['/we-sync/dwp/manifest', 'yrn.demo']] as const) {
+    const res = await call(routes.get(path)!, `${path}?id=${id}`);
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.headers['Cache-Control'], 'no-store');
+  }
+  // 404 分支同样不该被缓存
+  const miss = await call(routes.get('/we-sync/dwp/scene')!, '/we-sync/dwp/scene?id=ghost');
+  assert.equal(miss.statusCode, 404);
+});
+
+test('同名 json 入口按 name= 取包内文件', async () => {
+  const { routes } = await mk();
+  const res = await call(routes.get('/we-sync/dwp/scene')!, '/we-sync/dwp/scene?id=yrn.demo&name=wallpaper.json');
+  assert.deepEqual(JSON.parse(res.body as string), manifest);
+  const miss = await call(routes.get('/we-sync/dwp/scene')!, '/we-sync/dwp/scene?id=yrn.demo&name=nope.json');
+  assert.equal(miss.statusCode, 404);
+});

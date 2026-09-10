@@ -1014,9 +1014,15 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
   }
 
   const loadDwp = async (): Promise<void> => {
+    const f = (url: string, init?: { cache?: 'no-store' }) => fetch(url, init)
+    // 本地已装列表必须有；市场目录只是"名称/缩略图"的补充信息。
+    // 两者曾经放在同一个 Promise.all 里 —— 目录拉不到（离线 / CDN 抖动）时整段跳过，
+    // 连内置的 workspace-pulse 都不显示，本地明明装着却什么都看不到（2026-09-10 复核确认）。
+    let installed: Awaited<ReturnType<typeof fetchInstalled>> = []
+    try { installed = await fetchInstalled(f) } catch { /* 本地列表都拿不到：保持空 */ }
+    let catalog: MarketEntry[] = []
+    try { catalog = await fetchCatalog(f) } catch { /* 目录不可用：走 manifest 兜底 */ }
     try {
-      const f = (url: string, init?: { cache?: 'no-store' }) => fetch(url, init)
-      const [catalog, installed] = await Promise.all([fetchCatalog(f), fetchInstalled(f)])
       const byId = new Map(catalog.map((e: MarketEntry) => [e.id, e]))
       // 不在目录里的已装包（内置工作区脉搏 / 手动侧载）：从包 manifest 兜底名称与预览
       //（serve 端 zip 有缓存，逐包一拉代价小；失败回落 id 展示，不阻断列表）
@@ -1042,7 +1048,7 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
         return { id: it.id, name: it.id, thumbnail: '', version: it.version }
       }))
       setDwpCards(cards)
-    } catch { /* dwp 列表拉取失败不阻断其余 UI */ }
+    } catch { /* 单个包的兜底都失败：保留已有卡片，不整段清空 */ }
   }
 
   // 点击切换：已挂载 → 取消挂载；未挂载 → 挂载为全局背景（权威态取共享 store.settings.dwpMounted）

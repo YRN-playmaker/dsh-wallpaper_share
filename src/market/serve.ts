@@ -73,7 +73,11 @@ export function createDwpServeRoutes(deps: ServeDeps): Route[] {
     if (!m) return json(res, 404, { error: '未安装' });
     const name = q.get('name'); if (!name) return json(res, 400, { error: '缺 name' });
     const data = pick(m, name); if (!data) return json(res, 404, { error: `包内无此文件: ${name}` });
-    res.statusCode = 200; res.setHeader('Content-Type', mimeOf(name)); res.setHeader('Cache-Control', 'public, max-age=31536000');
+    res.statusCode = 200; res.setHeader('Content-Type', mimeOf(name));
+    // 长期缓存是安全的**前提是 URL 带版本**：消费端（dwp-stage）会带上 `v=<包版本>`，
+    // 换版本即换 URL，浏览器不会把旧素材喂给新场景。没有 v 的老请求则退回短缓存。
+    const versioned = q.get('v') !== null;
+    res.setHeader('Cache-Control', versioned ? 'public, max-age=31536000, immutable' : 'no-cache');
     res.end(Buffer.from(data));
   } };
 
@@ -83,7 +87,10 @@ export function createDwpServeRoutes(deps: ServeDeps): Route[] {
     if (!m) return json(res, 404, { error: '未安装' });
     const want = q.get('name') ?? defaultName;
     const data = pick(m, want); if (!data) return json(res, 404, { error: `包内无 ${want}` });
-    res.statusCode = 200; res.setHeader('Content-Type', 'application/json; charset=utf-8'); res.end(new TextDecoder().decode(data));
+    res.statusCode = 200; res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    // 这两个 JSON 决定"用哪张图"，必须每次回源：被缓存住就会出现"新场景配旧素材"
+    res.setHeader('Cache-Control', 'no-store');
+    res.end(new TextDecoder().decode(data));
   } });
 
   return [applied, apply, unapply, files, file, jsonEntry('/manifest', 'wallpaper.json'), jsonEntry('/scene', 'scene.json')];

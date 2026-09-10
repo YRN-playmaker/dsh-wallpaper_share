@@ -1,4 +1,4 @@
-/**
+﻿/**
  * launcher 的 HTTP 路由（node 半）：注册到 share 的 WebServer，与 market/routes.ts 同契约。
  * 控制面 API（localhost）：
  *   GET  <base>/installed                 → 已装应用列表
@@ -171,13 +171,15 @@ export function createLauncherRoutes(deps: LauncherRoutesDeps): Route[] {
       if (integrity !== undefined && !verifyIntegrity(bytes, integrity)) {
         return json(res, 400, { error: '完整性校验失败: sha512 不匹配（包被篡改或损坏）' })
       }
-      // 3) 落位：同 slug 重装先清旧目录（幂等覆盖）
+      // 3) 落位：**先在暂存目录里解压 + 校验，全部通过后才原子替换正式目录**
+      //    （旧实现是"同 slug 先删旧目录再解压"，于是新包损坏 / 密码错 / 没有入口时，
+      //      旧应用连同它目录里的存档一起没了，而索引还留着记录 —— 2026-09-10 复核确认）
       //    标题默认取文件名去扩展名（CoolTool.zip → CoolTool）
       const baseName = fileName.replace(/\.(zip|exe|bat|cmd|7z|rar|tar|gz)$/i, '')
       const name = title ?? baseName
       const slug = installer.slugify(name)
-      const dir = join(installer.root, slug)
-      if (existsSync(dir)) rmSync(dir, { recursive: true, force: true })
+      const dir = installer.appDir(slug)   // slug 越界/非法（如 `..`）在这里就抛错，绝不拼出安装根之外的路径
+      const staging = installer.createStagingDir()
       // zip 识别：扩展名 / PK 头魔数 / 尾部 EOCD（视频+zip 复合文件，头部是媒体数据）
       // 7z 识别：头部魔数 + 「视频垫底+7z 追加」复合文件的中部签名（返回段偏移，解压只喂 7z 段）
       const isZip = /\.zip$/i.test(fileName) || installer.isZipBytes(bytes)
@@ -186,33 +188,34 @@ export function createLauncherRoutes(deps: LauncherRoutesDeps): Route[] {
       let files: string[]
       try {
         if (is7z) {
-          files = installer.extract7z(bytes, dir, password, z7off)
+          files = installer.extract7z(bytes, staging, password, z7off)
         } else if (isZip) {
-          files = installer.unzipToDir(bytes, dir, password)
+          files = installer.unzipToDir(bytes, staging, password)
         } else {
-          const rel = installer.writeFileToDir(bytes, dir, fileName)
+          const rel = installer.writeFileToDir(bytes, staging, fileName)
           files = [rel]
         }
         // 嵌套包：外层是媒体复合 zip、内层还有 .7z/.zip 安装包 → 逐层解到出现可执行入口
-        files = installer.settleNested(dir, files, password)
+        files = installer.settleNested(staging, files, password)
       } catch (e) {
+        try { rmSync(staging, { recursive: true, force: true }) } catch { /* ignore */ }
         if (e instanceof CryptZipError) {
           // 密码语义错误统一 422 + code，客户端据 code 给针对性提示
-          try { rmSync(dir, { recursive: true, force: true }) } catch { /* ignore */ }
           return json(res, 422, { error: e.message, code: e.code })
         }
         throw e
       }
-      // 4) 入口探测
+      // 4) 入口探测（仍在暂存目录里）
       const candidates = installer.detectEntryCandidates(files)
       if (candidates.length === 0) {
-        try { rmSync(dir, { recursive: true, force: true }) } catch { /* ignore */ }
+        try { rmSync(staging, { recursive: true, force: true }) } catch { /* ignore */ }
         return json(res, 422, { error: '包内未找到可执行入口（.exe/.bat/.cmd）', files: files.slice(0, 50) })
       }
-      // 5) 封装入库
+      // 5) 封装入库：project.json / 预览写进暂存目录，随后原子替换到正式目录，
+      //    **索引在替换成功之后**才写 —— 失败时盘上与索引都保持旧状态
       const rec = installer.finalize({
-        url: opts.url, fileName, slug, title: name, dir, entry: candidates[0]!,
-        size: bytes.length, sha512: integrityOf(bytes), previewBytes, previewMime,
+        url: opts.url, fileName, slug, title: name, dir: staging, commitTo: dir,
+        entry: candidates[0]!, size: bytes.length, sha512: integrityOf(bytes), previewBytes, previewMime,
       })
       json(res, 200, { ok: true, record: rec, candidates })
     } catch (e) {
@@ -240,7 +243,7 @@ export function createLauncherRoutes(deps: LauncherRoutesDeps): Route[] {
     }
     const rec = installer.get(opts.id)
     if (rec === undefined) return json(res, 404, { error: `未安装: ${opts.id}` })
-    const files = installer.listFiles(join(installer.root, rec.slug))
+    const files = installer.listFiles(installer.appDir(rec.slug))
     if (!files.includes(opts.file)) return json(res, 400, { error: `入口不在包内: ${opts.file}` })
     try {
       const updated = installer.setEntry(rec.id, opts.file)
@@ -284,7 +287,7 @@ export function createLauncherRoutes(deps: LauncherRoutesDeps): Route[] {
       : rec.preview.endsWith('.gif') ? 'image/gif'
         : rec.preview.endsWith('.webp') ? 'image/webp' : 'image/jpeg'
     try {
-      const bytes = readFileSync(join(installer.root, rec.slug, rec.preview))
+      const bytes = readFileSync(join(installer.appDir(rec.slug), rec.preview))
       res.statusCode = 200
       res.setHeader('Content-Type', mime)
       res.end(new Uint8Array(bytes))

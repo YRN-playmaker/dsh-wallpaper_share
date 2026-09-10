@@ -10,9 +10,10 @@
  * 安全边界：仅接受 http(s) 直链；Content-Length 与实收字节数双查，超限即弃；
  * sha512 记账（可选传入期望值，不符即拒装）；解包条目数/总字节/路径穿越全防。
  */
-import { mkdirSync, writeFileSync, readFileSync, existsSync, statSync, readdirSync, rmSync, openSync, closeSync, writeSync, renameSync, cpSync } from 'node:fs'
+import { mkdirSync, writeFileSync, readFileSync, existsSync, statSync, readdirSync, rmSync, openSync, closeSync, writeSync, renameSync, cpSync, realpathSync } from 'node:fs'
+import { randomBytes } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
-import { join, dirname, extname, basename, normalize as pathNormalize, sep } from 'node:path'
+import { join, dirname, extname, basename, normalize as pathNormalize, resolve, sep } from 'node:path'
 import { homedir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { openZipMap, CryptZipError, hasZipTrailer } from './crypt-zip.ts'
@@ -155,6 +156,58 @@ function assertInside(destDir: string, target: string): void {
   }
 }
 
+/** 同上两个：导出给 node 半的启动路由与测试用（同一套判据，别在别处再写一遍字符串前缀比较）。 */
+export { assertSafeRelPath, assertInside }
+
+/**
+ * 安装根下的"内部目录名"判定：暂存（`.staging-<随机>`）与替换备份（`<原名>.backup-<时间>`）。
+ * 这两类目录里都**带着 project.json**（备份就是改名前的正式目录），而安装根本身通常在
+ * 用户自定义壁纸目录里（见 index.ts 的 appDirs）—— 不跳过就会以「重名应用」的形态混进本地列表。
+ * 所有"把某个目录的子目录当壁纸列举"的地方都应先过这个判据。
+ */
+export function isLauncherInternalDir(name: string): boolean {
+  return name.startsWith('.') || name.includes('.backup-')
+}
+
+/**
+ * 应用入口的解析与包含性校验（启动路由用）。
+ * 为什么不能用「拼接后 startsWith(dir + '/')」：那只做字符串前缀比较，`../x.exe` 能轻松通过，
+ * 于是"防逃逸"形同虚设（2026-09-10 复核确认）。这里改为**词法解析 + 目录包含判定**：
+ * 入口先按 zip 同款规则净化（拒绝绝对路径与 `..` 段），再断言解析结果严格位于应用目录内；
+ * 若文件真实存在，再用 realpath 复核一次（拦符号链接 / junction 指到目录外）。
+ * @param dir 应用目录（已 normalized，正斜杠）
+ * @param file project.json 里的入口相对路径
+ * @returns 可执行文件的规范路径；不合法时抛 LauncherError
+ */
+export function resolveEntryInside(dir: string, file: string): string {
+  const rel = assertSafeRelPath(file)
+  if (rel === '' || rel === '.') throw new LauncherError(`入口路径非法: ${file}`)
+  const target = join(dir, ...rel.split('/'))
+  assertInside(dir, target)
+  try {
+    const realDir = pathNormalize(realpathSync.native(dir))
+    const realTarget = pathNormalize(realpathSync.native(target))
+    assertInside(realDir, realTarget)
+  } catch (e) {
+    // realpath 失败通常意味着入口不存在 —— 交给调用方按"文件不存在"处理；
+    // 但"越界"这类判据错误必须原样抛出，不能被吞掉。
+    if (e instanceof LauncherError) throw e
+  }
+  return target.replace(/\\/g, '/')
+}
+
+/** 两个路径是否指向同一位置：词法解析 +（存在时）realpath 解别名，Windows 下大小写不敏感。
+ *  用途：迁移时"同一个目录的不同写法"（末尾多一个 `/`、盘符大小写不同、8.3 短名等）必须识别为同一目录，
+ *  否则会先删目标（其实是源）导致应用被删掉。 */
+export function samePath(a: string, b: string): boolean {
+  const norm = (p: string): string => {
+    let s = pathNormalize(resolve(p))
+    try { s = pathNormalize(realpathSync.native(p)) } catch { /* 不存在：用词法结果 */ }
+    return process.platform === 'win32' ? s.toLowerCase() : s
+  }
+  return norm(a) === norm(b)
+}
+
 /** 安装根规范化：去引号/空白，必须绝对路径（盘符或 UNC 或 / 开头），尾部去分隔符。 */
 function normalizeRoot(next: string): string {
   const trimmed = next.trim().replace(/^["']|["']$/g, '')
@@ -219,9 +272,18 @@ export class LauncherInstaller {
     const kept: InstalledAppRecord[] = []
     let moved = 0
     for (const rec of list) {
-      const from = join(oldRoot, rec.slug)
-      const to = join(this.root, rec.slug)
+      let from: string
+      let to: string
+      try {
+        // 记录里的 slug 也当不可信输入：越界直接跳过（绝不碰盘）
+        const rel = assertSafeRelPath(rec.slug)
+        from = join(oldRoot, rel); assertInside(oldRoot, from)
+        to = join(this.root, rel); assertInside(this.root, to)
+      } catch { failed.push(rec.title || rec.slug); continue }
       if (!existsSync(from)) { continue }
+      // 同一个目录的不同写法（末尾多一个 `/`、盘符大小写、8.3 短名、软链别名）：直接当已就位。
+      // 少了这一步会走到"目标同名先删"，而目标其实就是源 —— 原应用当场消失。
+      if (samePath(from, to)) { moved++; kept.push(rec); continue }
       try {
         if (existsSync(to)) rmSync(to, { recursive: true, force: true })
         mkdirSync(dirname(to), { recursive: true })
@@ -282,7 +344,7 @@ export class LauncherInstaller {
     const rec = this.get(id)
     if (rec === undefined) return
     this.saveIndex(this.list().filter((r) => r.id !== id))
-    try { rmSync(join(this.root, rec.slug), { recursive: true, force: true }) } catch { /* 目录已不在 */ }
+    try { rmSync(this.appDir(rec.slug), { recursive: true, force: true }) } catch { /* 目录已不在 / slug 非法 */ }
   }
 
   // ── 下载 ───────────────────────────────────────────────────────────
@@ -531,15 +593,70 @@ export class LauncherInstaller {
 
   // ── 封装 ───────────────────────────────────────────────────────────
 
-  /** 标题/文件名 → 文件系统安全目录名。 */
+  /** 标题/文件名 → 文件系统安全目录名。
+   *  除了剔非法字符，还必须挡掉两个曾经能穿透的坑（2026-09-10 复核确认）：
+   *  ① `.` / `..` —— 拼出来就是安装根本身或它的上一级，配合"重装先删旧目录"会删掉别的存储；
+   *  ② Windows 保留设备名（CON/PRN/AUX/NUL/COM1..9/LPT1..9）与结尾的点/空格（Windows 会悄悄吃掉，
+   *     造成两个名字指向同一目录）。 */
   slugify(text: string): string {
     const s = text.trim().toLowerCase()
       .replace(/[\u0000-\u001f<>:"/\\|?*]+/g, '')
       .replace(/\s+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '')
-    return s === '' ? 'app' : s.slice(0, 64)
+      .replace(/[. ]+$/g, '')
+    if (s === '' || /^\.+$/.test(s)) return 'app'
+    if (/^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/.test(s)) return s + '-app'
+    return s.slice(0, 64)
   }
 
-  /** 生成类 WE project.json + 预览图，写 installed.json。返回记录。 */
+  /**
+   * slug → 安装目录绝对路径，并断言它严格位于安装根之下。
+   * **所有**按 slug 拼路径的地方（安装 / 卸载 / 入口 / 预览 / 迁移）都必须走这里，
+   * 因为 slug 的来源不止 slugify：installed.json 可能被手改过，旧记录也可能带着历史脏值；
+   * 只要有一次 rmSync 作用在越界路径上，代价就是删掉用户别的数据。
+   */
+  appDir(slug: string): string {
+    const safe = assertSafeRelPath(slug)
+    const dir = join(this.root, safe)
+    assertInside(this.root, dir)
+    if (samePath(dir, this.root)) throw new LauncherError(`非法应用目录名（指向安装根自身）: ${slug}`)
+    return dir
+  }
+
+  /**
+   * 建一个安装暂存目录（`<root>/.staging-<随机>`）。
+   * 解压、嵌套展开、入口探测全部在这里完成，**全部通过后**才由 commitStaging 替换正式目录——
+   * 这样"新包损坏 / 密码错误 / 没有可执行入口"只会清掉暂存，旧应用与它的存档分毫不动。
+   */
+  createStagingDir(): string {
+    mkdirSync(this.root, { recursive: true })
+    const dir = join(this.root, '.staging-' + randomBytes(6).toString('hex'))
+    mkdirSync(dir, { recursive: true })
+    return dir
+  }
+
+  /**
+   * 暂存目录 → 正式目录的原子替换：旧目录先**改名**为备份，再把暂存目录 rename 就位，
+   * 最后尽力删除备份。任何一步失败都回滚（把备份改回来），保证"要么旧的、要么新的"，绝不两者皆无。
+   * 备份残留（删不掉，例如被杀软占用）不影响正确性：名字带 `.backup-`，会被列表扫描忽略。
+   */
+  commitStaging(staging: string, dir: string): void {
+    assertInside(this.root, staging)
+    assertInside(this.root, dir)
+    const backup = dir + '.backup-' + Date.now().toString(36)
+    const hadOld = existsSync(dir)
+    if (hadOld) renameSync(dir, backup)
+    try {
+      renameSync(staging, dir)
+    } catch (e) {
+      if (hadOld) { try { renameSync(backup, dir) } catch { /* 回滚失败：至少不静默 */ } }
+      throw e
+    }
+    if (hadOld) { try { rmSync(backup, { recursive: true, force: true }) } catch { /* 备份残留无害 */ } }
+  }
+
+  /** 生成类 WE project.json + 预览图，写 installed.json。返回记录。
+   *  `commitTo` 给定时：文件先写在 `dir`（暂存目录），写完后原子替换到 `commitTo`（正式目录），
+   *  最后才 upsert 索引 —— 于是"替换失败"时盘上是旧的、索引也没动，不会出现"记录说装了、文件却没了"。 */
   finalize(opts: {
     url: string
     fileName: string
@@ -551,7 +668,10 @@ export class LauncherInstaller {
     sha512: string
     previewBytes?: Uint8Array
     previewMime?: string
+    commitTo?: string
   }): InstalledAppRecord {
+    assertInside(this.root, opts.dir)
+    if (opts.commitTo !== undefined) assertInside(this.root, opts.commitTo)
     const rec: InstalledAppRecord = {
       id: opts.slug,
       title: opts.title,
@@ -579,6 +699,7 @@ export class LauncherInstaller {
       source: { url: opts.url, fileName: opts.fileName, size: opts.size, sha512: opts.sha512, installedAt: rec.installedAt },
     }
     writeFileSync(join(opts.dir, 'project.json'), JSON.stringify(project, null, 2) + '\n', 'utf8')
+    if (opts.commitTo !== undefined) this.commitStaging(opts.dir, opts.commitTo)
     this.upsert(rec)
     return rec
   }
@@ -587,7 +708,7 @@ export class LauncherInstaller {
   setEntry(id: string, file: string): InstalledAppRecord {
     const rec = this.get(id)
     if (rec === undefined) throw new LauncherError(`未安装: ${id}`)
-    const dir = join(this.root, rec.slug)
+    const dir = this.appDir(rec.slug)
     const target = join(dir, ...file.split('/'))
     if (!existsSync(target)) throw new LauncherError(`入口不存在: ${file}`)
     const updated: InstalledAppRecord = { ...rec, file }
@@ -602,7 +723,7 @@ export class LauncherInstaller {
     if (rec === undefined) throw new LauncherError(`未安装: ${id}`)
     const ext = PREVIEW_EXT[mime]
     if (ext === undefined) throw new LauncherError(`不支持的预览类型: ${mime}`)
-    const dir = join(this.root, rec.slug)
+    const dir = this.appDir(rec.slug)
     const name = 'preview.' + ext
     if (rec.preview !== name) {
       try { rmSync(join(dir, rec.preview), { force: true }) } catch { /* ignore */ }
