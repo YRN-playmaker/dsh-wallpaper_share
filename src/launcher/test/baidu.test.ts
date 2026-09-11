@@ -46,9 +46,9 @@ test('parseBaiduShareUrl：/s/1<id>、?pwd=、/share/init?surl= 三种形态', (
   assert.deepEqual(withPwd, { surl: 'slbWDQxCBpU8F9sfsjaZWA', pwd: 'ab12' })
   const plain = parseBaiduShareUrl(' https://pan.baidu.com/s/1slbWDQxCBpU8F9sfsjaZWA? ')
   assert.deepEqual(plain, { surl: 'slbWDQxCBpU8F9sfsjaZWA' })
-  // 1 开头是 /s/ 链接的固定前缀，surl 是去掉 1 之后的部分
+  // 仅 /s/ 路径去掉固定前缀 1；init 的 surl 参数必须原样保留
   const init = parseBaiduShareUrl('https://pan.baidu.com/share/init?surl=1slbWDQxCBpU8F9sfsjaZWA')
-  assert.deepEqual(init, { surl: 'slbWDQxCBpU8F9sfsjaZWA' })
+  assert.deepEqual(init, { surl: '1slbWDQxCBpU8F9sfsjaZWA' })
   const shareInit = parseBaiduShareUrl('https://pan.baidu.com/share/init?surl=slbWDQxCBpU8F9sfsjaZWA')
   assert.deepEqual(shareInit, { surl: 'slbWDQxCBpU8F9sfsjaZWA' })
   assert.equal(parseBaiduShareUrl('https://yun.139.com/shareweb/#/w/i/abc'), null)
@@ -154,8 +154,8 @@ test('resolve：9019 → verify(randsk) → wxlist 仍 9019 → share/list 兜�
     jsonRes(200, { errno: 9019 }),                                                                 // 带 BDCLND 仍 9019（匿名口径）
     { ok: true, status: 200, headers: { get: () => null }, text: async () => initHtml },           // share/init 页
     jsonRes(200, { errno: 0, list: [{ fs_id: '936164890719143', server_filename: 'Tool.zip', size: '9', isdir: '0' }] }), // share/list
-    jsonRes(200, { errno: 0, info: [{ to_fs_id: '111', path: { to: '/来自：分享/Tool.zip' } }] }),  // 转存
     jsonRes(200, { errno: 0, result: { bdstoken: 'TOK' } }),                                       // gettemplatevariable
+    jsonRes(200, { errno: 0, extra: { list: [{ to_fs_id: '111', to: '/来自：分享/Tool.zip(1)' }] } }),  // 转存（撞名带 (1)）
     jsonRes(200, { errno: 0 }),                                                                    // filemanager rename
     jsonRes(200, { errno: 0, dlink: 'https://d.pcs.baidu.com/file/located' }),                      // locatedownload
   ])
@@ -169,26 +169,29 @@ test('resolve：9019 → verify(randsk) → wxlist 仍 9019 → share/list 兜�
   const reList = calls[2]!
   assert.equal(reList.url.includes('pwd='), false)
   assert.equal(reList.init?.headers?.Cookie!.includes('BDCLND=opFe2%2BxY'), true)
-  const transfer = calls[5]!
+  const transfer = calls[6]!
   assert.equal(transfer.url.includes('/share/transfer?'), true)
   assert.equal(transfer.url.includes('sekey=RSK%2Fx%3D'), true)
   assert.equal(transfer.url.includes('from=3733114755'), true)
-  assert.equal(transfer.init?.body, 'fidlist=%5B936164890719143%5D')
-  // 改名 .pdf → locatedownload origin=pdf（大文件通道）
+  // 实测键名是 fsidlist（不是 fidlist，否则恒 errno 2）
+  assert.equal(transfer.init?.body, 'fsidlist=%5B936164890719143%5D&path=%2F')
+  assert.equal(new URL(transfer.url).searchParams.get('bdstoken'), 'TOK')
+  assert.equal(new URL(transfer.url).searchParams.get('ondup'), 'newcopy')
+  // 改名 .pdf → locatedownload origin=pdf（大文件通道）；newname 保留撞名后缀 (1)
   const rename = calls[7]!
   assert.equal(rename.url.includes('opera=rename'), true)
-  assert.equal(decodeURIComponent(rename.init?.body ?? ''), 'filelist=[{"id":111,"path":"/来自：分享/Tool.zip","newname":"Tool.zip.pdf"}]')
+  assert.equal(decodeURIComponent(rename.init?.body ?? ''), 'filelist=[{"id":111,"path":"/来自：分享/Tool.zip(1)","newname":"Tool.zip(1).pdf"}]')
   const locate = calls[8]!
   assert.equal(locate.url.includes('/api/locatedownload?'), true)
   assert.equal(locate.url.includes('origin=pdf'), true)
   assert.equal(locate.url.includes('bdstoken=TOK'), true)
-  assert.ok(locate.url.includes('path=%2F%E6%9D%A5%E8%87%AA%EF%BC%9A%E5%88%86%E4%BA%AB%2FTool.zip.pdf'))
+  assert.ok(decodeURIComponent(locate.url).includes('/来自：分享/Tool.zip(1).pdf'), locate.url)
   // cleanup：删除自盘转存件
   assert.ok(meta.cleanup !== undefined)
   await meta.cleanup!()
   const del = calls[9]!
   assert.equal(del.url.includes('opera=delete'), true)
-  assert.equal(decodeURIComponent(del.init?.body ?? '').includes('"/来自：分享/Tool.zip.pdf"'), true)
+  assert.equal(decodeURIComponent(del.init?.body ?? '').includes('"/来自：分享/Tool.zip(1).pdf"'), true)
 })
 
 test('resolve：verify 后 wxlist 可用但无 dlink → 转存链路（wxlist 列表主路径）', async () => {
@@ -198,15 +201,15 @@ test('resolve：verify 后 wxlist 可用但无 dlink → 转存链路（wxlist �
     jsonRes(200, { errno: 0, randsk: 'R%3D' }, { 'set-cookie': 'BDCLND=c1; path=/' }),
     jsonRes(200, { errno: 0, list: [{ fs_id: 42, server_filename: 'Tool.zip', size: 9, isdir: 0 }] }), // 带 BDCLND 列表成功
     { ok: true, status: 200, headers: { get: () => null }, text: async () => initHtml },              // share/init（转存要 shareid/uk）
-    jsonRes(200, { errno: 0, info: [{ to_fs_id: '222', path: { to: '/apps/Tool.zip' } }] }),
     jsonRes(200, { errno: 0, result: { bdstoken: 'T2' } }),
+    jsonRes(200, { errno: 0, extra: { list: [{ to_fs_id: '222', to: '/apps/Tool.zip' }] } }),
     jsonRes(200, { errno: 0 }),
     jsonRes(200, { errno: 0, dlink: 'https://d.pcs.baidu.com/file/located2' }),
   ])
   const meta = await mkClient({ fetch }).resolve('https://pan.baidu.com/s/1slbWDQxCBpU8F9sfsjaZWA?pwd=ab12')
   assert.equal(meta.downloadUrl, 'https://d.pcs.baidu.com/file/located2')
   assert.equal(meta.fileName, 'Tool.zip')
-  const transfer = calls[4]!
+  const transfer = calls[5]!
   assert.equal(transfer.url.includes('shareid=17332921381'), true)
   assert.equal(transfer.url.includes('sekey=R%3D'), true)
   assert.equal(calls[7]!.url.includes('path=%2Fapps%2FTool.zip.pdf'), true)
@@ -382,4 +385,104 @@ test('installer.download：init.headers 透传给 fetchFn（百度 dlink 下载�
   assert.equal(seen[0]?.['User-Agent'], BAIDU_DOWNLOAD_UA)
   assert.equal(seen[0]?.Cookie, 'BDUSS=' + 'C'.repeat(48))
   await assert.rejects(() => installer.download('ftp://x'), LauncherError)
+})
+
+
+test('Cookie preserves encoded values and init surl keeps a leading 1', () => {
+  const cookie = 'BDUSS=' + 'A'.repeat(48) + '; BDCLND=a%2Bb%2Fc%3D; BAIDUID=x%3By'
+  assert.equal(normalizeBaiduCookie(cookie), cookie)
+  assert.deepEqual(parseBaiduShareUrl('https://pan.baidu.com/share/init?surl=1abc'), { surl: '1abc' })
+})
+
+test('wxlist success still verifies password; stale BDCLND replaced; tplconfig/sharedownload fallback', async () => {
+  const calls: Call[] = []
+  const client = new BaiduClient({
+    getAuth: () => 'BDUSS=' + 'A'.repeat(48) + '; BDCLND=stale%2Ftoken',
+    fetchFn: async (url, init) => {
+      calls.push({ url, init })
+      const path = new URL(url).pathname
+      if (path === '/share/wxlist') return jsonRes(200, { errno: 0, list: [{ fs_id: 42, server_filename: 'wallpaper.zip', size: 9 }] })
+      if (path === '/share/verify') return jsonRes(200, { errno: 0, randsk: 'fresh%2Btoken%3D' })
+      if (path === '/share/init') return { ...jsonRes(200, {}), text: async () => "share_uk:'55',shareid:'66'" }
+      if (path === '/api/gettemplatevariable') return jsonRes(200, { errno: 0, result: { bdstoken: 'TOK' } })
+      if (path === '/share/transfer') return jsonRes(200, { errno: 2, errmsg: 'parameter error' })
+      if (path === '/share/tplconfig') return jsonRes(200, { errno: 0, data: { sign: 'SIGN', timestamp: 123 } })
+      if (path === '/api/sharedownload') return jsonRes(200, { errno: 0, list: [{ dlink: 'https://d.pcs.baidu.com/file/test' }] })
+      throw Error('Unexpected request: ' + path)
+    },
+  })
+  const meta = await client.resolve('https://pan.baidu.com/s/1abc?pwd=1234')
+  assert.equal(meta.downloadUrl, 'https://d.pcs.baidu.com/file/test')
+  assert.equal(meta.fileName, 'wallpaper.zip')
+  assert.ok(calls.some(c => new URL(c.url).pathname === '/share/verify'))
+  const download = calls.find(c => new URL(c.url).pathname === '/api/sharedownload')!
+  const body = new URLSearchParams(download.init?.body)
+  assert.equal(body.get('primaryid'), '66')
+  assert.equal(body.get('uk'), '55')
+  assert.equal(body.get('fid_list'), '[42]')
+  assert.deepEqual(JSON.parse(body.get('extra')!), { sekey: 'fresh+token=' })
+  assert.equal(new URL(download.url).searchParams.get('sign'), 'SIGN')
+  assert.equal(download.init?.headers?.Cookie?.includes('stale'), false)
+  assert.equal(download.init?.headers?.Cookie?.match(/BDCLND=/g)?.length, 1)
+  assert.ok(download.init?.headers?.Cookie?.includes('BDCLND=fresh%2Btoken%3D'))
+})
+
+test('expired account session remains an auth error without transfer or HTML fallback', async () => {
+  const { fetch, calls } = stageFetch([
+    jsonRes(200, { errno: 0, list: [{ fs_id: 42, server_filename: 'wallpaper.zip' }] }),
+    { text: async () => "share_uk:'55',shareid:'66'" },
+    jsonRes(200, { errno: -6 }),
+  ])
+  await assert.rejects(mkClient({ fetch }).resolve('https://pan.baidu.com/s/1abc'),
+    (e: unknown) => e instanceof BaiduError && e.code === 'share_auth_required')
+  assert.equal(calls.length, 3)
+})
+
+
+test('install: URL extraction code takes precedence over archive password', async () => {
+  let seen: string | undefined
+  const installer = new LauncherInstaller({ root: mkdtempSync(join(tmpdir(), 'wesync-baidu-code-')) })
+  const routes = routesOf({ installer, baidu: { resolve: async (_url, code) => {
+    seen = code
+    throw new BaiduError('share_api_error', 'stop before download')
+  } } })
+  const res = fakeResShim()
+  await routes.get('/we-sync/launcher/install')!.handler(fakeBodyReq('/we-sync/launcher/install',
+    Buffer.from(JSON.stringify({ url: 'https://pan.baidu.com/s/1abc?pwd=1012', password: 'archive-secret' }))), res)
+  assert.equal(seen, '1012')
+  assert.equal(res.statusCode, 422)
+})
+
+
+test('validated sync rejects stale credentials without overwriting the saved account', async () => {
+  let saved = 'BDUSS=' + 'A'.repeat(48)
+  let fail = true
+  const routes = routesOf({
+    installer: new LauncherInstaller({ root: mkdtempSync(join(tmpdir(), 'wesync-baidu-validation-')) }),
+    credBaidu: { read: () => saved, write: v => { saved = v } },
+    validateBaiduAuth: async () => { if (fail) throw new BaiduError('share_auth_required', 'login expired') },
+  })
+  const auth = routes.get('/we-sync/launcher/baiduauth')!
+  const candidate = 'BDUSS=' + 'B'.repeat(48)
+  const post = async () => {
+    const res = fakeResShim()
+    await auth.handler(fakeBodyReq('/we-sync/launcher/baiduauth', Buffer.from(JSON.stringify({ cookie: candidate, validate: true }))), res)
+    return res
+  }
+  assert.equal((await post()).statusCode, 422)
+  assert.equal(saved, 'BDUSS=' + 'A'.repeat(48))
+  fail = false
+  assert.equal(bodyOf(await post()).validated, true)
+  const get = fakeResShim()
+  await auth.handler({ method: 'GET' }, get)
+  assert.equal(bodyOf(get).validated, true)
+  assert.equal(bodyOf(get).revision, 1)
+})
+
+test('validateAuth requires a real account token, not only a well-formed cookie', async () => {
+  for (const body of [{ errno: -6 }, { errno: 0, result: {} }]) {
+    const c = mkClient(stageFetch([jsonRes(200, body)]))
+    await assert.rejects(c.validateAuth('BDUSS=' + 'A'.repeat(48)), BaiduError)
+  }
+  await mkClient(stageFetch([jsonRes(200, { errno: 0, result: { bdstoken: 'TOKEN' } })])).validateAuth('BDUSS=' + 'A'.repeat(48))
 })

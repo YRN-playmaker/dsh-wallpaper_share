@@ -34,7 +34,7 @@ export function parseBaiduShareUrl(url: string): BaiduShareRef | null {
   let pwd: string | undefined
   const share = /[?&/]s\/1([A-Za-z0-9_-]+)/i.exec(text) ?? /\/s\/1([A-Za-z0-9_-]+)/i.exec(text)
   if (share !== null) surl = share[1]!
-  const init = /[?&]surl=1?([A-Za-z0-9_-]+)/i.exec(text)
+  const init = /[?&]surl=([A-Za-z0-9_-]+)/i.exec(text)
   if (init !== null) surl = init[1]!
   if (surl === undefined) return null
   const pm = /[?&]pwd=([A-Za-z0-9]+)/i.exec(text)
@@ -54,6 +54,7 @@ export class BaiduError extends LauncherError {
 /** errno → 语义。常见：9019=need verify；-12/-9=提取码错；-62/-64/-70=尝试过多/风控。 */
 function errnoToError(errno: number, where: string): BaiduError | null {
   if (errno === 0) return null
+  if (errno === -6) return new BaiduError('share_auth_required', `百度 API ${where} 拒绝登录态（errno -6），请重新同步网盘 Cookie`)
   if (errno === 9019) return new BaiduError('share_passcode_required', '该百度网盘分享需要提取码（9019 need verify）')
   if (errno === -12 || errno === -9 || errno === -17) return new BaiduError('share_passcode_wrong', `百度提取码错误（errno ${errno}）`)
   if (errno === -62 || errno === -64 || errno === -70) return new BaiduError('share_api_error', `百度风控/尝试过多（errno ${errno}），请稍后再试或换网络`)
@@ -73,7 +74,7 @@ export function normalizeBaiduCookie(raw: string): string {
   if (s === '') throw new BaiduError('share_auth_required', '百度网盘登录态为空')
   // F12 请求标头复制出来的是整行 Cookie: …——剥掉标签再按对解析
   s = s.replace(/^cookie\s*:\s*/i, '')
-  if (s.includes('%')) {
+  if (!s.includes('=') && s.includes('%')) {
     try {
       const dec = decodeURIComponent(s)
       if (dec !== s) s = dec
@@ -163,6 +164,19 @@ export class BaiduClient {
   constructor(opts: { fetchFn?: BaiduClient['fetchFn']; getAuth?: () => string } = {}) {
     this.fetchFn = opts.fetchFn ?? (async (u, init) => await fetch(u, init))
     this.getAuth = opts.getAuth ?? (() => '')
+  }
+
+  /** 验证本次同步的 Cookie，不修改云盘内容。 */
+  async validateAuth(raw: string): Promise<void> {
+    const cookie = normalizeBaiduCookie(raw)
+    const qs = new URLSearchParams({ clienttype: '0', app_id: '250528', web: '1', fields: '["bdstoken"]' })
+    const j = await this.getJson('gettemplatevariable', HOST + '/api/gettemplatevariable?' + qs, cookie)
+    const err = errnoToError(Number(j.errno ?? -1), 'gettemplatevariable')
+    if (err !== null) throw err
+    const result = j.result as Record<string, unknown> | undefined
+    if (typeof result?.bdstoken !== 'string' || !result.bdstoken) {
+      throw new BaiduError('share_auth_required', '请在百度网盘完成登录并进入“我的文件”，助手会自动重试同步')
+    }
   }
 
   private baseHeaders(cookie: string): Record<string, string> {
@@ -272,21 +286,27 @@ export class BaiduClient {
     try {
       const qs = `clienttype=0&app_id=250528&web=1&fields=${encodeURIComponent('["bdstoken"]')}`
       const j = await this.getJson('gettemplatevariable', `${HOST}/api/gettemplatevariable?${qs}`, cookie)
+      const err = errnoToError(Number(j.errno ?? -1), 'gettemplatevariable')
+      if (err !== null) throw err
       const r = j.result as Record<string, unknown> | undefined
       return typeof r?.bdstoken === 'string' ? r.bdstoken : ''
-    } catch { return '' }
+    } catch (e) {
+      if (e instanceof BaiduError && e.code === 'share_auth_required') throw e
+      return ''
+    }
   }
 
   /** 转存分享文件到自己网盘（BDUSS 必需）。randsk 来自 verify（带提取码的分享才有）。 */
-  private async transferToOwn(shareid: string, uk: string, randsk: string, fsId: string, cookie: string): Promise<{ toFsId: string; toPath: string }> {
+  private async transferToOwn(shareid: string, uk: string, randsk: string, fsId: string, cookie: string, bdstoken: string): Promise<{ toFsId: string; toPath: string }> {
     // randsk 从 verify 响应拿来时是已 URL 编码形态；URLSearchParams 会再编一次 → 先解一层
     let sekey = randsk
     try { sekey = decodeURIComponent(randsk) } catch { /* 解不了就原样用 */ }
-    const qs = new URLSearchParams({ shareid, from: uk, sekey, channel: 'chunlei', clienttype: '0', web: '1', app_id: '250528' })
+    const qs = new URLSearchParams({ shareid, from: uk, sekey, channel: 'chunlei', clienttype: '0', web: '1', app_id: '250528', bdstoken, ondup: 'newcopy', async: '1' })
     const res = await this.fetchFn(`${HOST}/share/transfer?${qs.toString()}`, {
       method: 'POST',
       headers: { ...this.baseHeaders(cookie), 'Content-Type': 'application/x-www-form-urlencoded', Origin: HOST },
-      body: 'fidlist=' + encodeURIComponent(`[${fsId}]`),
+      // 实测（2026-09，整包登录态）：请求体键名是 fsidlist（不是 fidlist），否则恒 errno 2「参数错误」
+      body: new URLSearchParams({ fsidlist: `[${fsId}]`, path: '/' }).toString(),
     })
     const text = await res.text()
     let j: Record<string, unknown> = {}
@@ -296,11 +316,14 @@ export class BaiduClient {
       const msg = String(j.show_msg ?? j.errmsg ?? text.slice(0, 120))
       throw new BaiduError('share_api_error', `转存到自己网盘失败（errno ${errno}）：${msg}`)
     }
-    const info = Array.isArray(j.info) ? (j.info as Array<Record<string, unknown>>)[0] : undefined
-    const toFsId = String((info?.to_fs_id as string | number | undefined) ?? '')
-    const toPath = String((info?.path as Record<string, unknown> | undefined)?.to ?? '')
+    // 目标文件信息在 extra.list[0]（to_fs_id / to），info[] 只有源路径——实测口径
+    const extra = j.extra as Record<string, unknown> | undefined
+    const elist = Array.isArray(extra?.list) ? extra.list as Array<Record<string, unknown>> : []
+    const e0 = elist[0]
+    const toFsId = String(e0?.to_fs_id ?? '')
+    const toPath = String(e0?.to ?? '')
     if (toFsId === '' || toPath === '') {
-      throw new BaiduError('share_api_error', `转存响应缺 to_fs_id/path: ${text.slice(0, 160)}`)
+      throw new BaiduError('share_api_error', `转存响应缺 to_fs_id/to: ${text.slice(0, 160)}`)
     }
     return { toFsId, toPath }
   }
@@ -320,11 +343,12 @@ export class BaiduClient {
     if (errno !== 0) throw new BaiduError('share_api_error', `改名失败（errno ${errno}）：${String(j.show_msg ?? j.errmsg ?? text.slice(0, 120))}`)
   }
 
-  /** 自盘直链：locatedownload + origin=pdf（>150MB 大文件通道，需要文件名以 .pdf 结尾）。 */
-  private async locateDlink(path: string, cookie: string, bdstoken: string): Promise<string> {
+  /** 自盘直链：locatedownload + origin=pdf（>150MB 大文件通道，需要文件名以 .pdf 结尾）。
+   *  改名是异步任务（filemanager 返回 taskid），刚改完可能查不到 → 有界轮询几次。
+   *  注意：实测 origin=pdf 通道会校验真实文件类型，伪装成 .pdf 的非 PDF 大文件恒 errno 12001，
+   *  这条只对「本就是 PDF」的分享有效；其余情况由上层回落到「已存到你网盘」提示。 */
+  private async locateDlink(path: string, cookie: string, bdstoken: string, attempts = 4): Promise<string> {
     const qs = new URLSearchParams({ clienttype: '0', app_id: '250528', web: '1', channel: 'chunlei', path, origin: 'pdf', use: '1', ...(bdstoken !== '' ? { bdstoken } : {}) })
-    const j = await this.getJson('locatedownload', `${HOST}/api/locatedownload?${qs.toString()}`, cookie)
-    // dlink 可能在任意层级（errno 外还有 data 包装）——递归挖（借鉴 HcxBaiduDownload 的 digOutDlink 思路）
     const dig = (o: unknown, depth: number): string => {
       if (depth > 4 || o === null || typeof o !== 'object') return ''
       for (const [k, v] of Object.entries(o as Record<string, unknown>)) {
@@ -336,12 +360,19 @@ export class BaiduClient {
       }
       return ''
     }
-    const dlink = dig(j, 0)
-    if (dlink === '') {
-      const errno = typeof j.errno === 'number' ? j.errno : -1
-      throw new BaiduError('share_api_error', `locatedownload 未返回直链（errno ${errno}）：${JSON.stringify(j).slice(0, 160)}`)
+    let lastErrno = -1
+    let lastBody = ''
+    for (let i = 0; i < attempts; i++) {
+      if (i > 0) await new Promise((r) => setTimeout(r, 1200))
+      const j = await this.getJson('locatedownload', `${HOST}/api/locatedownload?${qs.toString()}`, cookie)
+      const dlink = dig(j, 0)
+      if (dlink !== '') return dlink
+      lastErrno = typeof j.errno === 'number' ? j.errno : -1
+      lastBody = JSON.stringify(j).slice(0, 160)
+      // 12001=类型/大小不符（非真 PDF），重试无意义，立即退出
+      if (lastErrno === 12001) break
     }
-    return dlink
+    throw new BaiduError('share_api_error', `locatedownload 未返回直链（errno ${lastErrno}）：${lastBody}`)
   }
 
   /** 删除自盘里的转存件（安装完清理；尽力而为，失败不影响结果）。 */
@@ -356,42 +387,46 @@ export class BaiduClient {
     } catch { /* 尽力而为 */ }
   }
 
-  /**
-   * 内容页兜底：wxlist 没给 dlink 时，带 Cookie 开内容页解析 yunData 的 sign/timestamp/shareid/uk
-   * 与文件 fs_id，再 POST /api/download 换 dlink。
-   */
-  private async dlinkViaContentPage(surl: string, fsId: string, cookie: string): Promise<string> {
-    const res = await this.fetchFn(`${HOST}/s/1${surl}`, { headers: this.baseHeaders(cookie) })
-    const html = await res.text()
-    if (!res.ok) {
-      throw new BaiduError('share_api_error', `百度内容页拉取失败（HTTP ${res.status}），无法解析下载签名`)
+  /** 分享下载使用 tplconfig 签名接口；旧页面内嵌签名作为兼容回退。 */
+  private async dlinkViaContentPage(surl: string, fsId: string, cookie: string, shareid: string, uk: string, randsk: string): Promise<string> {
+    let sign = ''
+    let timestamp = ''
+    try {
+      const qs = new URLSearchParams({ surl, fields: 'sign,timestamp', channel: 'chunlei', web: '1', app_id: '250528', clienttype: '0' })
+      const j = await this.getJson('tplconfig', HOST + '/share/tplconfig?' + qs, cookie)
+      const err = errnoToError(Number(j.errno ?? -1), 'tplconfig')
+      if (err !== null) throw err
+      const data = j.data as Record<string, unknown> | undefined
+      sign = typeof data?.sign === 'string' ? data.sign : ''
+      timestamp = String(data?.timestamp ?? '')
+    } catch (e) {
+      if (e instanceof BaiduError && e.code === 'share_auth_required') throw e
     }
-    const pick = (re: RegExp): string => re.exec(html)?.[1] ?? ''
-    const sign = pick(/"sign"\s*:\s*"([^"]+)"/) || pick(/sign\s*:\s*'([^']+)'/)
-    const timestamp = pick(/"timestamp"\s*:\s*(\d+)/) || pick(/timestamp\s*:\s*'?(\d+)/)
-    const shareid = pick(/"shareid"\s*:\s*"?(\d+)/) || pick(/shareid\s*:\s*'?(\d+)/)
-    const uk = pick(/"share_uk"\s*:\s*"?(\d+)/) || pick(/"uk"\s*:\s*"?(\d+)/)
-    if (sign === '' || timestamp === '' || shareid === '') {
-      throw new BaiduError('share_api_error', '内容页缺少下载签名（sign/timestamp/shareid）：登录态可能失效或页面结构变化')
+    if (!sign || !timestamp) {
+      const res = await this.fetchFn(HOST + '/s/1' + surl, { headers: this.baseHeaders(cookie) })
+      const html = await res.text()
+      sign = /['"]?sign['"]?\s*:\s*['"]([^'"]+)['"]/.exec(html)?.[1] ?? ''
+      timestamp = /['"]?timestamp['"]?\s*:\s*['"]?(\d+)/.exec(html)?.[1] ?? ''
     }
-    const qs = new URLSearchParams({
-      sign, timestamp, bdstoken: '', channel: 'chunlei', clienttype: '12', web: '1', app_id: '250528',
-    })
-    if (uk !== '') qs.set('uk', uk)
-    if (shareid !== '') qs.set('shareid', shareid)
-    const dl = await this.fetchFn(`${HOST}/api/download?${qs.toString()}`, {
+    if (!sign || !timestamp || !shareid || !uk) {
+      throw new BaiduError('share_api_error', '分享签名接口与内容页均未返回完整下载参数，不能据此判定登录态失效')
+    }
+    let sekey = randsk
+    try { sekey = decodeURIComponent(randsk) } catch { /* 保留原值 */ }
+    const qs = new URLSearchParams({ sign, timestamp, channel: 'chunlei', clienttype: '12', web: '1', app_id: '250528' })
+    const res = await this.fetchFn(HOST + '/api/sharedownload?' + qs, {
       method: 'POST',
       headers: { ...this.baseHeaders(cookie), 'Content-Type': 'application/x-www-form-urlencoded', Origin: HOST },
-      body: 'fid_list=' + encodeURIComponent(`[${fsId}]`),
+      body: new URLSearchParams({ encrypt: '0', product: 'share', type: 'nolimit', primaryid: shareid, uk, fid_list: '[' + fsId + ']', extra: JSON.stringify({ sekey }) }).toString(),
     })
-    const text = await dl.text()
+    const text = await res.text()
     let j: Record<string, unknown> = {}
-    try { j = JSON.parse(text) as Record<string, unknown> } catch { /* 按 API 错误处理 */ }
-    const errno = typeof j.errno === 'number' ? j.errno : Number(j.errno ?? -1)
-    const err = errnoToError(errno, 'download')
+    try { j = JSON.parse(text) as Record<string, unknown> } catch { /* 按接口错误处理 */ }
+    const err = errnoToError(Number(j.errno ?? -1), 'sharedownload')
     if (err !== null) throw err
-    const dlink = typeof j.dlink === 'string' ? j.dlink : ''
-    if (dlink === '') throw new BaiduError('share_api_error', `百度下载响应无 dlink: ${text.slice(0, 160)}`)
+    const list = Array.isArray(j.list) ? j.list as Array<Record<string, unknown>> : []
+    const dlink = list[0]?.dlink ?? j.dlink
+    if (typeof dlink !== 'string' || !dlink) throw new BaiduError('share_api_error', '百度分享下载响应未返回 dlink')
     return dlink
   }
 
@@ -408,24 +443,45 @@ export class BaiduClient {
     }
     let cookie: string
     try {
-      cookie = normalizeBaiduCookie(auth)
+      cookie = normalizeBaiduCookie(auth).split('; ').filter((p) => !p.startsWith('BDCLND=')).join('; ')
     } catch (e) {
       throw new BaiduError('share_auth_required', `已配置的百度登录态无效，请重新粘贴（详情：${(e as Error).message}）`)
     }
 
-    // 1) 列表（wxlist；9019 → verify 拿 randsk/BDCLND 再试；仍拒绝 → share/list 兜底，实测匿名+BDCLND 可用）
+    // 1) 列表。2026-09 实测 wxlist 口径极不稳定：匿名恒 9019，带整包 cookie 反而可能 errno 2
+    //    （参数/风控拒绝）——任何失败都不硬报错，降级 verify（拿 BDCLND/randsk）→ 重试 →
+    //    仍不行走 /share/list（实测 BDCLND+整包即可列目录）。
     let bdclnd = ''
     let randsk = ''
-    let listed = await this.listRoot(ref.surl, pwd, cookie)
-    if (listed.needVerify) {
+    let listed: { needVerify: boolean; files: WxEntry[] } = { needVerify: false, files: [] }
+    let wxFailed = false
+    try {
+      listed = await this.listRoot(ref.surl, pwd, cookie)
+    } catch (e) {
+      if (e instanceof BaiduError && e.code === 'share_auth_required') throw e
+      wxFailed = true // wxlist 不可用 ≠ 链接无效；交给兜底轨
+    }
+    const wantVerify = listed.needVerify || wxFailed || (pwd !== undefined && pwd !== '' && !listed.files.some((f) => f.dlink !== undefined && f.dlink !== ''))
+    if (wantVerify) {
       if (pwd === undefined || pwd === '') {
-        throw new BaiduError('share_passcode_required', '该百度网盘分享需要提取码：请在提取码框填入后重试')
+        if (listed.needVerify) {
+          throw new BaiduError('share_passcode_required', '该百度网盘分享需要提取码：请在提取码框填入后重试')
+        }
+        // wxlist 挂了但没填口令：可能本就是免口令分享，跳过 verify 直接试 share/list
+      } else {
+        const v = await this.verifyPwd(ref.surl, pwd, cookie)
+        bdclnd = v.bdclnd || v.randsk
+        randsk = v.randsk || v.bdclnd
+        if (listed.needVerify || wxFailed) {
+          const withClnd = bdclnd !== '' ? `${cookie}; BDCLND=${bdclnd}` : cookie
+          try {
+            listed = await this.listRoot(ref.surl, undefined, withClnd)
+          } catch (e) {
+            if (e instanceof BaiduError && e.code === 'share_auth_required') throw e
+            // 仍失败：保持 files=[]，落 share/list 兜底（实测 BDCLND 即可列目录）
+          }
+        }
       }
-      const v = await this.verifyPwd(ref.surl, pwd, cookie)
-      bdclnd = v.bdclnd
-      randsk = v.randsk
-      listed = await this.listRoot(ref.surl, undefined, bdclnd !== '' ? `${cookie}; BDCLND=${bdclnd}` : cookie)
-      // 仍 9019 不硬失败：share/list 兜底（实测 BDCLND 即可列目录）
     }
     let files = listed.files
     const dlCookie = bdclnd !== '' ? `${cookie}; BDCLND=${bdclnd}` : cookie
@@ -469,13 +525,26 @@ export class BaiduClient {
         shareid = meta2.shareid
         uk = meta2.uk
       }
-      const { toFsId, toPath } = await this.transferToOwn(shareid, uk, randsk, file.fsId, dlCookieFinal)
       const bdstoken = await this.getBdstoken(dlCookieFinal)
-      const isPdf = /\.pdf$/i.test(file.name)
-      const dlName = isPdf ? file.name : `${file.name}.pdf`
+      const { toFsId, toPath } = await this.transferToOwn(shareid, uk, randsk, file.fsId, dlCookieFinal, bdstoken)
+      // ondup=newcopy 撞名会给 toPath 加 (1)/(2) 后缀，改名必须基于 toPath 的实际 basename，
+      // 否则 newname 与目标不符、onnest=fail 下改名落空（实测踩坑）
+      const base = toPath.replace(/^.*\//, '')
+      const isPdf = /\.pdf$/i.test(base)
+      const dlName = isPdf ? base : `${base}.pdf`
       const finalPath = isPdf ? toPath : toPath.replace(/[^/]+$/, dlName)
-      if (!isPdf) await this.renameOwn(toFsId, toPath, dlName, dlCookieFinal, bdstoken)
-      const dlink = await this.locateDlink(finalPath, dlCookieFinal, bdstoken)
+      let cleanupPath = toPath
+      let dlink: string
+      try {
+        if (!isPdf) {
+          await this.renameOwn(toFsId, toPath, dlName, dlCookieFinal, bdstoken)
+          cleanupPath = finalPath
+        }
+        dlink = await this.locateDlink(finalPath, dlCookieFinal, bdstoken)
+      } catch (e) {
+        await this.deleteOwn(toFsId, cleanupPath, dlCookieFinal, bdstoken)
+        throw e
+      }
       return {
         downloadUrl: dlink,
         // locatedownload 直链是带令牌的授权 URL，浏览器 UA + 登录态即可（参考 HcxBaiduDownload 实践）
@@ -485,12 +554,13 @@ export class BaiduClient {
         cleanup: () => this.deleteOwn(toFsId, finalPath, dlCookieFinal, bdstoken),
       }
     } catch (e) {
+      if (e instanceof BaiduError && e.code === 'share_auth_required') throw e
       transferErr = `${(e as Error).name}: ${(e as Error).message}`
     }
 
     // 兜底：内容页签名单（旧版页面内嵌 yunData.sign时可用）
     try {
-      const dlink = await this.dlinkViaContentPage(ref.surl, file.fsId, dlCookieFinal)
+      const dlink = await this.dlinkViaContentPage(ref.surl, file.fsId, dlCookieFinal, shareid, uk, randsk)
       return {
         downloadUrl: dlink,
         headers: { 'User-Agent': BAIDU_DOWNLOAD_UA, Cookie: dlCookieFinal },
@@ -498,6 +568,7 @@ export class BaiduClient {
         size: file.size,
       }
     } catch (e2) {
+      if (e2 instanceof BaiduError && e2.code === 'share_auth_required') throw e2
       throw new BaiduError('share_api_error', `无法获取下载直链——转存直链路径：${transferErr}；内容页签名路径：${(e2 as Error).message}`)
     }
   }
