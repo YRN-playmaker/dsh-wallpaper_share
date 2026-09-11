@@ -31,7 +31,7 @@ export interface Yun139Resolver {
 
 /** 百度网盘分享解析的最小结构（测试注入假实现）。 */
 export interface BaiduResolver {
-  resolve(shareUrl: string, passcode?: string): Promise<{ downloadUrl: string; fileName?: string; size?: number; headers?: Record<string, string> }>
+  resolve(shareUrl: string, passcode?: string): Promise<{ downloadUrl: string; fileName?: string; size?: number; headers?: Record<string, string>; cleanup?: () => Promise<void> }>
 }
 
 export interface LauncherRoutesDeps {
@@ -165,6 +165,7 @@ export function createLauncherRoutes(deps: LauncherRoutesDeps): Route[] {
       let url = opts.url
       let shareFileName: string | undefined
       let dlHeaders: Record<string, string> | undefined
+      let baiduCleanup: (() => Promise<void>) | undefined
       if (parse139ShareUrl(url) !== null) {
         try {
           const meta = await yun139.resolve(url, passcode)
@@ -181,7 +182,8 @@ export function createLauncherRoutes(deps: LauncherRoutesDeps): Route[] {
           const meta = await baidu.resolve(url, passcode)
           url = meta.downloadUrl
           shareFileName = meta.fileName
-          dlHeaders = meta.headers // dlink 必须 UA=netdisk + 用户 Cookie，否则拿不到文件流
+          dlHeaders = meta.headers // wxlist dlink：UA=netdisk + Cookie；locatedownload 令牌链：浏览器 UA + Referer
+          baiduCleanup = meta.cleanup // 转存自盘的文件在下载后删除
         } catch (e) {
           if (e instanceof BaiduError) {
             return json(res, 422, { error: e.message, code: e.code })
@@ -189,9 +191,16 @@ export function createLauncherRoutes(deps: LauncherRoutesDeps): Route[] {
           throw e
         }
       }
-      const dl = await installer.download(url, dlHeaders !== undefined ? { headers: dlHeaders } : undefined)
-      const bytes = dl.bytes
-      const fileName = shareFileName ?? dl.fileName
+      // 下载（百度转存直链路径：下载完无论成败都清理自盘转存件）
+      let bytes: Uint8Array
+      let fileName: string
+      try {
+        const dl = await installer.download(url, dlHeaders !== undefined ? { headers: dlHeaders } : undefined)
+        bytes = dl.bytes
+        fileName = shareFileName ?? dl.fileName
+      } finally {
+        if (baiduCleanup !== undefined) { void baiduCleanup().catch(() => { /* 尽力而为 */ }) }
+      }
       // 2) 可选完整性校验
       if (integrity !== undefined && !verifyIntegrity(bytes, integrity)) {
         return json(res, 400, { error: '完整性校验失败: sha512 不匹配（包被篡改或损坏）' })

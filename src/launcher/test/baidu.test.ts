@@ -141,30 +141,72 @@ test('resolve：wxlist 直链自带 → 原样返回 + netdisk UA + 用户 Cooki
   assert.equal(calls[0]!.url.includes('root=1'), true)
 })
 
-test('resolve：9019 → verify 取 BDCLND → 再列表；无 dlink → 内容页签名单换直链', async () => {
-  const html = `<script>window.yunData={sign:'SGN==',timestamp:'1789076447',shareid:'17332921381',share_uk:'3733114755',file_list:{list:[{fs_id:42,server_filename:'Tool.zip'}]}};</script>`
+test('resolve：9019 → verify(randsk) → wxlist 仍 9019 → share/list 兜底 → 转存+改名.pdf+locatedownload → dlink + cleanup', async () => {
+  const initHtml = `<script>window.yunData={skinName:'',bdstoken:'',uk:'0',share_uk:'3733114755',shareid:'17332921381'};</script>`
   const { fetch, calls } = stageFetch([
     jsonRes(200, { errno: 9019, errmsg: 'need verify' }),                                          // 第一次 wxlist
-    jsonRes(200, { errno: 0 }, { 'set-cookie': 'BDCLND=opFe2%2BxY; path=/; domain=.baidu.com' }),  // verify
-    jsonRes(200, { errno: 0, list: [{ fs_id: 42, server_filename: 'Tool.zip', size: 9, isdir: 0 }] }), // 带 BDCLND 再列表
-    { ok: true, status: 200, headers: { get: () => null }, text: async () => html },               // 内容页
-    jsonRes(200, { errno: 0, dlink: 'https://d.pcs.baidu.com/file/y' }),                            // api/download
+    jsonRes(200, { errno: 0, randsk: 'RSK%2Fx%3D' }, { 'set-cookie': 'BDCLND=opFe2%2BxY; path=/; domain=.baidu.com' }), // verify
+    jsonRes(200, { errno: 9019 }),                                                                 // 带 BDCLND 仍 9019（匿名口径）
+    { ok: true, status: 200, headers: { get: () => null }, text: async () => initHtml },           // share/init 页
+    jsonRes(200, { errno: 0, list: [{ fs_id: '936164890719143', server_filename: 'Tool.zip', size: '9', isdir: '0' }] }), // share/list
+    jsonRes(200, { errno: 0, info: [{ to_fs_id: '111', path: { to: '/来自：分享/Tool.zip' } }] }),  // 转存
+    jsonRes(200, { errno: 0, result: { bdstoken: 'TOK' } }),                                       // gettemplatevariable
+    jsonRes(200, { errno: 0 }),                                                                    // filemanager rename
+    jsonRes(200, { errno: 0, dlink: 'https://d.pcs.baidu.com/file/located' }),                      // locatedownload
   ])
   const meta = await mkClient({ fetch }).resolve('https://pan.baidu.com/s/1slbWDQxCBpU8F9sfsjaZWA?pwd=ab12')
-  assert.equal(meta.downloadUrl, 'https://d.pcs.baidu.com/file/y')
+  assert.equal(meta.downloadUrl, 'https://d.pcs.baidu.com/file/located')
   assert.equal(meta.fileName, 'Tool.zip')
-  assert.equal(meta.headers.Cookie!.includes('BDCLND=opFe2%2BxY'), true)
-  // 验证流程：verify POST 带了提取码；第二次 wxlist 带 BDCLND 且不带 pwd；download POST 带 fid_list
-  const verify = calls[1]!
-  assert.equal(verify.url.includes('/share/verify?'), true)
-  assert.equal(verify.init?.body, 'pwd=ab12')
+  assert.equal(meta.headers.Referer, 'https://pan.baidu.com/')
+  assert.equal(meta.headers.Cookie!.includes('BDUSS='), true)
+  // verify 带提取码；重列表带 BDCLND；transfer 带 sekey（randsk 一次编码）与 from=uk
+  assert.equal(calls[1]!.init?.body, 'pwd=ab12')
   const reList = calls[2]!
   assert.equal(reList.url.includes('pwd='), false)
   assert.equal(reList.init?.headers?.Cookie!.includes('BDCLND=opFe2%2BxY'), true)
-  const download = calls[4]!
-  assert.equal(download.url.includes('/api/download?'), true)
-  assert.equal(download.url.includes('sign=SGN%3D%3D') || download.url.includes('sign=SGN=='), true)
-  assert.equal(download.init?.body, 'fid_list=%5B42%5D')
+  const transfer = calls[5]!
+  assert.equal(transfer.url.includes('/share/transfer?'), true)
+  assert.equal(transfer.url.includes('sekey=RSK%2Fx%3D'), true)
+  assert.equal(transfer.url.includes('from=3733114755'), true)
+  assert.equal(transfer.init?.body, 'fidlist=%5B936164890719143%5D')
+  // 改名 .pdf → locatedownload origin=pdf（大文件通道）
+  const rename = calls[7]!
+  assert.equal(rename.url.includes('opera=rename'), true)
+  assert.equal(decodeURIComponent(rename.init?.body ?? ''), 'filelist=[{"id":111,"path":"/来自：分享/Tool.zip","newname":"Tool.zip.pdf"}]')
+  const locate = calls[8]!
+  assert.equal(locate.url.includes('/api/locatedownload?'), true)
+  assert.equal(locate.url.includes('origin=pdf'), true)
+  assert.equal(locate.url.includes('bdstoken=TOK'), true)
+  assert.ok(locate.url.includes('path=%2F%E6%9D%A5%E8%87%AA%EF%BC%9A%E5%88%86%E4%BA%AB%2FTool.zip.pdf'))
+  // cleanup：删除自盘转存件
+  assert.ok(meta.cleanup !== undefined)
+  await meta.cleanup!()
+  const del = calls[9]!
+  assert.equal(del.url.includes('opera=delete'), true)
+  assert.equal(decodeURIComponent(del.init?.body ?? '').includes('"/来自：分享/Tool.zip.pdf"'), true)
+})
+
+test('resolve：verify 后 wxlist 可用但无 dlink → 转存链路（wxlist 列表主路径）', async () => {
+  const initHtml = `<script>window.yunData={share_uk:'3733114755',shareid:'17332921381'};</script>`
+  const { fetch, calls } = stageFetch([
+    jsonRes(200, { errno: 9019 }),
+    jsonRes(200, { errno: 0, randsk: 'R%3D' }, { 'set-cookie': 'BDCLND=c1; path=/' }),
+    jsonRes(200, { errno: 0, list: [{ fs_id: 42, server_filename: 'Tool.zip', size: 9, isdir: 0 }] }), // 带 BDCLND 列表成功
+    { ok: true, status: 200, headers: { get: () => null }, text: async () => initHtml },              // share/init（转存要 shareid/uk）
+    jsonRes(200, { errno: 0, info: [{ to_fs_id: '222', path: { to: '/apps/Tool.zip' } }] }),
+    jsonRes(200, { errno: 0, result: { bdstoken: 'T2' } }),
+    jsonRes(200, { errno: 0 }),
+    jsonRes(200, { errno: 0, dlink: 'https://d.pcs.baidu.com/file/located2' }),
+  ])
+  const meta = await mkClient({ fetch }).resolve('https://pan.baidu.com/s/1slbWDQxCBpU8F9sfsjaZWA?pwd=ab12')
+  assert.equal(meta.downloadUrl, 'https://d.pcs.baidu.com/file/located2')
+  assert.equal(meta.fileName, 'Tool.zip')
+  const transfer = calls[4]!
+  assert.equal(transfer.url.includes('shareid=17332921381'), true)
+  assert.equal(transfer.url.includes('sekey=R%3D'), true)
+  assert.equal(calls[7]!.url.includes('path=%2Fapps%2FTool.zip.pdf'), true)
+  await meta.cleanup!()
+  assert.equal(calls[8]!.url.includes('opera=delete'), true)
 })
 
 test('resolve：9019 且无提取码 → share_passcode_required；错误提取码（verify errno 2）→ share_passcode_wrong', async () => {
