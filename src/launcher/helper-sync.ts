@@ -207,11 +207,11 @@ export const HELPER_SYNC_SCRIPT = `// ==UserScript==
         }
         return
       }
-      // 两条路都读不到：多半未登录，或 TM 未授权 cookie 访问 —— 给一次菜单指引
+      // 两条路都读不到：多半 BDUSS 被标 HttpOnly 且 TM 未授权 cookie 访问 —— 指引走面板粘贴
       emptyMisses++
       if (emptyMisses === 2 && !toldEmpty) {
         toldEmpty = true
-        toast('⚠ 未读到百度 BDUSS：若已登录，请点油猴菜单「同步百度登录态到 DSH」手动粘贴', false)
+        toast('⚠ 本页读不到百度 BDUSS（可能被 HttpOnly 保护）：请在 DSH 面板「百度网盘登录态」输入框粘贴——F12 → 应用 → Cookie → pan.baidu.com → 复制 BDUSS 的值；或在 Tampermonkey 里允许本脚本访问 Cookie 后刷新重试', false)
       }
     })
   }
