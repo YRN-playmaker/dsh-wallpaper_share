@@ -34,6 +34,11 @@ jobs:
           node-version: 24
           registry-url: https://registry.npmjs.org
 
+      - name: Check package encoding and entries
+        run: |
+          npm run check:package
+          npm run test:package
+
       - name: Publish
         shell: bash
         env:

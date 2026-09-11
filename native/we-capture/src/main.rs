@@ -13,7 +13,7 @@
 //! 许可：MIT。仅调用系统 WGC/D3D11 API，不含任何 WE/LWE 源码。
 
 use std::io::{self, BufRead, Write};
-use std::sync::mpsc::{self, Receiver, TryRecvError};
+use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -48,9 +48,12 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 
 /// 版本自报行（SceneAdapter 读取 [VERSION]）
-const VERSION: &str = "we-capture-0.3.0";
+const VERSION: &str = "we-capture-0.4.0";
 /// 帧格式：0 = JPEG
 const FMT_JPEG: u8 = 0;
+
+/// 编码流水线深度：捕获线程最多领先编码线程这么多帧，超出即丢帧（防内存堆积）
+const PIPE_DEPTH: usize = 3;
 
 /// 来自 stdin 的控制命令
 #[derive(Debug, Clone)]
@@ -61,6 +64,16 @@ enum Cmd {
     Resize { width: u32, height: u32 },
     Ping,
     Stop,
+}
+
+/// 一条待编码的 BGRA 帧（捕获线程 → 编码线程）
+struct FrameJob {
+    w: u32,
+    h: u32,
+    quality: u8,
+    bgra: Vec<u8>,
+    map_ms: f64,
+    conv_ms: f64,
 }
 
 /// load 命令的 JSON 形状（其余字段忽略）
@@ -116,9 +129,9 @@ fn main() {
     loop {
         match ctrl_rx.recv() {
             Ok(Cmd::Load { fps, quality, width, height, monitor }) => {
-                let stdout = io::stdout();
-                let mut sink = stdout.lock();
-                run_capture(fps, quality, width, height, &ctrl_rx, &mut sink, None, None, monitor);
+                // sink 移交 run_capture（最终由编码线程持有并逐帧写入）
+                let sink: Box<dyn Write + Send> = Box::new(io::stdout());
+                run_capture(fps, quality, width, height, &ctrl_rx, sink, None, None, monitor);
                 // run_capture 返回即该 scene 结束；回到等待下一条 load
             }
             Ok(Cmd::Stop) => break,
@@ -152,7 +165,7 @@ fn selftest(secs: u64, out: &str, hwnd: Option<isize>, out_w: u32, out_h: u32) {
         out_w,
         out_h,
         &ctrl_rx,
-        &mut sink,
+        Box::new(sink.get_ref().try_clone().expect("clone selftest sink")),
         Some(deadline),
         hwnd.map(|h| HWND(h as *mut core::ffi::c_void)),
         0,
@@ -207,14 +220,20 @@ fn parse_cmd(line: &str) -> Option<Cmd> {
     })
 }
 
-/// 建立 WGC 捕获并出帧，直到收到 stop / 出错 / stdin 关闭
+/// 建立捕获 + 编码流水线并出帧，直到收到 stop / 出错 / stdin 关闭。
+///
+/// 结构（0.4.0 起两线程流水线）：
+///   捕获线程（本函数，≈3ms/帧）：等帧 → GPU 裁剪拷贝 + Map 回读 → BGRA 行拷贝 → 入队
+///   编码线程（encode_worker）：BGRA 直入 jpeg-encoder（SIMD）→ 协议帧写 sink
+/// 旧单线程版本 Map+转换+编码串行 ≈40ms/帧，且帧池事件靠 100ms 轮询捡，
+/// 实测仅 ~6.5fps；拆分后捕获节流不受编码耗时拖累，编码满负荷时丢帧不阻塞。
 fn run_capture(
     fps: u32,
     quality: u32,
     out_w: u32,
     out_h: u32,
     ctrl_rx: &Receiver<Cmd>,
-    sink: &mut dyn Write,
+    sink: Box<dyn Write + Send>,
     deadline: Option<Instant>,
     force_hwnd: Option<HWND>,
     monitor_hint: u32,
@@ -300,8 +319,13 @@ fn run_capture(
         "[we-capture] 裁剪区域 x={crop_x} y={crop_y} w={crop_w} h={crop_h}（多显示器仅输出目标屏）"
     );
 
-    // 5. 帧池 + 会话
-    let frame_pool = match Direct3D11CaptureFramePool::Create(
+    // 5. 帧池 + 会话。
+    //    CreateFreeThreaded：帧到达事件在线程池线程上直接派发，不依赖
+    //    DispatcherQueue —— 本程序是 MTA 控制台进程、没有 UI 消息泵，若用
+    //    Create（需要 DispatcherQueue）FrameArrived 永不触发，主循环只能靠
+    //    100ms recv_timeout 轮询捡帧，实测吞吐仅 ~6.5fps。0.4.0 起换用
+    //    FreeThreaded 变体，事件驱动出帧。
+    let frame_pool = match Direct3D11CaptureFramePool::CreateFreeThreaded(
         &winrt_device,
         DirectXPixelFormat::B8G8R8A8UIntNormalized,
         2,
@@ -344,15 +368,27 @@ fn run_capture(
     }
     eprintln!("[we-capture] 捕获已启动，进入主循环");
 
-    // 7. 主循环：取帧 → 回读 → 编码 → 写 stdout；处理控制；心跳
+    // 7. 两线程流水线：本线程只捕获+回读+入队；编码线程 JPEG 编码 + 写 sink。
+    //    计数经通道回传（心跳统计编码完成数），编解码端满负荷时捕获端按 PIPE_DEPTH 丢帧。
+    let (job_tx, job_rx) = mpsc::sync_channel::<FrameJob>(PIPE_DEPTH);
+    let (done_tx, done_rx) = mpsc::channel::<(u64, f64)>(); // (序号, enc_ms)
+    let enc_thread = thread::spawn(move || encode_worker(job_rx, done_tx, sink));
+
     let frame_interval = Duration::from_nanos(1_000_000_000u64 / fps.max(1) as u64);
+    // 节流相位容差：源帧率≈目标帧率时（如 WE 30fps 渲染 + 目标 30），帧间隔与节流间隔
+    // 同频，毫秒级抖动就会让 elapsed<interval 误判 → 2:1 抽取减半帧率。放宽 10% 相位。
+    let throttle_gap = frame_interval.mul_f64(0.9);
     let mut paused = false;
-    let mut frame_no: u64 = 0;
+    let mut frame_no: u64 = 0;      // 捕获入队数
+    let mut enc_done: u64 = 0;      // 编码完成数（心跳口径：编码 fps）
     let mut fps_count: u64 = 0;
     let mut last_beat = Instant::now();
     let mut last_emit = Instant::now() - frame_interval;
     let mut running = true;
     let mut perf = Perf::default();
+    let mut job_seq: u64 = 0;
+    // 回读纹理跨帧缓存（尺寸变化才重建），消除每帧 CreateTexture2D
+    let mut staging_cache: Option<(ID3D11Texture2D, u32, u32)> = None;
 
     while running {
         // 控制命令（非阻塞）
@@ -382,8 +418,16 @@ fn run_capture(
             }
         }
 
-        // 等帧信号（最多 100ms 唤醒一次做心跳）
+        // 等帧信号（最多 100ms 唤醒一次做心跳/控制检查）
         let _ = sig_rx.recv_timeout(Duration::from_millis(100));
+
+        // 吸收编码线程已完成的帧计数（非阻塞）
+        while let Ok((seq, enc_ms)) = done_rx.try_recv() {
+            perf.enc += enc_ms;
+            perf.n += 1;
+            enc_done = seq;
+            fps_count += 1;
+        }
 
         if paused {
             // 排空帧池避免堆积，但不输出
@@ -391,17 +435,20 @@ fn run_capture(
                 drop(f);
             }
         } else {
-            // 节流到目标 fps
+            // 节流到目标 fps：每帧都检查帧池，到点的那帧入队编码
             while let Ok(frame) = frame_pool.TryGetNextFrame() {
                 if last_emit.elapsed() < frame_interval {
                     drop(frame);
                     continue;
                 }
-                match process_frame(&frame, &device, &context, quality, out_w, out_h, crop_x, crop_y, crop_w, crop_h, &mut perf) {
-                    Ok((w, h, jpeg)) => {
-                        write_frame(w, h, &jpeg, sink);
-                        frame_no += 1;
-                        fps_count += 1;
+                match capture_frame(&frame, &device, &context, out_w, out_h, crop_x, crop_y, crop_w, crop_h, &mut staging_cache, &mut perf) {
+                    Ok((w, h, bgra, map_ms, conv_ms)) => {
+                        job_seq += 1;
+                        let job = FrameJob { w, h, quality: quality.clamp(1, 100) as u8, bgra, map_ms, conv_ms };
+                        // try_send：编码端堆帧（≥PIPE_DEPTH 未消化）即丢帧，绝不阻塞捕获
+                        if job_tx.try_send(job).is_ok() {
+                            frame_no += 1;
+                        }
                         last_emit = Instant::now();
                     }
                     Err(e) => {
@@ -413,7 +460,7 @@ fn run_capture(
             }
         }
 
-        // 心跳
+        // 心跳（口径 = 编码完成 fps；map/conv 来自捕获端累计，enc 为编码端均值）
         if last_beat.elapsed() >= Duration::from_secs(1) {
             let secs = last_beat.elapsed().as_secs_f64().max(0.001);
             let (m, c, e) = if perf.n > 0 {
@@ -425,7 +472,7 @@ fn run_capture(
             eprintln!(
                 "[STATUS]{{\"fps\":{:.1},\"frame\":{},\"map_ms\":{:.1},\"conv_ms\":{:.1},\"enc_ms\":{:.1}}}",
                 fps_count as f64 / secs,
-                frame_no,
+                enc_done,
                 m,
                 c,
                 e
@@ -439,7 +486,38 @@ fn run_capture(
     unsafe {
         let _ = session.Close();
     }
-    eprintln!("[we-capture] 捕获结束，共 {frame_no} 帧");
+    // 关闭任务通道 → 编码线程排空后退出；回收结束态（enc_done 仅作日志展示）
+    drop(job_tx);
+    let _ = enc_thread.join();
+    while done_rx.try_recv().is_ok() {}
+    eprintln!("[we-capture] 捕获结束，入队 {frame_no} 帧，编码完成 {enc_done} 帧");
+}
+
+/// 编码线程：FrameJob 的 BGRA 像素直入 jpeg-encoder（Bgra 色彩类型走 SIMD 快路径，
+/// 免去旧版 CPU 逐像素 BGRA→RGB 转换），协议帧写入 sink，完成后回传 (序号, enc_ms)。
+fn encode_worker(
+    job_rx: Receiver<FrameJob>,
+    done_tx: Sender<(u64, f64)>,
+    mut sink: Box<dyn Write + Send>,
+) {
+    let mut seq: u64 = 0;
+    for job in job_rx {
+        let t2 = Instant::now();
+        let mut out = Vec::with_capacity((job.w as usize * job.h as usize) / 2);
+        {
+            let enc = JpegEncoder::new(&mut out, job.quality);
+            // BGRA 原始行直接编码：内部 SIMD 完成 YCbCr 变换与色度下采样
+            if let Err(e) = enc.encode(&job.bgra, job.w as u16, job.h as u16, ColorType::Bgra) {
+                eprintln!("[we-capture] 编码失败: {e}");
+                continue;
+            }
+        }
+        let enc_ms = t2.elapsed().as_secs_f64() * 1000.0;
+        seq += 1;
+        write_frame(job.w, job.h, &out, sink.as_mut());
+        let _ = done_tx.send((seq, enc_ms));
+    }
+    let _ = sink.flush();
 }
 
 /// 每帧各阶段耗时累计（毫秒），用于心跳里输出性能画像
@@ -451,20 +529,22 @@ struct Perf {
     n: u32,
 }
 
-/// 取一帧 → 按裁剪区域回读 BGRA →（可选盒式降采样）转 RGB → JPEG 编码
-fn process_frame(
+/// 取一帧 → 按裁剪区域回读 BGRA →（可选盒式降采样）打包成紧凑 BGRA 行，交给编码线程。
+/// 不再做 BGRA→RGB 逐像素转换：jpeg-encoder 直接吃 Bgra 色彩类型（SIMD）。
+/// staging 回读纹理跨帧缓存（尺寸变化才重建），消除旧版每帧 CreateTexture2D 的开销。
+fn capture_frame(
     frame: &windows::Graphics::Capture::Direct3D11CaptureFrame,
     device: &ID3D11Device,
     context: &ID3D11DeviceContext,
-    quality: u32,
     out_w: u32,
     out_h: u32,
     crop_x: u32,
     crop_y: u32,
     crop_w: u32,
     crop_h: u32,
+    staging_cache: &mut Option<(ID3D11Texture2D, u32, u32)>,
     perf: &mut Perf,
-) -> Result<(u32, u32, Vec<u8>), String> {
+) -> Result<(u32, u32, Vec<u8>, f64, f64), String> {
     let t0 = Instant::now();
     let surface = frame.Surface().map_err(|e| e.to_string())?;
     let access: IDirect3DDxgiInterfaceAccess = surface.cast().map_err(|e| e.to_string())?;
@@ -488,21 +568,30 @@ fn process_frame(
         (cw, ch)
     };
 
-    // staging（CPU 可读），尺寸 = 裁剪区（避免搬回整个多显示器桌面）
-    let mut sdesc = desc;
-    sdesc.Usage = D3D11_USAGE_STAGING;
-    sdesc.BindFlags = 0;
-    sdesc.CPUAccessFlags = D3D11_CPU_ACCESS_READ.0 as u32;
-    sdesc.MiscFlags = 0;
-    sdesc.Width = cw;
-    sdesc.Height = ch;
-    let mut staging: Option<ID3D11Texture2D> = None;
-    unsafe {
-        device
-            .CreateTexture2D(&sdesc, None, Some(&mut staging))
-            .map_err(|e| e.to_string())?
+    // staging（CPU 可读），尺寸 = 裁剪区（避免搬回整个多显示器桌面）。
+    // 跨帧缓存：尺寸没变就复用，不再每帧 CreateTexture2D。
+    let need_new = match staging_cache {
+        Some((_, w, h)) => *w != cw || *h != ch,
+        None => true,
     };
-    let staging = staging.ok_or_else(|| "CreateTexture2D 未返回纹理".to_string())?;
+    if need_new {
+        let mut sdesc = desc;
+        sdesc.Usage = D3D11_USAGE_STAGING;
+        sdesc.BindFlags = 0;
+        sdesc.CPUAccessFlags = D3D11_CPU_ACCESS_READ.0 as u32;
+        sdesc.MiscFlags = 0;
+        sdesc.Width = cw;
+        sdesc.Height = ch;
+        let mut staging: Option<ID3D11Texture2D> = None;
+        unsafe {
+            device
+                .CreateTexture2D(&sdesc, None, Some(&mut staging))
+                .map_err(|e| e.to_string())?
+        };
+        let staging = staging.ok_or_else(|| "CreateTexture2D 未返回纹理".to_string())?;
+        *staging_cache = Some((staging, cw, ch));
+    }
+    let staging = staging_cache.as_ref().map(|(t, _, _)| t).unwrap();
 
     let mut mapped = D3D11_MAPPED_SUBRESOURCE::default();
     unsafe {
@@ -515,42 +604,42 @@ fn process_frame(
             bottom: cy + ch,
             back: 1,
         };
-        context.CopySubresourceRegion(&staging, 0, 0, 0, 0, &texture, 0, Some(&src_box));
+        context.CopySubresourceRegion(staging, 0, 0, 0, 0, &texture, 0, Some(&src_box));
         context
-            .Map(&staging, 0, D3D11_MAP_READ, 0, Some(&mut mapped))
+            .Map(staging, 0, D3D11_MAP_READ, 0, Some(&mut mapped))
             .map_err(|e| e.to_string())?;
     }
-    perf.map += t0.elapsed().as_secs_f64() * 1000.0;
+    let map_ms = t0.elapsed().as_secs_f64() * 1000.0;
+    perf.map += map_ms;
 
     let t1 = Instant::now();
     let src = mapped.pData as *const u8;
     let pitch = mapped.RowPitch as usize;
     let (cwz, chz, owz, ohz) = (cw as usize, ch as usize, ow as usize, oh as usize);
-    let mut rgb = vec![0u8; owz * ohz * 3];
+    let row_bytes = cwz * 4;
+    // 输出缓冲统一为紧凑 BGRA 行（无行填充），1:1 路径只是一次行拷贝
+    let mut bgra = vec![0u8; owz * ohz * 4];
     unsafe {
         if owz == cwz && ohz == chz {
-            // 1:1 BGRA → RGB（裁剪区与输出同尺寸）
-            for y in 0..chz {
-                let row = src.add(y * pitch);
-                let drow = y * cwz * 3;
-                for x in 0..cwz {
-                    let s = row.add(x * 4);
-                    let d = drow + x * 3;
-                    rgb[d] = *s.add(2); // R
-                    rgb[d + 1] = *s.add(1); // G
-                    rgb[d + 2] = *s; // B
+            if pitch == row_bytes {
+                // 行距恰好紧凑：整块 memcpy
+                std::ptr::copy_nonoverlapping(src, bgra.as_mut_ptr(), row_bytes * chz);
+            } else {
+                for y in 0..chz {
+                    let s = std::slice::from_raw_parts(src.add(y * pitch), row_bytes);
+                    bgra[y * row_bytes..(y + 1) * row_bytes].copy_from_slice(s);
                 }
             }
         } else {
-            // 盒式降采样：每个目标像素取对应源区域均值（画质优于最近邻，开销与 1:1 相当）
+            // 盒式降采样：每个目标像素取对应源区域均值（保持 BGRA 字节序，alpha 恒 255）
             for oy in 0..ohz {
                 let y0 = oy * chz / ohz;
                 let y1 = ((oy + 1) * chz / ohz).max(y0 + 1).min(chz);
-                let drow = oy * owz * 3;
+                let drow = oy * owz * 4;
                 for ox in 0..owz {
                     let x0 = ox * cwz / owz;
                     let x1 = ((ox + 1) * cwz / owz).max(x0 + 1).min(cwz);
-                    let (mut sr, mut sg, mut sb, mut cnt) = (0u32, 0u32, 0u32, 0u32);
+                    let (mut sb, mut sg, mut sr, mut cnt) = (0u32, 0u32, 0u32, 0u32);
                     for sy in y0..y1 {
                         let row = src.add(sy * pitch);
                         for sx in x0..x1 {
@@ -561,27 +650,19 @@ fn process_frame(
                             cnt += 1;
                         }
                     }
-                    let d = drow + ox * 3;
-                    rgb[d] = (sr / cnt) as u8;
-                    rgb[d + 1] = (sg / cnt) as u8;
-                    rgb[d + 2] = (sb / cnt) as u8;
+                    let d = drow + ox * 4;
+                    bgra[d] = (sb / cnt) as u8;
+                    bgra[d + 1] = (sg / cnt) as u8;
+                    bgra[d + 2] = (sr / cnt) as u8;
+                    bgra[d + 3] = 255;
                 }
             }
         }
-        context.Unmap(&staging, 0);
+        context.Unmap(staging, 0);
     }
-    perf.conv += t1.elapsed().as_secs_f64() * 1000.0;
-
-    let t2 = Instant::now();
-    let mut out = Vec::new();
-    {
-        let enc = JpegEncoder::new(&mut out, quality.clamp(1, 100) as u8);
-        enc.encode(&rgb, ow as u16, oh as u16, ColorType::Rgb)
-            .map_err(|e| e.to_string())?;
-    }
-    perf.enc += t2.elapsed().as_secs_f64() * 1000.0;
-    perf.n += 1;
-    Ok((ow, oh, out))
+    let conv_ms = t1.elapsed().as_secs_f64() * 1000.0;
+    perf.conv += conv_ms;
+    Ok((ow, oh, bgra, map_ms, conv_ms))
 }
 
 /// 写一帧到输出目标（协议帧格式）

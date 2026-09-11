@@ -1,3 +1,5 @@
+import { EditorInstaller } from './editor/installer.ts'
+import { createEditorRoutes } from './editor/routes.ts'
 /**
  * dsh-wallpaper_share · node half（内部 id / 路由前缀仍为 we-sync）
  * Wallpaper Engine ↔ DSH 壁纸同步（纯显示）：轮询 WE 的 config.json，
@@ -1489,6 +1491,8 @@ export function apply(ctx: CordisCtx): void {
    *  控制面路由供 client 半的"壁纸市场"UI 调用；付费包返回 402 + 销售页，由 UI 打开创作者平台。 */
   const marketDir = CONFIG.dwpMarketDir || (homedir() + '/.dsh-dwp-market')
   const market = new MarketClient({ dir: marketDir })
+  for (const route of createEditorRoutes(new EditorInstaller((process.env.DSH_HOME || homedir() + '/.dsh') + '/storages/wallpaper-editor'))) disposers.push(webServer.register(route))
+
   for (const route of createMarketRoutes({ market, catalogUrl: CONFIG.dwpMarketCatalogUrl })) {
     disposers.push(webServer.register(route))
   }

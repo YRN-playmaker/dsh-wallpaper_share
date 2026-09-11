@@ -1,7 +1,7 @@
-﻿{
+{
   "name": "dsh-wallpaper_share",
   "description": "Sync active Wallpaper Engine wallpapers(image/video/scence/app)to DeepSeek Harness Web UI as a customizable dynamic background.",
-  "version": "26.9.11-T",
+  "version": "26.9.12-rc",
   "type": "module",
   "main": "lib/index.js",
   "exports": {
@@ -22,10 +22,13 @@
     }
   },
   "scripts": {
-    "build": "tsdown",
-    "bundle": "tsdown",
+    "build": "node tools/check-package.mjs && tsdown",
+    "bundle": "node tools/check-package.mjs && tsdown",
     "typecheck": "tsc --noEmit",
-    "test": "node --test --experimental-test-isolation=none \"src/market/test/*.test.ts\" \"src/client/test/*.test.ts\" \"src/launcher/test/*.test.ts\" \"src/workspace/test/*.test.ts\" \"src/daynight/test/*.test.ts\""
+    "test": "node --test --experimental-test-isolation=none \"src/market/test/*.test.ts\" \"src/client/test/*.test.ts\" \"src/launcher/test/*.test.ts\" \"src/workspace/test/*.test.ts\" \"src/daynight/test/*.test.ts\"",
+    "check:package": "node tools/check-package.mjs",
+    "test:package": "node --test tools/check-package.test.mjs",
+    "prepack": "node tools/check-package.mjs"
   },
   "license": "GPL-3.0",
   "keywords": [
@@ -56,6 +59,8 @@
     "README.zh-CN.md",
     "LICENSE",
     "vendor/dwp/",
-    "tools/scene-renderer/"
+    "tools/scene-renderer/",
+    "tools/check-package.mjs",
+    "docs/encoding-and-release.md"
   ]
 }

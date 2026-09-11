@@ -5,7 +5,7 @@
 <div align="center">
   <a href="https://www.npmjs.com/package/dsh-wallpaper_share"><img alt="npm version" src="https://img.shields.io/npm/v/dsh-wallpaper_share" /></a>
   <a href="https://opensource.org/licenses/GPL-3.0"><img alt="License: GPL-3.0" src="https://img.shields.io/badge/License-GPL--3.0-blue.svg" /></a>
-  <a href="https://github.com/YRN-playmaker/dsh-wallpaper_share/releases"><img alt="插件版本 v26.9.10-T" src="https://img.shields.io/badge/v26.9.10--T-4d6bfe" /></a>
+  <a href="https://github.com/YRN-playmaker/dsh-wallpaper_share/releases"><img alt="插件版本 v26.9.12-rc" src="https://img.shields.io/badge/v26.9.12--rc-4d6bfe" /></a>
 </div>
 
 [中文](README.zh-CN.md) | [English → README.md](README.md#english)
@@ -82,7 +82,7 @@ dsh plugin --profile web add dsh-wallpaper_share   # 或见下方「安装」选
 | --- | --- |
 | **壁纸状态** | 壁纸名（标题行**右缘为插件版本号**，一键整段选中便于反馈问题）；下方副标题只承载诊断信息——scene 壁纸显示当前渲染通路（`场景 · 预览图 / 捕获 live 30fps / 浏览器模型渲染 / 回退：<原因>`），未应用壁纸时显示引导文案，其余类型整行不占；多显示器时出现「背景显示器」下拉；`⏻ 同步开启 / 关闭 / 暂停（DWP）` 三态按钮 |
 | **视觉效果** | 三档渲染模式分段按钮；「专注模式」及其展开条（眼动追踪 / 校准视线 / 文字吸附 / 实时状态）；透明度 · 模糊 · 阴影三个滑块（**专注开启时滑块隐藏**，改由任务态与透镜接管） |
-| **壁纸库** | 「壁纸读取位置」可添加自定义壁纸目录（指向单个壁纸目录或集合文件夹），启动器安装位置也并入这里（带「（启动器安装位置）」标记，可更改 / 迁移）；「本地 / 市场 / 应用启动器」三栏切换，本地按 `dwp壁纸` / `应用`（下分 `we应用` 与 `应用`）筛选 + 标题搜索 + **「管理」**（卡片晃动 → 点卡片多选变蓝 → 「卸载选中」批量卸载，可跨分类累计；每张卡另有「打开源文件 / 卸载」）+ 分页（显示更多 +60），市场支持安装 / 更新 / 卸载，**应用启动器**只负责安装：支持直链安装（`.zip`/`.7z`/`.exe`，加密包可填解压密码）与 **139 分享链接**（提取码填密码框；原始文件下载需粘贴一次 Authorization 登录态），自动封装类 WE app（json + 预览图），卡片「详细」可查安装时间 / 地址 / exe 文件；启动与卸载统一在「本地 → 应用」里做（每次启动弹确认） |
+| **壁纸库** | 「壁纸读取位置」可添加自定义壁纸目录（指向单个壁纸目录或集合文件夹），启动器安装位置也并入这里（带「（启动器安装位置）」标记，可更改 / 迁移）；「本地 / 市场 / 应用启动器」三栏切换，本地按 `dwp壁纸` / `应用`（下分 `we应用` 与 `应用`）筛选 + 标题搜索 + **「管理」**（卡片晃动 → 点卡片多选变蓝 → 「卸载选中」批量卸载，可跨分类累计；每张卡另有「打开源文件 / 卸载」）+ 分页（显示更多 +60），市场支持安装 / 更新 / 卸载，**应用启动器**只负责安装：支持直链安装（`.zip`/`.7z`/`.exe`，加密包可填解压密码）与 **139 分享链接**（提取码填提取码框；原始文件下载需粘贴一次 Authorization 登录态），自动封装类 WE app（json + 预览图），卡片「详细」可查安装时间 / 地址 / exe 文件；启动与卸载统一在「本地 → 应用」里做（每次启动弹确认） |
 | **dwp创作** | 本轮为占位页：滚到这一页时宿主输入框重新出现（「设置」「壁纸库」两页会自动收起它，避免挡住卡片又可点），页面内容下一轮填充 |
 
 两点与宿主 UI 的约定：
@@ -151,7 +151,7 @@ scene 壁纸在捕获 / 完整档下的渲染优先级与回退链：
 
 ## 🚀 安装
 
-> 前置：兼容 DSH Web `0.1.0-rc.6` 及以上（已在 `0.1.2-rc.1` 验证，0.1.2 的破坏性变更已适配，剩余限制见下方「已知问题」），以 `dsh --profile web` 运行。
+> 前置：兼容 DSH Web `0.1.0-rc.6` 及以上（已在 `0.1.5` 验证，0.1.2 的破坏性变更已适配，剩余限制见下方「已知问题」），以 `dsh --profile web` 运行。
 
 ### 🎯 分档安装（按需选择）
 
@@ -162,7 +162,7 @@ scene 壁纸在捕获 / 完整档下的渲染优先级与回退链：
 | 🟣 **alpha（新版本）** | 适配 harness 为 alpha 架构的推荐版本 | `dsh plugin --profile web add dsh-wallpaper_share@alpha` |
 | 🟡 **test（测试版本）** | 用于测试的版本，可能有未完成功能 | `dsh plugin --profile web add dsh-wallpaper_share@test` |
 
-> 当前测试版：**`26.9.10-T`**（GitHub `test` 分支 / npm `test` dist-tag）。本版新增：壁纸库「管理」多选批量卸载、应用启动器卡片化简为「详细」、面板三页滚动（含占位的「dwp创作」）、宿主输入框按页显隐、**DWP 时钟变量**与**纹理分档**（预览/捕获用低清、增强/完整用高清）。
+> 当前版本：**`26.9.12-rc`**（GitHub `main` 分支）。近期版本带来：壁纸库「管理」多选批量卸载、应用启动器卡片化简为「详细」、面板三页滚动（含占位的「dwp创作」）、宿主输入框按页显隐、**DWP 时钟变量**与**纹理分档**（预览/捕获用低清、增强/完整用高清）；本 rc 移除百度网盘分享链接支持（云盘分享仅保留 139）并适配 harness `0.1.5`。
 
 ### 🔧 其他安装方式
 
@@ -185,10 +185,10 @@ dsh plugin --profile web add github:YRN-playmaker/dsh-wallpaper_share
 #   从 GitHub 安装（仓库自带预构建 lib/，不需要构建许可；main = 最新档）
 dsh plugin --profile web add dsh-wallpaper_share
 #   从 npm 安装（默认 = latest 最新档）
-dsh plugin --profile web add ./dsh-wallpaper_share-26.9.10-T.tgz
-#   本地 tarball 安装（26.9.10-T）
+dsh plugin --profile web add ./dsh-wallpaper_share-26.9.12-rc.tgz
+#   本地 tarball 安装（26.9.12-rc）
 dsh plugin --profile web add github:YRN-playmaker/dsh-wallpaper_share#test
-#   从 GitHub 安装 test 分支（测试档，当前即 26.9.10-T：管理多选卸载 / 三页滚动 / DWP 纹理分档等）
+#   从 GitHub 安装 test 分支（测试档，功能最新但不稳定；正式取 main）
 ```
 
 ```bash
@@ -264,7 +264,7 @@ dsh plugin --profile web add github:YRN-playmaker/dsh-wallpaper_share#test
 
 ## 🆕 已知问题
 
-> 适用版本：插件 `v26.9.10-T` / Harness `0.1.2-rc.1`。
+> 适用版本：插件 `v26.9.12-rc` / Harness `0.1.5`。
 
 ### 兼容性（Harness 0.1.2 破坏性变更 · 已适配）
 
@@ -289,3 +289,7 @@ dsh plugin --profile web add github:YRN-playmaker/dsh-wallpaper_share#test
 ## 📄 License
 
 GPL-3.0
+
+## Development encoding rules / 开发编码规范
+
+AI agents and contributors must follow [AGENTS.md](AGENTS.md) and [编码与发布规范](docs/encoding-and-release.md). Run `npm run check:package` before packaging.
