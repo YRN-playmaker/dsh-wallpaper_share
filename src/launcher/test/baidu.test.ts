@@ -58,11 +58,11 @@ test('parseBaiduShareUrl：/s/1<id>、?pwd=、/share/init?surl= 三种形态', (
 
 // ── Cookie 归一 ────────────────────────────────────────────────────────
 
-test('normalizeBaiduCookie：整串 Cookie 只留 BDUSS/STOKEN，裸值补键名，URL 编码解开', () => {
+test('normalizeBaiduCookie：整串 Cookie 全保留（设备指纹），裸值补键名，URL 编码解开', () => {
   const bduss = 'A'.repeat(48)
   const stoken = 'B'.repeat(40)
   const full = `HOSUPPORT=1; zhixinhost=1; ${'BDUSS=' + bduss}; STOKEN=${stoken}; BAIDUID=xx`
-  assert.equal(normalizeBaiduCookie(full), `BDUSS=${bduss}; STOKEN=${stoken}`)
+  assert.equal(normalizeBaiduCookie(full), `HOSUPPORT=1; zhixinhost=1; BDUSS=${bduss}; STOKEN=${stoken}; BAIDUID=xx`)
   assert.equal(normalizeBaiduCookie(bduss), `BDUSS=${bduss}`)
   assert.equal(normalizeBaiduCookie(`BDUSS%3D${bduss}`), `BDUSS=${bduss}`)
   assert.equal(bdussOf(full), bduss)
@@ -74,13 +74,18 @@ test('normalizeBaiduCookie：拒绝空串 / URL / 过短值（防 Kaspersky 注�
   }
 })
 
-test('normalizeBaiduCookie：192 位现行 BDUSS / 整行 Cookie: / 引号与折行空白（用户反馈纠偏）', () => {
+test('normalizeBaiduCookie：192 位现行 BDUSS / 整行 Cookie: / 引号与折行空白 / 设备指纹值含 : 与 =', () => {
   const bduss192 = 'F'.repeat(192) // 2026 现行 BDUSS 长度，旧实现 128 上限误拒
   assert.equal(normalizeBaiduCookie(bduss192), `BDUSS=${bduss192}`)
   const stoken = 'B'.repeat(40)
-  // F12 请求标头整行复制：Cookie: 前缀 + 杂键 + 折行空白
+  // F12 请求标头整行复制：Cookie: 前缀 + 杂键 + 折行空白 → 全保留
   const headerLine = `Cookie: BDUSS= ${bduss192};\n STOKEN=${stoken};  BAIDUID=abc`
-  assert.equal(normalizeBaiduCookie(headerLine), `BDUSS=${bduss192}; STOKEN=${stoken}`)
+  assert.equal(normalizeBaiduCookie(headerLine), `BDUSS=${bduss192}; STOKEN=${stoken}; BAIDUID=abc`)
+  // BAIDUID 值天然带 : 和 =（2026 自盘接口设备指纹校验的必需品）
+  assert.equal(
+    normalizeBaiduCookie(`BDUSS=${bduss192}; BAIDUID=ED8F4BE8B6F59EA6:FG=1`),
+    `BDUSS=${bduss192}; BAIDUID=ED8F4BE8B6F59EA6:FG=1`,
+  )
   // 引号包裹值（F12 偶见）
   assert.equal(normalizeBaiduCookie(`BDUSS="${bduss192}"`), `BDUSS=${bduss192}`)
   // 裸值内混入折行空白 → 剥掉后放行

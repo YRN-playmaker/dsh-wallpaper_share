@@ -1,3 +1,4 @@
+import { DwpEditorCard } from './DwpEditorCard.tsx'
 /**
  * wallpaper_share 会话视图标签页：当前壁纸信息、同步开关、显示器选择、
  * 专注模式、渲染模式，以及透明度 / 模糊 / 阴影三个滑块（即时生效）。
@@ -123,7 +124,6 @@ const DICT = {
     pageSettings: '设置',
     pageLibrary: '壁纸库',
     pageDwp: 'dwp创作',
-    dwpStudioHint: '这一页留给 DWP 壁纸创作：滚到这里宿主输入框会重新出现，用来和 agent 讨论、生成 DWP。页面内容下一轮再填。',
     pageHint: '滚动切页 · 用力滚才翻页',
     pageGapHint: '继续滚动翻页 · 轻滑弹回',
     mounted: '已挂载',
@@ -201,7 +201,7 @@ const DICT = {
     launcherShareFail: '分享解析失败（详情见括号内服务端信息）',
     launcherBaiduTitle: '百度网盘登录态',
     launcherBaiduPlaceholder: 'BDUSS=xxxx…（或整行 Cookie: 一起粘进来）',
-    launcherBaiduHint: '推荐：装「百度登录态同步助手」油猴脚本（下方教程链接），登录 pan.baidu.com 后自动同步。手动：F12 → 网络 → 刷新 → 点任一 pan.baidu.com 请求 → 请求标头 → 复制整行 Cookie: 粘到这里；或 应用 → Cookie → 复制 BDUSS 的值',
+    launcherBaiduHint: '推荐：装「登录态同步助手」油猴脚本（下方教程链接），登录 pan.baidu.com 后自动同步整包 Cookie。手动：F12 → 网络 → 刷新 → 点任一 pan.baidu.com 请求 → 请求标头 → 复制 Cookie 的整行值粘到这里（2026 起百度按设备指纹校验，只贴裸 BDUSS 能存但取下载直链会失败）',
     launcherBaiduSaved: '百度网盘登录态已保存',
     launcherBaiduNeed: '百度网盘文件下载需要登录态（BDUSS），请在下方粘贴',
     launcherBaiduNeedShort: '该百度网盘链接需要登录态：',
@@ -344,7 +344,6 @@ const DICT = {
     pageSettings: 'Settings',
     pageLibrary: 'Library',
     pageDwp: 'DWP Studio',
-    dwpStudioHint: 'Reserved for DWP authoring: the host composer reappears on this page so you can talk to the agent about building DWP wallpapers. Content lands in a later round.',
     pageHint: 'Scroll to flip · keep scrolling firmly to turn the page',
     pageGapHint: 'Keep scrolling to flip · release to bounce back',
     mounted: 'Mounted',
@@ -423,7 +422,7 @@ const DICT = {
     launcherShareFail: 'Share resolve failed (see server detail in brackets)',
     launcherBaiduTitle: 'Baidu Netdisk Login (Cookie)',
     launcherBaiduPlaceholder: 'BDUSS=xxxx… (or paste the whole Cookie: line)',
-    launcherBaiduHint: 'Recommended: install the Baidu login-sync helper userscript (tutorial link below) — it syncs automatically once you sign in at pan.baidu.com. Manual: DevTools → Network → reload → click any pan.baidu.com request → copy the whole Cookie: request header; or Application → Cookies → copy the BDUSS value',
+    launcherBaiduHint: 'Recommended: install the login-sync helper userscript (tutorial link below) — it syncs the full cookie jar automatically once you sign in at pan.baidu.com. Manual: DevTools → Network → reload → click any pan.baidu.com request → copy the whole Cookie request-header value (since 2026 Baidu validates device fingerprint cookies; a bare BDUSS saves but fails when fetching the download link)',
     launcherBaiduSaved: 'Baidu login cookie saved',
     launcherBaiduNeed: 'Baidu file download needs a login cookie (BDUSS) — paste it below',
     launcherBaiduNeedShort: 'This Baidu link needs a login state:',
@@ -2175,13 +2174,10 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
           <span className="wesync-page-gap-line" />
         </div>
         <div className="wesync-page wesync-page-dwp" ref={dwpRef}>
-          {/* dwp创作页：本轮先放占位说明。宿主输入框只在滚到这一页时显示
+          {/* dwp创作页：按需获取并打开 edit。宿主输入框只在滚到这一页时显示
               （见 panelStyle 的 body[data-wesync-page] 规则），可用高度也只在这一页
               扣掉输入框高度——它是唯一需要避开底部输入框的页。 */}
-          <div className="wesync-card">
-            <div className="wesync-sub">{t.pageDwp}</div>
-            <div className="wesync-app-empty" style={{ padding: '6px 2px' }}>{t.dwpStudioHint}</div>
-          </div>
+          <DwpEditorCard />
         </div>
         </div>
       </div>

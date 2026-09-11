@@ -11,8 +11,9 @@
  *  - POST /share/verify?surl=<surl>&t=<ms>&channel=chunlei&web=1&app_id=250528&clienttype=0
  *         body pwd=<提取码> → errno 0 + Set-Cookie: BDCLND=…（放行内容页/列表）
  *  - 直链 dlink（wxlist 条目自带，或内容页 yunData.sign + /api/download 换取）——
- *         下载需带用户 Cookie（BDUSS…）且 User-Agent: netdisk，否则返回 HTML 而非文件流
- * 登录态由用户在面板粘贴 BDUSS Cookie（与 139 Authorization 同款做法），
+ *         下载需带用户 Cookie（整包登录态，2026 起自盘接口绑定设备指纹校验，只送 BDUSS 报 -6）
+ *         且 User-Agent: netdisk，否则返回 HTML 而非文件流
+ * 登录态由用户在面板粘贴整行 Cookie（与 139 Authorization 同款做法），
  * 存 ~/.dsh/storages/we-sync-baidu-auth.json。
  */
 import { readFileSync, writeFileSync } from 'node:fs'
@@ -60,10 +61,12 @@ function errnoToError(errno: number, where: string): BaiduError | null {
 }
 
 /**
- * 登录态归一：接受三种形态 —— ① F12「请求标头」复制的整行 `Cookie: BDUSS=xxx; STOKEN=yyy; …`
- * ② 应用面板复制的裸 BDUSS 值 ③ 油猴助手自动同步的键值对。
- * 现行 BDUSS 为 192 位（2026 实测口径，上限放宽到 300 兼容后续扩位）；
- * 只保留 BDUSS/STOKEN 两键（拦 Kaspersky 注入等杂讯），剥引号与值内折行空白。
+ * 登录态归一（2026-09 风控实测改口径）：网盘自盘接口（gettemplatevariable / api/list /
+ * locatedownload）把登录态与设备指纹 cookie（BAIDUID/BIDUPSID…）绑定校验——**只送 BDUSS 一律
+ * errno -6**（分享侧 verify/share/list 相对宽松不受影响）。故存储形态从「只留 BDUSS/STOKEN」
+ * 改为**整包保留**所有可解析的 `k=v` 对（值允许 `:` `=`，BAIDUID=…:FG=1 是合法形态）。
+ * 接受三种输入：① F12「请求标头」复制的整行 `Cookie: …`（推荐，能过设备校验）
+ * ② 油猴助手 GM_cookie 抓的全域键值对 ③ 裸 BDUSS 值（仅口令验证可用，取直链会被拒）。
  */
 export function normalizeBaiduCookie(raw: string): string {
   let s = raw.trim()
@@ -76,26 +79,36 @@ export function normalizeBaiduCookie(raw: string): string {
       if (dec !== s) s = dec
     } catch { /* 保留原值 */ }
   }
-  // 裸值 → 补键名（剥掉复制时混入的折行空白）；带键名 → 逐对解析
-  const pairs = s.includes('=')
-    ? s.split(';').map((p) => p.trim()).filter((p) => p !== '')
-    : [`BDUSS=${s.replace(/\s+/g, '')}`]
+  // 裸值 → 视作 BDUSS；带键名 → 逐对解析
+  const bare = !s.includes('=')
+  const chunks = bare ? [`BDUSS=${s.replace(/\s+/g, '')}`] : s.split(';')
   const kept: string[] = []
-  for (const p of pairs) {
+  const seen = new Set<string>()
+  let total = 0
+  for (const chunk of chunks) {
+    const p = chunk.trim()
+    if (p === '') continue
     const eq = p.indexOf('=')
     if (eq <= 0) continue
     const k = p.slice(0, eq).trim()
     let v = p.slice(eq + 1).trim()
     if (v.length >= 2 && v.startsWith('"') && v.endsWith('"')) v = v.slice(1, -1) // F12 偶见引号包裹值
     v = v.replace(/\s+/g, '')
-    if (k !== 'BDUSS' && k !== 'STOKEN') continue
-    if (!/^[A-Za-z0-9~_%-]{10,300}$/.test(v)) continue
+    if (!/^[A-Za-z0-9_.-]{1,64}$/.test(k)) continue
+    // 值：可打印 ASCII，排除空白/分号/逗号（BAIDUID 的值就带 : 和 =）
+    if (!/^[\x21-\x2B\x2D-\x3A\x3C-\x7E]{1,4096}$/.test(v)) continue
+    // 关键键保持强校验（拦 Kaspersky 注入等杂讯）；设备指纹类键按上面的宽口径保留
+    if ((k === 'BDUSS' || k === 'STOKEN') && !/^[A-Za-z0-9~_%-]{10,300}$/.test(v)) continue
+    if (v === '' || seen.has(k)) continue
+    if (total + k.length + v.length + 2 > 8192) break
+    seen.add(k)
+    total += k.length + v.length + 2
     kept.push(`${k}=${v}`)
   }
   if (!kept.some((p) => p.startsWith('BDUSS='))) {
     throw new BaiduError(
       'share_auth_required',
-      '不是有效的百度网盘登录态（需要 BDUSS）。任选其一：① 装「百度登录态同步助手」油猴脚本，登录 pan.baidu.com 后自动同步（面板可一键打开）② F12 → 网络 → 刷新 → 点任一 pan.baidu.com 请求 → 请求标头 → 复制整行 Cookie: 粘贴到这里 ③ F12 → 应用 → Cookie → pan.baidu.com → 复制 BDUSS 的值直接粘贴',
+      '不是有效的百度网盘登录态（缺 BDUSS）。推荐：F12 → 网络 → 刷新 pan.baidu.com → 点任一请求 → 请求标头里复制整行 Cookie 的值粘贴（2026 起只粘贴裸 BDUSS 过不了设备指纹校验，取直链会报 -6）；或装「登录态同步助手」油猴脚本自动同步整包；也可只贴裸 BDUSS 值（仅口令验证可用）',
     )
   }
   return kept.join('; ')
