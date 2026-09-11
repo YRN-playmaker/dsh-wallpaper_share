@@ -200,11 +200,15 @@ const DICT = {
     launcherShareCodeWrong: '提取码错误，请核对后重试',
     launcherShareFail: '分享解析失败（详情见括号内服务端信息）',
     launcherBaiduTitle: '百度网盘登录态',
-    launcherBaiduPlaceholder: 'BDUSS=xxxx…（建议连 STOKEN 一起粘贴）',
-    launcherBaiduHint: '手动方式：登录 pan.baidu.com 后，F12 → 应用(Application) → Cookie → pan.baidu.com → 复制 BDUSS 的值（建议连 STOKEN 一起）粘贴到这里',
+    launcherBaiduPlaceholder: 'BDUSS=xxxx…（或整行 Cookie: 一起粘进来）',
+    launcherBaiduHint: '推荐：装「百度登录态同步助手」油猴脚本（下方教程链接），登录 pan.baidu.com 后自动同步。手动：F12 → 网络 → 刷新 → 点任一 pan.baidu.com 请求 → 请求标头 → 复制整行 Cookie: 粘到这里；或 应用 → Cookie → 复制 BDUSS 的值',
     launcherBaiduSaved: '百度网盘登录态已保存',
     launcherBaiduNeed: '百度网盘文件下载需要登录态（BDUSS），请在下方粘贴',
     launcherBaiduNeedShort: '该百度网盘链接需要登录态：',
+    launcherBaiduOpenBtn: '一键打开百度网盘并登录',
+    launcherBaiduWaiting: '等待登录态同步…（登录后自动检测，最多 10 分钟）',
+    launcherBaiduSynced: '✔ 已同步百度网盘登录态，可以安装了',
+    launcherHelperBaiduLink: '安装百度登录态同步助手',
     launcherShareCode139: '该 139 分享需要提取码：请在提取码框填入后重试',
     launcherShareCode139Wrong: '139 提取码错误，请核对后重试',
     launcherInstall: '下载安装',
@@ -419,11 +423,15 @@ const DICT = {
     launcherShareCodeWrong: 'Wrong passcode — check it and retry',
     launcherShareFail: 'Share resolve failed (see server detail in brackets)',
     launcherBaiduTitle: 'Baidu Netdisk Login (Cookie)',
-    launcherBaiduPlaceholder: 'BDUSS=xxxx… (STOKEN recommended too)',
-    launcherBaiduHint: 'Manual: sign in at pan.baidu.com, open DevTools → Application → Cookies → pan.baidu.com → copy the BDUSS value (STOKEN recommended too) and paste it here',
+    launcherBaiduPlaceholder: 'BDUSS=xxxx… (or paste the whole Cookie: line)',
+    launcherBaiduHint: 'Recommended: install the Baidu login-sync helper userscript (tutorial link below) — it syncs automatically once you sign in at pan.baidu.com. Manual: DevTools → Network → reload → click any pan.baidu.com request → copy the whole Cookie: request header; or Application → Cookies → copy the BDUSS value',
     launcherBaiduSaved: 'Baidu login cookie saved',
     launcherBaiduNeed: 'Baidu file download needs a login cookie (BDUSS) — paste it below',
     launcherBaiduNeedShort: 'This Baidu link needs a login state:',
+    launcherBaiduOpenBtn: 'Open Baidu & sign in',
+    launcherBaiduWaiting: 'Waiting for login sync… (auto-detected after sign-in, up to 10 min)',
+    launcherBaiduSynced: '✔ Baidu login synced — ready to install',
+    launcherHelperBaiduLink: 'install the Baidu login-sync helper',
     launcherShareCode139: 'This 139 share needs a passcode — enter it in the passcode box and retry',
     launcherShareCode139Wrong: 'Wrong 139 passcode — check it and retry',
     launcherInstall: 'Download & Install',
@@ -877,6 +885,7 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
   const [lBaiduAuth, setLBaiduAuth] = useState('') // 百度 BDUSS Cookie 输入
   const [lBaiduAuthPresent, setLBaiduAuthPresent] = useState('') // 已配置的 BDUSS 掩码（'' = 未配置）
   const [lBaiduAuthBusy, setLBaiduAuthBusy] = useState(false)
+  const [lBaiduAuthWaiting, setLBaiduAuthWaiting] = useState(false) // 一键登录：已打开百度页，轮询等待助手同步
   const [lRoot, setLRoot] = useState('') // 安装位置（存储根，绝对路径）
   const [lRootOpen, setLRootOpen] = useState(false) // 安装位置编辑行展开
   const [lRootDraft, setLRootDraft] = useState('') // 安装位置输入草稿
@@ -1250,6 +1259,27 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
       } catch { /* 服务暂时不可达，继续等 */ }
     }
     setLAuthWaiting(false)
+  }
+
+  // A2 一键登录（百度）：同 A1，打开 pan.baidu.com 后轮询 /baiduauth 等油猴助手同步
+  const onOpenBaiduLogin = async (): Promise<void> => {
+    window.open('https://pan.baidu.com/', '_blank', 'noopener')
+    setLBaiduAuthWaiting(true)
+    setLBaiduAuthOpen(true)
+    const started = Date.now()
+    while (Date.now() - started < 600000) {
+      await new Promise((r) => setTimeout(r, 2000))
+      try {
+        const b = await getBaiduAuth((url, init) => fetch(url, init))
+        if (b.present) {
+          setLBaiduAuthPresent(b.account)
+          setLBaiduAuthWaiting(false)
+          flashL(t.launcherBaiduSynced)
+          return
+        }
+      } catch { /* 服务暂时不可达，继续等 */ }
+    }
+    setLBaiduAuthWaiting(false)
   }
 
   /** canvas 预览卡：渐变底 + 首字母徽章 + 标题（服务端兜底卡无文字，客户端版优先）。 */
@@ -1992,6 +2022,22 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
                                 </div>
                               )
                             : null}
+                          {/* A2 一键登录（百度）：同 A1，等油猴助手同步 BDUSS；无助手也可在下方输入行手动粘贴 */}
+                          {isBaiduShare(lUrl) && lBaiduAuthPresent === ''
+                            ? (
+                                <div className="wesync-dir-row" style={{ alignItems: 'center' }}>
+                                  <span style={{ flex: '0 0 auto', fontSize: 12, opacity: 0.75 }}>
+                                    {t.launcherBaiduNeedShort}
+                                  </span>
+                                  <button className="wesync-btn" disabled={lBaiduAuthWaiting} onClick={() => { void onOpenBaiduLogin() }}>
+                                    {t.launcherBaiduOpenBtn}
+                                  </button>
+                                  {lBaiduAuthWaiting
+                                    ? <span style={{ fontSize: 12, opacity: 0.7 }}>{t.launcherBaiduWaiting}</span>
+                                    : null}
+                                </div>
+                              )
+                            : null}
                           {/* 139 登录态（需要时自动展开 / 已配置常驻显示状态） */}
                           {lAuthOpen || lAuthPresent !== ''
                             ? (
@@ -2039,6 +2085,7 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
                             <div>1. {t.launcherTutorialPrep1}</div>
                             <div>2. {t.launcherTutorialPrep2}</div>
                             <div>3. {t.launcherTutorialPrep3Lead}<a href="/we-sync/139-helper.user.js" target="_blank" rel="noreferrer" style={{ color: 'inherit', textDecoration: 'underline' }}>{t.launcherHelperLink}</a>{t.launcherTutorialPrep3Tail}</div>
+                            <div>4. {t.launcherTutorialPrep3Lead}<a href="/we-sync/baidu-helper.user.js" target="_blank" rel="noreferrer" style={{ color: 'inherit', textDecoration: 'underline' }}>{t.launcherHelperBaiduLink}</a>{t.launcherTutorialPrep3Tail}</div>
                             <div style={{ marginTop: 4 }}><b>{t.launcherTutorialUseTitle}</b></div>
                             <div>{t.launcherTutorialUse1}</div>
                             <div>{t.launcherTutorialUse2}</div>

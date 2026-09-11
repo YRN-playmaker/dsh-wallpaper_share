@@ -18,6 +18,7 @@ import { CryptZipError } from './crypt-zip.ts'
 import { parse139ShareUrl, Yun139Client, Yun139Error, normalize139Authorization } from './yun139.ts'
 import { parseBaiduShareUrl, BaiduClient, BaiduError, normalizeBaiduCookie, bdussOf, type CredStore } from './baiduyun.ts'
 import { HELPER_139_SCRIPT, HELPER_139_URL } from './helper139.ts'
+import { HELPER_BAIDU_SCRIPT, HELPER_BAIDU_URL } from './helper-baidu.ts'
 import { integrityOf, verifyIntegrity } from '../market/integrity.ts'
 
 export interface Req { url?: string; method?: string; headers?: Record<string, string | string[] | undefined> }
@@ -361,6 +362,13 @@ export function createLauncherRoutes(deps: LauncherRoutesDeps): Route[] {
     res.end(HELPER_139_SCRIPT)
   } }
 
+  /** 百度登录态同步助手（Tampermonkey 脚本）：装一次，访问 pan.baidu.com 自动同步 BDUSS/STOKEN 到本机。 */
+  const helperBaidu: Route = { kind: 'exact', path: HELPER_BAIDU_URL, handler: (_req, res) => {
+    res.statusCode = 200
+    res.setHeader('Content-Type', 'text/javascript; charset=utf-8')
+    res.end(HELPER_BAIDU_SCRIPT)
+  } }
+
   /** 百度网盘登录态：POST {cookie} 保存（空串清除；接受整串 Cookie 或裸 BDUSS 值）；
    *  GET 查是否已配置（只回布尔与 BDUSS 掩码）。入库前经 normalizeBaiduCookie 校验，拒收杂讯。 */
   const authBaidu: Route = { kind: 'exact', path: base + '/baiduauth', handler: async (req, res) => {
@@ -394,7 +402,7 @@ export function createLauncherRoutes(deps: LauncherRoutesDeps): Route[] {
     json(res, 200, { ok: true, present: v !== '' })
   } }
 
-  return [installed, install, entry, preview, uninstall, previewFile, auth139, authBaidu, helper139, rootRoute]
+  return [installed, install, entry, preview, uninstall, previewFile, auth139, authBaidu, helper139, helperBaidu, rootRoute]
 }
 
 /** 供 index.ts 类型引用（避免直接 import installer 内部类型绕路）。 */

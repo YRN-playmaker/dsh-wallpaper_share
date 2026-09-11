@@ -60,34 +60,43 @@ function errnoToError(errno: number, where: string): BaiduError | null {
 }
 
 /**
- * 登录态归一：接受「BDUSS=xxx; STOKEN=yyy」整串 Cookie 或裸 BDUSS 值。
- * 校验 BDUSS 形态（25~128 位 [A-Za-z0-9~_-]），拦 URL 等杂讯。返回可直接放进 Cookie 头的串。
+ * 登录态归一：接受三种形态 —— ① F12「请求标头」复制的整行 `Cookie: BDUSS=xxx; STOKEN=yyy; …`
+ * ② 应用面板复制的裸 BDUSS 值 ③ 油猴助手自动同步的键值对。
+ * 现行 BDUSS 为 192 位（2026 实测口径，上限放宽到 300 兼容后续扩位）；
+ * 只保留 BDUSS/STOKEN 两键（拦 Kaspersky 注入等杂讯），剥引号与值内折行空白。
  */
 export function normalizeBaiduCookie(raw: string): string {
   let s = raw.trim()
   if (s === '') throw new BaiduError('share_auth_required', '百度网盘登录态为空')
+  // F12 请求标头复制出来的是整行 Cookie: …——剥掉标签再按对解析
+  s = s.replace(/^cookie\s*:\s*/i, '')
   if (s.includes('%')) {
     try {
       const dec = decodeURIComponent(s)
       if (dec !== s) s = dec
     } catch { /* 保留原值 */ }
   }
-  // 裸值 → 补键名；带键名 → 逐对解析（只留 BDUSS/STOKEN，剔除杂讯，防 Kaspersky 注入污染）
+  // 裸值 → 补键名（剥掉复制时混入的折行空白）；带键名 → 逐对解析
   const pairs = s.includes('=')
     ? s.split(';').map((p) => p.trim()).filter((p) => p !== '')
-    : [`BDUSS=${s}`]
+    : [`BDUSS=${s.replace(/\s+/g, '')}`]
   const kept: string[] = []
   for (const p of pairs) {
     const eq = p.indexOf('=')
     if (eq <= 0) continue
     const k = p.slice(0, eq).trim()
-    const v = p.slice(eq + 1).trim()
+    let v = p.slice(eq + 1).trim()
+    if (v.length >= 2 && v.startsWith('"') && v.endsWith('"')) v = v.slice(1, -1) // F12 偶见引号包裹值
+    v = v.replace(/\s+/g, '')
     if (k !== 'BDUSS' && k !== 'STOKEN') continue
-    if (!/^[A-Za-z0-9~_-]{10,128}$/.test(v)) continue
+    if (!/^[A-Za-z0-9~_%-]{10,300}$/.test(v)) continue
     kept.push(`${k}=${v}`)
   }
   if (!kept.some((p) => p.startsWith('BDUSS='))) {
-    throw new BaiduError('share_auth_required', '不是有效的百度网盘登录态（需要 BDUSS Cookie：F12 → 应用/网络 → 复制 BDUSS，建议连 STOKEN 一起）')
+    throw new BaiduError(
+      'share_auth_required',
+      '不是有效的百度网盘登录态（需要 BDUSS）。任选其一：① 装「百度登录态同步助手」油猴脚本，登录 pan.baidu.com 后自动同步（面板可一键打开）② F12 → 网络 → 刷新 → 点任一 pan.baidu.com 请求 → 请求标头 → 复制整行 Cookie: 粘贴到这里 ③ F12 → 应用 → Cookie → pan.baidu.com → 复制 BDUSS 的值直接粘贴',
+    )
   }
   return kept.join('; ')
 }

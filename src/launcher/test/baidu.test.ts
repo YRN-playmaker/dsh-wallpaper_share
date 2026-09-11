@@ -74,6 +74,21 @@ test('normalizeBaiduCookie：拒绝空串 / URL / 过短值（防 Kaspersky 注�
   }
 })
 
+test('normalizeBaiduCookie：192 位现行 BDUSS / 整行 Cookie: / 引号与折行空白（用户反馈纠偏）', () => {
+  const bduss192 = 'F'.repeat(192) // 2026 现行 BDUSS 长度，旧实现 128 上限误拒
+  assert.equal(normalizeBaiduCookie(bduss192), `BDUSS=${bduss192}`)
+  const stoken = 'B'.repeat(40)
+  // F12 请求标头整行复制：Cookie: 前缀 + 杂键 + 折行空白
+  const headerLine = `Cookie: BDUSS= ${bduss192};\n STOKEN=${stoken};  BAIDUID=abc`
+  assert.equal(normalizeBaiduCookie(headerLine), `BDUSS=${bduss192}; STOKEN=${stoken}`)
+  // 引号包裹值（F12 偶见）
+  assert.equal(normalizeBaiduCookie(`BDUSS="${bduss192}"`), `BDUSS=${bduss192}`)
+  // 裸值内混入折行空白 → 剥掉后放行
+  assert.equal(normalizeBaiduCookie(` ${bduss192.slice(0, 96)}\n${bduss192.slice(96)} `), `BDUSS=${bduss192}`)
+  // 只有 STOKEN 没有 BDUSS → 拒
+  assert.throws(() => normalizeBaiduCookie(`STOKEN=${stoken}`), BaiduError)
+})
+
 test('baiduFileCredStore：写读往返（authorization 键，与 139 同结构）', () => {
   const path = join(mkdtempSync(join(tmpdir(), 'wesync-baidu-cred-')), 'baidu-auth.json')
   const store = baiduFileCredStore(path)
@@ -235,6 +250,18 @@ test('routes/baiduauth：保存合法 BDUSS、拒收杂讯、GET 回掩码', asy
   assert.equal(bad.statusCode, 422)
   assert.match(String(bad.body), /不是有效的百度网盘登录态/)
   assert.equal(store.get('a')!.includes('BDUSS=' + bduss), true) // 拒收不影响已存值
+})
+
+test('routes/baidu-helper：油猴助手脚本可下载（@match pan.baidu.com，POST 打到 baiduauth）', async () => {
+  const routes = routesOf({ installer: new LauncherInstaller({ root: mkdtempSync(join(tmpdir(), 'wesync-baidu-helper-')) }) })
+  const res = fakeResShim()
+  await routes.get('/we-sync/baidu-helper.user.js')!.handler({ url: '/we-sync/baidu-helper.user.js', method: 'GET', headers: {} }, res)
+  assert.equal(res.statusCode, 200)
+  const text = String(res.body)
+  assert.match(text, /^\/\/ ==UserScript==/)
+  assert.match(text, /@match\s+https:\/\/pan\.baidu\.com\/\*/)
+  assert.match(text, /baiduauth/)
+  assert.match(text, /BDUSS/)
 })
 
 test('routes/install：百度分享 → resolve 换直链并把下载头传给 installer.download', async () => {
