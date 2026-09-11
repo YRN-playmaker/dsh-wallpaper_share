@@ -17,8 +17,7 @@ import { LauncherInstaller, LauncherError, type InstalledAppRecord } from './ins
 import { CryptZipError } from './crypt-zip.ts'
 import { parse139ShareUrl, Yun139Client, Yun139Error, normalize139Authorization } from './yun139.ts'
 import { parseBaiduShareUrl, BaiduClient, BaiduError, normalizeBaiduCookie, bdussOf, type CredStore } from './baiduyun.ts'
-import { HELPER_139_SCRIPT, HELPER_139_URL } from './helper139.ts'
-import { HELPER_BAIDU_SCRIPT, HELPER_BAIDU_URL } from './helper-baidu.ts'
+import { HELPER_SYNC_SCRIPT, HELPER_SYNC_URL } from './helper-sync.ts'
 import { integrityOf, verifyIntegrity } from '../market/integrity.ts'
 
 export interface Req { url?: string; method?: string; headers?: Record<string, string | string[] | undefined> }
@@ -355,19 +354,17 @@ export function createLauncherRoutes(deps: LauncherRoutesDeps): Route[] {
     json(res, 200, { ok: true, present: v !== '' })
   } }
 
-  /** 139 登录态同步助手（Tampermonkey 脚本）：浏览器装一次，之后访问 yun.139.com 自动同步登录态到本机。 */
-  const helper139: Route = { kind: 'exact', path: HELPER_139_URL, handler: (_req, res) => {
+  /** 登录态同步助手（Tampermonkey 脚本，139/百度合一 v2）：canonical /we-sync/login-sync.user.js；
+   *  旧链接 /we-sync/139-helper.user.js 与 /we-sync/baidu-helper.user.js 同样服务合并脚本，
+   *  已装旧版脚本的浏览器手动更新一次即得全量。 */
+  const helperSyncHandler = (_req: Req, res: Res): void => {
     res.statusCode = 200
     res.setHeader('Content-Type', 'text/javascript; charset=utf-8')
-    res.end(HELPER_139_SCRIPT)
-  } }
-
-  /** 百度登录态同步助手（Tampermonkey 脚本）：装一次，访问 pan.baidu.com 自动同步 BDUSS/STOKEN 到本机。 */
-  const helperBaidu: Route = { kind: 'exact', path: HELPER_BAIDU_URL, handler: (_req, res) => {
-    res.statusCode = 200
-    res.setHeader('Content-Type', 'text/javascript; charset=utf-8')
-    res.end(HELPER_BAIDU_SCRIPT)
-  } }
+    res.end(HELPER_SYNC_SCRIPT)
+  }
+  const helperSync: Route = { kind: 'exact', path: HELPER_SYNC_URL, handler: helperSyncHandler }
+  const helperLegacy139: Route = { kind: 'exact', path: '/we-sync/139-helper.user.js', handler: helperSyncHandler }
+  const helperLegacyBaidu: Route = { kind: 'exact', path: '/we-sync/baidu-helper.user.js', handler: helperSyncHandler }
 
   /** 百度网盘登录态：POST {cookie} 保存（空串清除；接受整串 Cookie 或裸 BDUSS 值）；
    *  GET 查是否已配置（只回布尔与 BDUSS 掩码）。入库前经 normalizeBaiduCookie 校验，拒收杂讯。 */
@@ -402,7 +399,7 @@ export function createLauncherRoutes(deps: LauncherRoutesDeps): Route[] {
     json(res, 200, { ok: true, present: v !== '' })
   } }
 
-  return [installed, install, entry, preview, uninstall, previewFile, auth139, authBaidu, helper139, helperBaidu, rootRoute]
+  return [installed, install, entry, preview, uninstall, previewFile, auth139, authBaidu, helperSync, helperLegacy139, helperLegacyBaidu, rootRoute]
 }
 
 /** 供 index.ts 类型引用（避免直接 import installer 内部类型绕路）。 */

@@ -252,16 +252,25 @@ test('routes/baiduauth：保存合法 BDUSS、拒收杂讯、GET 回掩码', asy
   assert.equal(store.get('a')!.includes('BDUSS=' + bduss), true) // 拒收不影响已存值
 })
 
-test('routes/baidu-helper：油猴助手脚本可下载（@match pan.baidu.com，POST 打到 baiduauth）', async () => {
+test('routes/helper：登录态同步助手（139/百度合一）——canonical 与两个旧链接同内容', async () => {
   const routes = routesOf({ installer: new LauncherInstaller({ root: mkdtempSync(join(tmpdir(), 'wesync-baidu-helper-')) }) })
-  const res = fakeResShim()
-  await routes.get('/we-sync/baidu-helper.user.js')!.handler({ url: '/we-sync/baidu-helper.user.js', method: 'GET', headers: {} }, res)
-  assert.equal(res.statusCode, 200)
-  const text = String(res.body)
-  assert.match(text, /^\/\/ ==UserScript==/)
-  assert.match(text, /@match\s+https:\/\/pan\.baidu\.com\/\*/)
-  assert.match(text, /baiduauth/)
-  assert.match(text, /BDUSS/)
+  const bodies: string[] = []
+  for (const path of ['/we-sync/login-sync.user.js', '/we-sync/139-helper.user.js', '/we-sync/baidu-helper.user.js']) {
+    const res = fakeResShim()
+    await routes.get(path)!.handler({ url: path, method: 'GET', headers: {} }, res)
+    assert.equal(res.statusCode, 200, path)
+    const text = String(res.body)
+    // 合一脚本：两站 @match 都在，两个 auth 端点都打到
+    assert.match(text, /^\/\/ ==UserScript==/)
+    assert.match(text, /@match\s+https:\/\/yun\.139\.com\/\*/)
+    assert.match(text, /@match\s+https:\/\/pan\.baidu\.com\/\*/)
+    assert.match(text, /139auth/)
+    assert.match(text, /baiduauth/)
+    assert.match(text, /BDUSS/)
+    bodies.push(text)
+  }
+  assert.equal(bodies[0], bodies[1])
+  assert.equal(bodies[0], bodies[2])
 })
 
 test('routes/install：百度分享 → resolve 换直链并把下载头传给 installer.download', async () => {

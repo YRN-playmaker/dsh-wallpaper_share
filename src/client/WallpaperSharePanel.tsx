@@ -168,7 +168,7 @@ const DICT = {
     launcherPwdWrong: '解压密码错误，或压缩包已损坏',
     launcherAuthTitle: '139 登录态',
     launcherAuthHint: '手动方式：登录 yun.139.com 后，F12 → 网络 → 任意请求 → 请求标头里的 Authorization，整串复制粘贴到这里',
-    launcherHelperLink: '一键方式：安装登录态同步助手',
+    launcherHelperLink: '一键方式：安装登录态同步助手（139 / 百度网盘合一脚本）',
     launcherTutorialBeta: '该功能为测试版本',
     launcherTutorialPrepTitle: '启动前的准备：',
     launcherTutorialPrep1: '安装油猴（Tampermonkey 浏览器扩展）',
@@ -208,7 +208,6 @@ const DICT = {
     launcherBaiduOpenBtn: '一键打开百度网盘并登录',
     launcherBaiduWaiting: '等待登录态同步…（登录后自动检测，最多 10 分钟）',
     launcherBaiduSynced: '✔ 已同步百度网盘登录态，可以安装了',
-    launcherHelperBaiduLink: '安装百度登录态同步助手',
     launcherShareCode139: '该 139 分享需要提取码：请在提取码框填入后重试',
     launcherShareCode139Wrong: '139 提取码错误，请核对后重试',
     launcherInstall: '下载安装',
@@ -391,7 +390,7 @@ const DICT = {
     launcherPwdWrong: 'Wrong password, or the archive is corrupted',
     launcherAuthTitle: '139 Login (Authorization)',
     launcherAuthHint: 'Manual: sign in at yun.139.com, open DevTools → Network → any request → copy the whole Authorization request header, paste it here',
-    launcherHelperLink: 'One-click: install the login-sync helper',
+    launcherHelperLink: 'One-click: install the login-sync helper (139 / Baidu combined)',
     launcherTutorialBeta: 'This feature is in beta',
     launcherTutorialPrepTitle: 'First-time setup:',
     launcherTutorialPrep1: 'Install Tampermonkey (browser extension)',
@@ -431,7 +430,6 @@ const DICT = {
     launcherBaiduOpenBtn: 'Open Baidu & sign in',
     launcherBaiduWaiting: 'Waiting for login sync… (auto-detected after sign-in, up to 10 min)',
     launcherBaiduSynced: '✔ Baidu login synced — ready to install',
-    launcherHelperBaiduLink: 'install the Baidu login-sync helper',
     launcherShareCode139: 'This 139 share needs a passcode — enter it in the passcode box and retry',
     launcherShareCode139Wrong: 'Wrong 139 passcode — check it and retry',
     launcherInstall: 'Download & Install',
@@ -2084,8 +2082,7 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
                             <div style={{ marginTop: 4 }}><b>{t.launcherTutorialPrepTitle}</b></div>
                             <div>1. {t.launcherTutorialPrep1}</div>
                             <div>2. {t.launcherTutorialPrep2}</div>
-                            <div>3. {t.launcherTutorialPrep3Lead}<a href="/we-sync/139-helper.user.js" target="_blank" rel="noreferrer" style={{ color: 'inherit', textDecoration: 'underline' }}>{t.launcherHelperLink}</a>{t.launcherTutorialPrep3Tail}</div>
-                            <div>4. {t.launcherTutorialPrep3Lead}<a href="/we-sync/baidu-helper.user.js" target="_blank" rel="noreferrer" style={{ color: 'inherit', textDecoration: 'underline' }}>{t.launcherHelperBaiduLink}</a>{t.launcherTutorialPrep3Tail}</div>
+                            <div>3. {t.launcherTutorialPrep3Lead}<a href="/we-sync/login-sync.user.js" target="_blank" rel="noreferrer" style={{ color: 'inherit', textDecoration: 'underline' }}>{t.launcherHelperLink}</a>{t.launcherTutorialPrep3Tail}</div>
                             <div style={{ marginTop: 4 }}><b>{t.launcherTutorialUseTitle}</b></div>
                             <div>{t.launcherTutorialUse1}</div>
                             <div>{t.launcherTutorialUse2}</div>
