@@ -156,20 +156,23 @@ export const HELPER_SYNC_SCRIPT = `// ==UserScript==
     return 'BDUSS=' + m[1] + (s ? '; STOKEN=' + s[1] : '')
   }
   var toldBD = false
-  function sendBaidu(cookie, quiet) {
-    if (!cookie) return false
+  // onDone(是否成功)：轮询模式靠它决定是否标记「已同步」——先发后记，DSH 没开时下一轮自动补发
+  function sendBaidu(cookie, quiet, onDone) {
+    if (!cookie) { if (onDone) onDone(false); return false }
     post('http://127.0.0.1:3080/we-sync/launcher/baiduauth', { cookie: cookie }, function (st) {
-      if (quiet) return // 自动轮询：只发不弹
-      if (st === 200 && !toldBD) { toldBD = true; toast('✔ 已同步百度网盘登录态到 DSH', true) }
-      else if (st !== 200 && !toldBD) { toldBD = true; toast('✘ 百度同步失败：HTTP ' + st + '（DSH 在运行吗？）', false) }
+      var ok = st === 200
+      if (!quiet && !toldBD) {
+        toldBD = true
+        toast(ok ? '✔ 已同步百度网盘登录态到 DSH' : '✘ 百度同步失败：HTTP ' + st + '（DSH 在运行吗？）', ok)
+      }
+      if (onDone) onDone(ok)
     })
     return true
   }
   function pollBaidu() {
     var cur = extractBaidu()
     if (cur && GM_getValue('baidu_last', '') !== cur) {
-      GM_setValue('baidu_last', cur)
-      sendBaidu(cur, true)
+      sendBaidu(cur, true, function (ok) { if (ok) GM_setValue('baidu_last', cur) })
     }
   }
 
@@ -188,7 +191,7 @@ export const HELPER_SYNC_SCRIPT = `// ==UserScript==
         if (!p) return
         c = p.trim()
       }
-      if (sendBaidu(c, false)) GM_setValue('baidu_last', c)
+      sendBaidu(c, false, function (ok) { if (ok) GM_setValue('baidu_last', c) })
     })
     pollBaidu()
     setTimeout(pollBaidu, 3000)
