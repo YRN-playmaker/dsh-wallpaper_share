@@ -2,12 +2,9 @@
 
 ## 26.9.11-T - 2026-09-10
 
-### ✨ 新增功能
+### ⚠️ 变更
 
-- **应用启动器支持百度网盘分享链接**：粘贴 `pan.baidu.com/s/1…` 分享页链接即可像 139 一样直接下载安装。带提取码的分享在「提取码」框填入（URL 带 `?pwd=` 亦可）；下载需百度登录态——面板新增「百度网盘登录态」行，粘贴 BDUSS Cookie（建议连 STOKEN），存 `~/.dsh/storages/we-sync-baidu-auth.json`，入库前严格归一校验（只留 BDUSS/STOKEN，拒收 URL 等杂讯）。**登录态一键同步**：油猴助手升级为 **139/百度合一脚本**（v2.0.0，`/we-sync/login-sync.user.js`，旧 `/we-sync/139-helper.user.js` 与 `/we-sync/baidu-helper.user.js` 链接均兼容同内容），装一次后 139 域自动拦截页面请求同步 Authorization、百度域自动同步 BDUSS/STOKEN（值变化才发）；面板在粘贴对应网盘链接且未配置登录态时出「一键打开百度网盘并登录」按钮并轮询等待同步，与 139 的 A1 流程一致。解析链路：`share/wxlist` →（errno 9019 时）`share/verify` 换 BDCLND Cookie → wxlist 文件列表；wxlist 未给直链时回落内容页解析 `yunData.sign/timestamp/shareid` 再 `/api/download` 换 dlink；dlink 下载统一带 `User-Agent: netdisk` + 登录态 Cookie（`installer.download` 支持自定义请求头）。errno 语义映射成面板可读提示（9019=需要提取码、2/-12=提取码错误、-62/-64/-70=风控稍后再试），未知 errno 原文透传便于排查。根目录非单文件（文件夹/多文件）明确报错，与 139 适配器同语义。新增 12 条 fixture 回归（共 185 测试）。参考 syhyz1990/baiduyun 仅限协议行为（该项目 AGPL，未复制任何代码，本实现为原创）。
-- **百度登录态录入纠偏**：现行 BDUSS 实为 192 位，旧校验上限 128 位导致**合法值被拒收**——上限放宽至 300；同时接受 F12「请求标头」复制的整行 `Cookie: BDUSS=…; STOKEN=…`（自动剥标签）、带引号的值、值内折行空白，报错文案写明三种可粘贴形态（油猴自动同步 / 整行 Cookie / 裸 BDUSS 值）。
-- **百度登录态升级为整包 Cookie（2026 设备指纹风控）**：真实 BDUSS 实测发现自盘接口（`gettemplatevariable`/`api/list`/`api/locatedownload`）把登录态与设备指纹 cookie（BAIDUID/BIDUPSID 等）绑定校验——**只送 BDUSS 一律 errno -6**（分享侧 verify/share/list 不受影响）。`normalizeBaiduCookie` 改为整包保留所有合法 `k=v` 对（值允许 `:`/`=` 的 BAIDUID 形态；BDUSS/STOKEN 仍强校验防杂讯；总长上限 8192）；助手脚本 v2.0.2 百度分支改抓**整域 cookie**（GM_cookie 全域列表 + document.cookie 主机可见项合并，只留 `*.baidu.com` 且须含 BDUSS）；面板提示改为推荐 F12 整行 Cookie，并说明裸 BDUSS 已取不了直链。
-- **百度直链获取重构（转存自盘 + origin=pdf）**：2026-09 实测匿名链路证明旧「内容页签名单」已死（新版分享页不内嵌 `yunData.sign`，`/api/download` 强制登录）。改走自盘直链：verify 响应的 `randsk` 作 sekey 把分享文件**转存到自己网盘** → `api/filemanager` 临时改名 `.pdf` → `api/locatedownload?origin=pdf` 取大文件直链（>150MB 通道）→ 下载 → 自动删除自盘转存件（`BaiduMeta.cleanup`，routes 下载后无论成败尽力清理）。元数据列表增加 `/share/list` 兜底（实测匿名 + BDCLND 即可列出，wxlist 匿名口径恒 9019）；`gettemplatevariable` 取 bdstoken（拿不到则省略）。技术口径参考 GreasyFork HcxBaiduDownload（MIT）对 locatedownload/origin=pdf 的用法，实现为原创代码。助手脚本读不到 BDUSS 的提示改为指向面板「百度网盘登录态」输入框（实测 BDUSS 为 HttpOnly，浏览器脚本无法自动读取，手动粘贴是可靠路径）。
+- **移除百度网盘分享链接支持**：本测试版曾实现「粘贴 `pan.baidu.com/s/1…` → 自动下载安装」，但用真实整包登录态逐接口实测后确认：2026 起百度自盘接口把登录态与设备指纹 cookie 绑定校验（裸 BDUSS 一律 errno -6），而取下载直链的 `locatedownload?origin=pdf` 通道**只认真实 PDF 类型**——对伪装成 `.pdf` 的 zip/exe/mp4 大文件恒 errno 12001，`/api/download`、`/share/wxlist`、`/share/tplconfig` 等口径也全部拒绝或失效；且删除转存件触发 errno 132 安全验证，无法自动清理（会往用户网盘堆垃圾）。结论：非 PDF 分享文件在 2026 风控下**无法由插件服务端取得可下载直链**（这也是 PanLinker 等参考脚本对分享一律「保存到网盘后用官方客户端下载」的原因）。故移除百度适配器（`baiduyun.ts`）、`/baiduauth` 路由、面板百度登录态行与文案、油猴助手的百度分支（助手回到 139 专用 v3.0.0）。139 分享链接支持不受影响。
 
 ## 26.9.10-T - 2026-09-10
 

@@ -355,7 +355,7 @@ export class LauncherInstaller {
    *  面板只能看到笼统的「不合法的 length」）。这类错误对同 URL 的重试往往自愈，
    *  故命中特征时自动带 Range 头重试一次；Range（206）响应不含 Content-Length，
    *  解析器不会再踩同一个坑。Range 重试也失败才把真实错误链抛给上层。
-   *  `init.headers` 可注入下载头（百度网盘 dlink 需要 UA=netdisk + 用户 Cookie）。 */
+   *  `init.headers` 可注入自定义下载头（与内部 Range 重试头合并）。 */
   async download(url: string, init?: FetchInitLike): Promise<{ bytes: Uint8Array; fileName: string }> {
     let parsed: URL
     try { parsed = new URL(url) } catch { throw new LauncherError(`URL 非法: ${url}`) }
