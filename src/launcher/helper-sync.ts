@@ -17,7 +17,7 @@ export const HELPER_SYNC_URL = '/we-sync/login-sync.user.js'
 export const HELPER_SYNC_SCRIPT = `// ==UserScript==
 // @name         DSH 壁纸插件 · 登录态同步助手（139 / 百度网盘）
 // @namespace    dsh-wallpaper-share
-// @version      2.0.0
+// @version      2.0.1
 // @description  装一次即忘：在 yun.139.com 自动拦截页面请求同步 Authorization 登录态；在 pan.baidu.com 自动同步 BDUSS/STOKEN 登录态。之后在 DSH 面板粘贴对应网盘分享链接即可直接安装，无需 F12。
 // @author       dsh-wallpaper_share
 // @match        https://yun.139.com/*
@@ -148,22 +148,42 @@ export const HELPER_SYNC_SCRIPT = `// ==UserScript==
     fromGM139().then(function (v2) { if (v2) send139(v2, 'cookie(httpOnly)') })
   }
 
-  // ── 百度：document.cookie 读 BDUSS/STOKEN（未 HttpOnly）────────────
+  // ── 百度：document.cookie 读 BDUSS/STOKEN，HttpOnly 时 GM_cookie 兜底 ──
   function extractBaidu() {
     var m = /(?:^|;\\s*)BDUSS=([^;\\s]+)/.exec(document.cookie || '')
     if (!m) return ''
     var s = /(?:^|;\\s*)STOKEN=([^;\\s]+)/.exec(document.cookie || '')
     return 'BDUSS=' + m[1] + (s ? '; STOKEN=' + s[1] : '')
   }
-  var toldBD = false
+  function fromGMBaidu(name) {
+    return new Promise(function (resolve) {
+      if (typeof GM_cookie !== 'function') return resolve('')
+      try {
+        GM_cookie('list', { name: name }, function (cookies, error) {
+          if (error || !cookies || !cookies[0]) return resolve('')
+          resolve(cookies[0].value || '')
+        })
+      } catch (e) { resolve('') }
+    })
+  }
+  var toldBD = false // 失败提示只弹一次
+  var toldOK = false
+  var toldEmpty = false
+  var emptyMisses = 0
   // onDone(是否成功)：轮询模式靠它决定是否标记「已同步」——先发后记，DSH 没开时下一轮自动补发
   function sendBaidu(cookie, quiet, onDone) {
     if (!cookie) { if (onDone) onDone(false); return false }
     post('http://127.0.0.1:3080/we-sync/launcher/baiduauth', { cookie: cookie }, function (st) {
       var ok = st === 200
-      if (!quiet && !toldBD) {
-        toldBD = true
-        toast(ok ? '✔ 已同步百度网盘登录态到 DSH' : '✘ 百度同步失败：HTTP ' + st + '（DSH 在运行吗？）', ok)
+      var connFail = st === -1 || st === -2
+      if (ok) {
+        if (!quiet && !toldOK) { toldOK = true; toast('✔ 已同步百度网盘登录态到 DSH', true) }
+      } else {
+        // 静默模式下连接失败不打扰（下轮自动补发）；被服务端拒绝必须说，否则用户无从知道
+        if (!toldBD && (!quiet || !connFail)) {
+          toldBD = true
+          toast(connFail ? '✘ 百度同步失败：本机 DSH (127.0.0.1:3080) 未运行？' : '✘ 百度登录态被 DSH 拒绝（HTTP ' + st + '）', false)
+        }
       }
       if (onDone) onDone(ok)
     })
@@ -171,9 +191,29 @@ export const HELPER_SYNC_SCRIPT = `// ==UserScript==
   }
   function pollBaidu() {
     var cur = extractBaidu()
-    if (cur && GM_getValue('baidu_last', '') !== cur) {
-      sendBaidu(cur, true, function (ok) { if (ok) GM_setValue('baidu_last', cur) })
+    if (cur) {
+      emptyMisses = 0
+      if (GM_getValue('baidu_last', '') !== cur) {
+        sendBaidu(cur, true, function (ok) { if (ok) GM_setValue('baidu_last', cur) })
+      }
+      return
     }
+    // document.cookie 读不到（可能 HttpOnly）：GM_cookie 直读兜底（能读 HttpOnly）
+    Promise.all([fromGMBaidu('BDUSS'), fromGMBaidu('STOKEN')]).then(function (r) {
+      if (r[0]) {
+        var c = 'BDUSS=' + r[0] + (r[1] ? '; STOKEN=' + r[1] : '')
+        if (GM_getValue('baidu_last', '') !== c) {
+          sendBaidu(c, true, function (ok) { if (ok) GM_setValue('baidu_last', c) })
+        }
+        return
+      }
+      // 两条路都读不到：多半未登录，或 TM 未授权 cookie 访问 —— 给一次菜单指引
+      emptyMisses++
+      if (emptyMisses === 2 && !toldEmpty) {
+        toldEmpty = true
+        toast('⚠ 未读到百度 BDUSS：若已登录，请点油猴菜单「同步百度登录态到 DSH」手动粘贴', false)
+      }
+    })
   }
 
   // ── 装配 ───────────────────────────────────────────────────────────
@@ -185,13 +225,19 @@ export const HELPER_SYNC_SCRIPT = `// ==UserScript==
     setInterval(pollFallback139, 10000)
   } else if (ISBD) {
     GM_registerMenuCommand('同步百度登录态到 DSH', function () {
-      var c = extractBaidu()
-      if (!c) {
-        var p = prompt('[DSH百度助手] 未能自动读取 BDUSS。\\n请 F12 → 应用 → Cookie → pan.baidu.com → 复制 BDUSS 的值（建议连 STOKEN 一起）粘贴到这里：', '')
-        if (!p) return
-        c = p.trim()
+      var go = function (c) {
+        if (!c) {
+          var p = prompt('[DSH百度助手] 未能自动读取 BDUSS（可能被 HttpOnly 保护）。\\n请 F12 → 应用 → Cookie → pan.baidu.com → 复制 BDUSS 的值（建议连 STOKEN 一起）粘贴到这里：', '')
+          if (!p) return
+          c = p.trim()
+        }
+        sendBaidu(c, false, function (ok) { if (ok) GM_setValue('baidu_last', c) })
       }
-      sendBaidu(c, false, function (ok) { if (ok) GM_setValue('baidu_last', c) })
+      var c = extractBaidu()
+      if (c) { go(c); return }
+      Promise.all([fromGMBaidu('BDUSS'), fromGMBaidu('STOKEN')]).then(function (r) {
+        go(r[0] ? 'BDUSS=' + r[0] + (r[1] ? '; STOKEN=' + r[1] : '') : '')
+      })
     })
     pollBaidu()
     setTimeout(pollBaidu, 3000)
