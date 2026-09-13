@@ -47,6 +47,10 @@ const DICT = {
     focusIntro: '随任务自适应调节背景效果',
     flashFocusOn: '专注模式已开启：注视点透镜跟随鼠标（圆心清晰）；可再开「眼动追踪」改为跟随视线',
     flashFocusOff: '专注模式已关闭，恢复手动滑块',
+    floaterMode: '桌面悬浮球',
+    flashFloaterOn: '桌面悬浮球已开启：本页切到后台 / 浏览器最小化时，桌面出现环形悬浮球，单击切回本页',
+    flashFloaterOff: '桌面悬浮球已关闭',
+    floaterUnsupported: '桌面悬浮球需要 Windows 宿主且随包携带 we-floater.exe（当前不可用）',
 
     // 渲染模式（三档：预览 / 捕获 / 完整）
     renderModeTitle: '渲染模式',
@@ -259,6 +263,10 @@ const DICT = {
     focusIntro: 'Background adjusts adaptively to your task',
     flashFocusOn: 'Focus mode on: lens follows mouse (clear center); enable Eye Tracking to follow gaze instead',
     flashFocusOff: 'Focus mode off, manual sliders restored',
+    floaterMode: 'Desktop Orb',
+    flashFloaterOn: 'Desktop orb on: when this tab goes to the background or the browser minimizes, a ring button appears on your desktop; click it to return here',
+    flashFloaterOff: 'Desktop orb off',
+    floaterUnsupported: 'Desktop orb needs a Windows host with we-floater.exe bundled (unavailable here)',
 
     // Render mode (Preview / Capture / Full)
     renderModeTitle: 'Render Mode',
@@ -487,6 +495,9 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
   const [gazeError, setGazeError] = useState('')
   const [gazeSnapText, setGazeSnapText] = useState(store.settings.gazeSnapText)
   const [needsCalib, setNeedsCalib] = useState(false)
+  const [floater, setFloater] = useState(store.settings.floater)
+  /** 能力探测结果（GET /we-sync/floater）：false = 非 Windows 或 we-floater.exe 缺失，开关置灰 */
+  const [floaterSupported, setFloaterSupported] = useState(true)
   useEffect(() => onGazeStatus((s, err) => { setGazeStatus(s); setGazeError(err) }), [])
   // —— 三页虚拟滚动：一套滚轮全接管（设置 ⇄ 壁纸库 ⇄ dwp创作）——
   const CHARGE_THRESHOLD = 600 // deltaY 累积阻力阈值（常规轻滑不翻页）
@@ -908,11 +919,27 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
     setRenderMode(store.settings.renderMode)
     setGazeEnabled(store.settings.gazeEnabled)
     setGazeSnapText(store.settings.gazeSnapText)
+    setFloater(store.settings.floater)
     force((x) => x + 1)
   }), [])
 
   // 挂载时加载自定义壁纸目录列表
   useEffect(() => { void loadDirs() }, [])
+
+  // 悬浮球能力探测：node 半不在 Windows / 没带 we-floater.exe 时置灰开关；
+  // 探测失败（服务端未就绪）保持可用态不干扰——真正的 sync 上报自带容错。
+  useEffect(() => {
+    let dead = false
+    void fetch('/we-sync/floater', { cache: 'no-store' })
+      .then((r) => r.json() as Promise<{ supported?: boolean }>)
+      .then((s) => {
+        if (dead || s.supported !== false) return
+        setFloaterSupported(false)
+        if (store.settings.floater) { store.settings.floater = false; store.notify() }
+      })
+      .catch(() => { /* 未就绪：保持原状 */ })
+    return () => { dead = true }
+  }, [])
 
   const flash = (text: string): void => {
     setStatus(text)
@@ -964,6 +991,17 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
     store.actions.applyTheme()
     store.actions.applyBackground()
     flash(next ? t.flashFocusOn : t.flashFocusOff)
+  }
+
+  // —— 桌面悬浮球：开关只改本地偏好并立刻重发 sync（node 半据此起停 we-floater.exe）。
+  // 能力不支持（非 Windows / 缺 exe）时拒绝开启并提示——绝不让面板显示假的"已开启"。
+  const onFloater = (): void => {
+    if (!floaterSupported) { flash(t.floaterUnsupported); return }
+    const next = !store.settings.floater
+    store.settings.floater = next
+    setFloater(next)
+    store.actions.syncFloater()
+    flash(next ? t.flashFloaterOn : t.flashFloaterOff)
   }
 
   const onRenderMode = (mode: 'eco' | 'perf' | 'enhanced'): void => {
@@ -1529,6 +1567,14 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
           })}
         </div>
         <div className="wesync-actions">
+          <button
+            className={['wesync-btn', floater ? 'wesync-focusOn' : 'wesync-focusOff'].join(' ')}
+            onClick={onFloater}
+            disabled={!floaterSupported}
+            title={floaterSupported ? '' : t.floaterUnsupported}
+          >
+            {t.floaterMode}
+          </button>
           <div className="wesync-focuswrap" onMouseEnter={() => setFocusHover(true)} onMouseLeave={() => setFocusHover(false)}>
             <button className={['wesync-btn', focus ? 'wesync-focusOn' : 'wesync-focusOff'].join(' ')} onClick={onFocus}>
               {t.focusMode}

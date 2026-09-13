@@ -1,5 +1,26 @@
 # Changelog
 
+## 26.9.13 - 2026-09-13
+
+### ✨ 新功能
+
+- **桌面悬浮球**（面板「视觉效果」卡片新开关，位于专注模式按钮左侧，默认关，仅 Windows 生效）：开启后，当 `http://127.0.0.1:3080/` 页签被切到后台、浏览器最小化或整个窗口被其他应用压住 / Alt+Tab 走开时，桌面出现一个与侧边栏球形按钮同款的环形按钮（深色圆盘 + 3px 状态色环：绿空闲 / 蓝进行中 / 黄待授权，实时随任务状态变色），**单击即切回该页面**——包括「同窗口切到了别的页签」的场景（原生层经 UIA 找到标题匹配的页签直接 `SelectionItemPattern.Select()`，再带回窗口前台）。可拖动并记忆位置、右键/双击临时收起（安静到下次回到页面）。实现：
+  - 新增原生程序 `we-floater.exe`（`native/we-capture` 的第二个 bin，随包 `bin/`，约 310KB）：置顶圆形弹窗（Layered + 圆形 region + `WS_EX_TOOLWINDOW` 不进任务栏）、`SW_SHOWNOACTIVATE` 显示不抢焦点、手型光标；进程生命周期完全由 node 半托管（stdin 行协议 `show`/`hide`/`color`/`title`/`quit`，父进程退出即自毁，不留孤儿窗）。
+  - node 半新增 `/we-sync/floater`（GET 状态探测 / POST 状态同步）与 `src/floater/`（纯逻辑状态机 hub + 子进程管理 manager + 路由）：**按页签 id 记账**（同一浏览器多个 3080 页签各自上报互不踩踏，有任一页签在前台就不挂球）；页面隐藏才起进程挂球，可见 / 关页立即收球停进程；崩愤自动重拉（2s）并带熔断（连续 4 次停拉到回到页面）；可见页签靠 5s 心跳保鲜，超时剔除。
+  - client 半经 `visibilitychange`（切页签 / 最小化）、`window focus`/`blur`（Alt+Tab / 被其他应用盖住，400ms 防抖）、`pagehide`（unloading）与 5s 可见心跳上报 `{pageId, enabled, state, title, color}`；面板开关带能力探测（非 Windows 或缺 exe 时置灰）；设置改动跨页签同步（`storage` 事件）。位置记忆存 `~/.dsh/storages/we-sync-floater-pos.json`。
+
+### 🐛 修复
+
+- **悬浮球窗口被压成 0×0（"虚影一闪就没了"）**：原生层「抬到最顶层」的 `SetWindowPos(hwnd, HWND_TOPMOST, 0,0,0,0, SWP_NOACTIVATE)` 缺 `SWP_NOMOVE | SWP_NOSIZE`，把窗口挪到 (0,0) 且宽高清零；拖拽路径同病（拖动会把球压没）。三处补齐保护位。
+- **悬浮球圆盘被刷成白饼 / 色环颜色红蓝颠倒**：`Ellipse` 用「当前画刷」填内部，只选画笔时默认白刷盖掉深底；`COLORREF` 是 `0x00BBGGRR` 而 client 传 RGB hex，导致蓝↔橙、黄↔青错位。绘制时补选深底刷 + 红蓝换位。
+- **单击悬浮球把浏览器"强行窗口化"**：`activate()` 对匹配窗口无条件 `SW_RESTORE`（对最大化窗口也会还原成窗口态）。改为仅 `IsIconic`（真的最小化）时才 `SW_RESTORE`，否则只 `SetForegroundWindow` —— 最大化窗口保持最大化。
+- **悬浮球指针显示为沙漏**：窗口类未设 `hCursor`，点按时 UIA 扫描短暂阻塞 UI 线程会被系统显示为忙光标。类设 `IDC_HAND` 并新增 `WM_SETCURSOR` 在客户区强制手型。
+- **多屏默认位置偏移**：默认落点未加虚拟桌面原点（`SM_XVIRTUALSCREEN`/`SM_YVIRTUALSCREEN`），副屏在主屏左/上方时球会算到屏外。
+
+### 🔧 细节
+
+- 版本号统一为 **`26.9.13`**（`package.json` → 构建期 `define` 注入 client 半，UI 标题行同步）；README 中英文同步：徽章版本、当前版本说明、新增「桌面悬浮球」章节与功能条目、设置卡片说明、tarball 示例、项目结构、已知问题。
+
 ## 26.9.12-rc - 2026-09-10
 
 ### ⚠️ 变更

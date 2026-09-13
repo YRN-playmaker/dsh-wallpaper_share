@@ -7,7 +7,7 @@
   <a href="https://www.npmjs.com/package/dsh-wallpaper_share"><img alt="npm downloads" src="https://img.shields.io/npm/dm/dsh-wallpaper_share" /></a>
   <a href="https://github.com/YRN-playmaker/dsh-wallpaper_share/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/YRN-playmaker/dsh-wallpaper_share" /></a>
   <a href="https://opensource.org/licenses/GPL-3.0"><img alt="License: GPL-3.0" src="https://img.shields.io/badge/License-GPL--3.0-blue.svg" /></a>
-  <a href="https://github.com/YRN-playmaker/dsh-wallpaper_share/releases"><img alt="插件版本 v26.9.12-rc" src="https://img.shields.io/badge/v26.9.12--rc-4d6bfe" /></a><br /><br />
+  <a href="https://github.com/YRN-playmaker/dsh-wallpaper_share/releases"><img alt="插件版本 v26.9.13" src="https://img.shields.io/badge/v26.9.13-4d6bfe" /></a><br /><br />
   <img alt="壁纸同步" src="https://img.shields.io/badge/-%E5%A3%81%E7%BA%B8%E5%90%8C%E6%AD%A5-4d6bfe" /> <img alt="场景渲染" src="https://img.shields.io/badge/-%E5%9C%BA%E6%99%AF%E6%B8%B2%E6%9F%93-4d6bfe" /> <img alt="DWP 市场" src="https://img.shields.io/badge/-DWP%20%E5%B8%82%E5%9C%BA-4d6bfe" /> <img alt="眼动追踪" src="https://img.shields.io/badge/-%E7%9C%BC%E5%8A%A8%E8%BF%BD%E8%B8%AA-4d6bfe" /> <img alt="专注模式" src="https://img.shields.io/badge/-%E4%B8%93%E6%B3%A8%E6%A8%A1%E5%BC%8F-4d6bfe" /> <img alt="多显示器" src="https://img.shields.io/badge/-%E5%A4%9A%E6%98%BE%E7%A4%BA%E5%99%A8-4d6bfe" /><br /><br />
 </div>
 
@@ -34,6 +34,7 @@
 - [🖼️ Scene 渲染与回退](#-scene-渲染与回退)
 - [🔍 专注模式与眼动追踪](#-专注模式与眼动追踪)
 - [🌌 沉浸模式与任务指示](#-沉浸模式与任务指示)
+- [🪟 桌面悬浮球](#-桌面悬浮球)
 - [🚀 安装](#-安装)
 - [⚙️ 配置](#-配置)
 - [📈 性能与已知限制](#-性能与已知限制)
@@ -65,6 +66,8 @@ dsh plugin --profile web add dsh-wallpaper_share   # 或见下方「安装」选
 
 - **侧边栏沉浸模式**：一键隐去会话头部、正文与输入栏，让壁纸独占视野；网页 / 应用类壁纸在沉浸下可直接鼠标交互（详见[沉浸模式](#-沉浸模式与任务指示)）
 
+- **桌面悬浮球**（Windows，默认关）：开启后，当你切走页签 / 最小化浏览器 / 切到别的应用时，桌面出现一个与侧边栏状态灯同款的环形按钮（颜色同步：绿空闲 / 蓝进行中 / 黄待授权），**单击即把 `http://127.0.0.1:3080/` 页面带回前台**（同窗口切到别的页签也能精确切回该页签）；可拖动记忆位置，右键 / 双击临时收起（详见[桌面悬浮球](#-桌面悬浮球)）
+
 - **专注模式**：叠加一个圆心清晰、圆外模糊的阅读窗,以专注于任务，提升文字可读性；默认跟随鼠标，也可用摄像头推断注视点让透镜跟随视线；9 点校准、文字吸附、抗抖动
 <img width="426" height="240" alt="Video Project 29" src="https://github.com/user-attachments/assets/57daf64c-ff2b-40c7-aeef-73cac46c4c2b" />
 
@@ -77,7 +80,7 @@ dsh plugin --profile web add dsh-wallpaper_share   # 或见下方「安装」选
 | 卡片 | 内容 |
 | --- | --- |
 | **壁纸状态** | 壁纸名（标题行**右缘为插件版本号**，点击直达 GitHub 仓库）；下方副标题只承载诊断信息——scene 壁纸显示当前渲染通路（`场景 · 预览图 / 捕获 live 30fps / 浏览器模型渲染 / 回退：<原因>`），未应用壁纸时显示引导文案，其余类型整行不占；多显示器时出现「背景显示器」下拉；`⏻ 同步开启 / 关闭 / 暂停（DWP）` 三态按钮 |
-| **视觉效果** | 三档渲染模式分段按钮；「专注模式」及其展开条（眼动追踪 / 校准视线 / 文字吸附 / 实时状态）；透明度 · 模糊 · 阴影三个滑块（**专注开启时滑块隐藏**，改由任务态与透镜接管） |
+| **视觉效果** | 三档渲染模式分段按钮；「桌面悬浮球」开关（在专注模式左侧，默认关；非 Windows 或缺 `bin/we-floater.exe` 时置灰）；「专注模式」及其展开条（眼动追踪 / 校准视线 / 文字吸附 / 实时状态）；透明度 · 模糊 · 阴影三个滑块（**专注开启时滑块隐藏**，改由任务态与透镜接管） |
 
 <img width="841" height="667" alt="image" src="https://github.com/user-attachments/assets/7d652c07-8344-4de3-abbd-75620375c0b6" />
 
@@ -143,6 +146,22 @@ scene 壁纸在捕获 / 完整档下的渲染优先级与回退链：
 - **沉浸下壁纸可交互**：网页 / 应用类壁纸的 iframe 被提到最前并接收鼠标事件，左缘保留 56px 给侧边栏 rail，因此侧边栏与圆灯仍可点。
 - **退出方式**：再点圆灯、按 `Esc`、或点击侧边栏内任意按钮。沉浸是临时视图态，**不写入持久化**——刷新后回到正常布局，不会"醒来发现聊天框不见了"。
 
+## 🪟 桌面悬浮球
+
+「视觉效果」卡片里的 **桌面悬浮球** 开关（Windows 专属，默认关，位于专注模式按钮左侧）。开启后，当 3080 页面不在前台时，桌面出现一个环形按钮：
+
+- **外观与侧边栏状态灯一致**：深色圆盘 + 3px 状态色环（绿 `#22c55e` 空闲 / 蓝 `#3b82f6` 有任务在跑 / 黄 `#eab308` 等待授权），随任务状态实时变色；尺寸随系统 DPI 缩放（100% 缩放下 40px，与侧边栏球同款观感）。
+- **单击即切回页面**：原生层用 UI Automation 在浏览器窗口里按标题匹配页签并 `SelectionItemPattern.Select()`，因此**同一个窗口里切到了别的页签**也能精确切回该页签，再把窗口带回前台。最小化的窗口会还原，**最大化的窗口保持最大化**（不会把窗口"强行窗口化"）。
+- **不打扰**：`WS_EX_TOOLWINDOW`（不进任务栏 / Alt+Tab 列表）、圆形 region + 分层透明、显示用 `SW_SHOWNOACTIVATE`（不抢焦点）、指针为手型。
+- **拖动记忆位置**：拖到哪存到哪（`~/.dsh/storages/we-sync-floater-pos.json`），下次直接出现在原位。
+- **主动收起**：右键或双击 = 临时收起，直到你下次回到 3080 页面才会重新出现（离开期间不会反复弹）。
+
+**实现方式**：新增原生程序 `bin/we-floater.exe`（约 310KB，Windows-only，Rust 源码 `native/we-capture/src/bin/we-floater.rs`，可用 `cargo build --release --bin we-floater` 重建）。进程由 node 半边**按需拉起**：页面隐藏才起进程挂球，回到前台 / 关闭页面立即收球并停进程（不常驻、不留桌面痕迹）；通信走 stdin 行协议（`show` / `hide` / `color` / `title` / `quit`），父进程退出即自毁，不留孤儿窗。页面侧经 `/we-sync/floater` 上报「开关 / 前后台 / 标题 / 状态色」，服务端按**页签 id 记账**（同一浏览器开多个 3080 页签时各自上报互不踩踏，有任一页签在前台就不挂球）。
+
+**「切到后台」的判定**：页签被切走或浏览器最小化（`visibilitychange`），以及整个窗口被其他应用压住 / Alt+Tab 走开（`window blur`，400ms 防抖以避免系统小提示条抢焦点时闪一下）；回到前台（页签转可见 / 窗口重新获得焦点）即时收球。
+
+**已知限制**：仅 Windows；依赖浏览器窗口类与页签标题可被 UIA 读到（Chrome / Edge / Firefox 实测可用）。
+
 ## 🚀 安装
 
 > 前置：兼容 DSH Web `0.1.0-rc.6` 及以上（已在 `0.1.5` 验证，0.1.2 的破坏性变更已适配，剩余限制见下方「已知问题」），以 `dsh --profile web` 运行。
@@ -155,7 +174,7 @@ scene 壁纸在捕获 / 完整档下的渲染优先级与回退链：
 | 🔵 **rc（稳定版本）** | 适配 harness 为 rc 架构的推荐版本，新功能适配较慢 | `dsh plugin --profile web add dsh-wallpaper_share@rc010` |
 | 🟡 **test（测试版本）** | 用于测试的版本，可能有未完成功能 | `dsh plugin --profile web add dsh-wallpaper_share@test` |
 
-> 当前版本：**`26.9.12-rc`**（GitHub `main` 分支）。近期版本带来：壁纸库「管理」多选批量卸载、应用启动器卡片化简为「详细」、面板三页滚动（含占位的「dwp创作」）、宿主输入框按页显隐、**DWP 时钟变量**与**纹理分档**（预览/捕获用低清、增强/完整用高清）；本 rc 移除百度网盘分享链接支持（云盘分享仅保留 139）并适配 harness `0.1.5`。
+> 当前版本：**`26.9.13`**（GitHub `main` 分支）。本次带来 **桌面悬浮球**（Windows：页面切到后台 / 浏览器最小化时，桌面出现一个与侧边栏状态灯同款的环形按钮，单击即切回 3080 页面，可拖动记忆位置）；近期版本还带来：壁纸库「管理」多选批量卸载、应用启动器卡片化简为「详细」、面板三页滚动（含占位的「dwp创作」）、宿主输入框按页显隐、**DWP 时钟变量**与**纹理分档**（预览/捕获用低清、增强/完整用高清）；`26.9.12-rc` 移除百度网盘分享链接支持（云盘分享仅保留 139）并适配 harness `0.1.5`。
 
 ### 🔧 其他安装方式
 
@@ -178,8 +197,8 @@ dsh plugin --profile web add github:YRN-playmaker/dsh-wallpaper_share
 #   从 GitHub 安装（仓库自带预构建 lib/，不需要构建许可；main = 最新档）
 dsh plugin --profile web add dsh-wallpaper_share
 #   从 npm 安装（默认 = latest 最新档）
-dsh plugin --profile web add ./dsh-wallpaper_share-26.9.12-rc.tgz
-#   本地 tarball 安装（26.9.12-rc）
+dsh plugin --profile web add ./dsh-wallpaper_share-26.9.13.tgz
+#   本地 tarball 安装（26.9.13）
 dsh plugin --profile web add github:YRN-playmaker/dsh-wallpaper_share#test
 #   从 GitHub 安装 test 分支（测试档，功能最新但不稳定；正式取 main）
 ```
@@ -249,11 +268,13 @@ dsh plugin --profile web add github:YRN-playmaker/dsh-wallpaper_share#test
 
 - `src/index.ts` — Node 半：WE 状态轮询、HTTP 路由、scene renderer 子进程管理、壁纸库扫描
 - `src/scene/` — SceneAdapter 模块（协议 / 能力探测 / renderer 进程 / WebSocket / 回退 / PKGV0001 解析 / SceneModel 图层模型 / .tex 解码 / puppet mdl 解析）
-- `src/client/` — 浏览器半（主题覆盖 / 背景层 / SceneCanvas / SceneModelRenderer 子集渲染器 / ParticleRuntime / GazeLens 眼动 / 专注透镜 / 沉浸模式 / wallpaper_share 面板 / library-model.ts 壁纸库分类与详情格式化）
+- `src/client/` — 浏览器半（主题覆盖 / 背景层 / SceneCanvas / SceneModelRenderer 子集渲染器 / ParticleRuntime / GazeLens 眼动 / 专注透镜 / 沉浸模式 / wallpaper_share 面板 / library-model.ts 壁纸库分类与详情格式化 / floater-report.ts 桌面悬浮球上报）
 - `src/workspace/` — 工作区脉搏（文件系统快照差分 + 内置 DWP 组包器；`_dev/make-workspace-pulse.mjs` 为手动打包脚本）
 - `src/daynight/` — 「DeepSeek 日夜」组包器（两张全画布 PNG + `$night_alpha` 分层；`_dev/make-daynight-dwp.mjs` 打包并装入本地市场，`_dev/verify-daynight-dwp.mjs` 静态校验 + 昼夜链路自检）
-- `native/we-capture/` — Rust 原生捕获器源码（Windows Graphics Capture → JPEG）
+- `src/floater/` — 桌面悬浮球 Node 半（`hub.ts` 多页签状态机 / `manager.ts` 子进程管理 / `routes.ts` `/we-sync/floater`）
+- `native/we-capture/` — Rust 原生源码（`main.rs` Windows Graphics Capture → JPEG；`src/bin/we-floater.rs` 桌面悬浮球窗口）
 - `bin/we-capture.exe` — 随包发布的原生捕获器（Windows-only）
+- `bin/we-floater.exe` — 随包发布的桌面悬浮球（Windows-only，按需拉起）
 - `docs/` — 格式规范与技术文档（`scene-format.md` / `scene-fallback.md` / `tex-format-findings.md` / `mdl-skinning-findings.md`）
 - `tools/scene-renderer/` — 内置参考 renderer（实现协议契约；真·原生 renderer 以同协议替换之）
 - `lib/` — 预构建产物（用户侧零构建）
@@ -265,6 +286,7 @@ dsh plugin --profile web add github:YRN-playmaker/dsh-wallpaper_share#test
 ### 环境限制
 
 - **预览图不显示**：市场卡片缩略图指向 `raw.githubusercontent.com`，当前环境不可达。图片加载失败后 `onError` 隐藏显示。
+- **桌面悬浮球仅 Windows**：需要 Windows 宿主且随包携带 `bin/we-floater.exe`（非 Windows 或缺文件时面板开关自动置灰）。
 - **WE 安装目录不存在**：自动检测到目录但不存在时壁纸同步不可用（市场功能不受影响），可在 `CONFIG.wallpaperEngineDir` 手动指定。
 
 ## 📄 License
@@ -284,6 +306,7 @@ GPL-3.0
 - [🖼️ Scene Rendering & Fallback](#-scene-rendering--fallback)
 - [🔍 Focus Mode & Eye Tracking](#-focus-mode--eye-tracking)
 - [🌌 Immersive Mode & Task Indicator](#-immersive-mode--task-indicator)
+- [🪟 Desktop Orb](#-desktop-orb)
 - [🚀 Installation](#-installation)
 - [⚙️ Configuration](#-configuration)
 - [📈 Performance & Known Limitations](#-performance--known-limitations)
@@ -320,6 +343,8 @@ WE must be running with a wallpaper applied; otherwise the background stays empt
 
 - **Sidebar immersive mode**: one click hides the session header, transcript and composer so the wallpaper owns the view; web / app wallpapers become directly mouse-interactive under immersion (see [Immersive Mode](#-immersive-mode--task-indicator))
 
+- **Desktop orb** (Windows, off by default): when enabled, a ring button matching the sidebar status light appears on the desktop whenever you switch away from the tab, minimize the browser, or move to another app (colour synced: green idle / blue running / yellow awaiting approval); **a single click brings the `http://127.0.0.1:3080/` page back to the front** (it even selects the exact tab when you switched tabs inside the same window); drag to move it and the position is remembered, right-click / double-click to dismiss temporarily (see [Desktop Orb](#-desktop-orb))
+
 - **Focus mode**: overlays a center-clear, edge-blurred reading window on the wallpaper to focus on the task and improve text readability; follows the mouse by default, or uses the webcam to infer the gaze point so the lens follows your eyes; 9-point calibration, text-line snap, anti-jitter
 <img width="426" height="240" alt="Video Project 29" src="https://github.com/user-attachments/assets/57daf64c-ff2b-40c7-aeef-73cac46c4c2b" />
 
@@ -331,7 +356,7 @@ WE must be running with a wallpaper applied; otherwise the background stays empt
 | Card | Contents |
 | --- | --- |
 | **Wallpaper status** | Wallpaper name (the **plugin version sits at the right edge of the title row** and links to the GitHub repo); the subtitle below carries diagnostics only — for scene wallpapers it shows the active render path (`Scene · preview image / capture live 30fps / browser model render / fallback: <reason>`), a hint when no wallpaper is applied, and takes no row at all for other types; a "background monitor" dropdown appears with multiple monitors; the `⏻` button has three states — sync on / off / paused (DWP) |
-| **Visual effects** | The 3-mode segmented control; the focus-mode button with its flyout (eye tracking / calibrate gaze / text-line snap / live status); opacity · blur · shadow sliders (**hidden while focus mode is on** — task state and the lens take over) |
+| **Visual effects** | The 3-mode segmented control; the **Desktop orb** toggle (left of the focus button, off by default; greyed out on non-Windows or when `bin/we-floater.exe` is missing); the focus-mode button with its flyout (eye tracking / calibrate gaze / text-line snap / live status); opacity · blur · shadow sliders (**hidden while focus mode is on** — task state and the lens take over) |
 
 <img width="841" height="667" alt="image" src="https://github.com/user-attachments/assets/7d652c07-8344-4de3-abbd-75620375c0b6" />
 
@@ -400,6 +425,22 @@ When the sidebar is **collapsed**, a 34px round light appears on the left edge (
 - **The wallpaper becomes interactive**: web / app wallpaper iframes are raised and take pointer events, while the leftmost 56px stays free for the sidebar rail, so the sidebar and the lamp remain clickable.
 - **Exiting**: click the lamp again, press `Esc`, or click any button inside the sidebar. Immersive is transient view state and is **never persisted** — a refresh returns to a normal layout instead of hiding your chat box.
 
+## 🪟 Desktop Orb
+
+The **Desktop orb** toggle in the "Visual effects" card (Windows only, off by default, sitting to the left of the focus-mode button). Once enabled, a ring button shows up on the desktop whenever the 3080 page is not in the foreground:
+
+- **Looks like the sidebar status light**: a dark disc plus a 3px status ring (green `#22c55e` idle / blue `#3b82f6` running / yellow `#eab308` awaiting approval) that recolours live with task state; it scales with the system DPI (40px at 100%).
+- **One click returns to the page**: natively it matches the tab by title through UI Automation and calls `SelectionItemPattern.Select()`, so it lands on the right tab **even when you switched to another tab in the same window**, then raises the window. A minimized window is restored; **a maximized window stays maximized** (it never forces the browser back into windowed mode).
+- **Unobtrusive**: `WS_EX_TOOLWINDOW` (no taskbar / Alt+Tab entry), circular region with layered alpha, shown via `SW_SHOWNOACTIVATE` so it never steals focus, hand cursor on hover.
+- **Remembers where you dragged it** (`~/.dsh/storages/we-sync-floater-pos.json`).
+- **Dismiss on purpose**: right-click or double-click hides it until you next return to the 3080 page (it will not keep popping up while you are away).
+
+**How it works**: a native helper `bin/we-floater.exe` (~310KB, Windows-only; Rust source in `native/we-capture/src/bin/we-floater.rs`, rebuildable with `cargo build --release --bin we-floater`). The node half spawns it **on demand**: the process only exists while the page is in the background — it starts, shows the orb, and is torn down as soon as you come back or close the page (nothing resident, no desktop leftovers). They talk over a stdin line protocol (`show` / `hide` / `color` / `title` / `quit`), and the helper self-destructs when its parent exits, so no orphan windows are left behind. The page reports "toggle / foreground state / title / status colour" to `/we-sync/floater`, and the server keeps **one record per tab id** — multiple 3080 tabs report independently without stomping on each other, and the orb only appears when *every* tab is in the background.
+
+**"Went to the background" means**: the tab was switched away or the browser was minimized (`visibilitychange`), or the whole window was covered by another app / you Alt-Tabbed away (`window blur`, debounced by 400ms so a transient focus steal does not flash the orb). Coming back (tab visible again, or the window regains focus) retracts it immediately.
+
+**Known limits**: Windows only; requires the browser window class and tab titles to be readable via UIA (verified with Chrome / Edge / Firefox).
+
 ## 🚀 Installation
 
 > Requires DSH Web `0.1.0-rc.6` or newer (verified on `0.1.5`; the 0.1.2 breaking changes are adapted — remaining limits are listed in the "Known Issues" section below), run with `dsh --profile web`.
@@ -412,7 +453,7 @@ When the sidebar is **collapsed**, a 34px round light appears on the left edge (
 | 🔵 **rc (stable)** | Recommended build for a Harness on the rc architecture; new features are adapted more slowly | `dsh plugin --profile web add dsh-wallpaper_share@rc010` |
 | 🟡 **test (testing)** | For testing only; may contain unfinished features | `dsh plugin --profile web add dsh-wallpaper_share@test` |
 
-> Current version: **`26.9.12-rc`** (GitHub `main` branch). Recent releases brought: library "Manage" multi-select bulk uninstall, launcher cards reduced to a "Details" button, a third scrolling page (a placeholder "DWP Studio"), the host composer hidden per page, plus **DWP clock variables** and **texture tiers** (Eco/Perf = low-res, Enhanced = high-res); this rc removes Baidu Netdisk share-link support (cloud-drive shares are 139-only) and adapts to harness `0.1.5`.
+> Current version: **`26.9.13`** (GitHub `main` branch). This release adds the **Desktop orb** (Windows: a ring button matching the sidebar status light appears when the page goes to the background or the browser is minimized — one click returns to the 3080 page, drag to move and it is remembered). Recent releases also brought: library "Manage" multi-select bulk uninstall, launcher cards reduced to a "Details" button, a third scrolling page (a placeholder "DWP Studio"), the host composer hidden per page, plus **DWP clock variables** and **texture tiers** (Eco/Perf = low-res, Enhanced = high-res). `26.9.12-rc` removed Baidu Netdisk share-link support (cloud-drive shares are 139-only) and adapted to harness `0.1.5`.
 
 ### 🔧 Other install methods
 
@@ -435,8 +476,8 @@ dsh plugin --profile web add github:YRN-playmaker/dsh-wallpaper_share
 #   install from GitHub (repo ships prebuilt lib/, no build permission needed; main = latest tier)
 dsh plugin --profile web add dsh-wallpaper_share
 #   install from npm (default = latest tier)
-dsh plugin --profile web add ./dsh-wallpaper_share-26.9.12-rc.tgz
-#   install from a local tarball (26.9.12-rc)
+dsh plugin --profile web add ./dsh-wallpaper_share-26.9.13.tgz
+#   install from a local tarball (26.9.13)
 dsh plugin --profile web add github:YRN-playmaker/dsh-wallpaper_share#test
 #   install the test branch from GitHub (test tier — newest features, may be unstable; use main for the release)
 ```
@@ -506,11 +547,13 @@ dsh plugin --profile web add github:YRN-playmaker/dsh-wallpaper_share#test
 
 - `src/index.ts` — node half: WE polling, HTTP routes, scene renderer subprocess, library scan
 - `src/scene/` — SceneAdapter modules (protocol / capability probe / renderer process / WebSocket / fallback / PKGV0001 parsing / SceneModel layer model / .tex decoding / puppet mdl parsing)
-- `src/client/` — browser half (theme overrides / background layers / SceneCanvas / SceneModelRenderer / ParticleRuntime / GazeLens / focus lens / immersive mode / wallpaper_share panel / library-model.ts library categories & detail formatting)
+- `src/client/` — browser half (theme overrides / background layers / SceneCanvas / SceneModelRenderer / ParticleRuntime / GazeLens / focus lens / immersive mode / wallpaper_share panel / library-model.ts library categories & detail formatting / floater-report.ts desktop-orb reporting)
 - `src/workspace/` — Workspace Pulse (filesystem snapshot diffing + built-in DWP packer; `_dev/make-workspace-pulse.mjs` is the manual packing script)
 - `src/daynight/` — "DeepSeek Day & Night" packer (two full-canvas PNGs layered by `$night_alpha`; `_dev/make-daynight-dwp.mjs` packs + installs into the local market, `_dev/verify-daynight-dwp.mjs` static validation + day/night chain self-check)
-- `native/we-capture/` — Rust native capture renderer source (Windows Graphics Capture → JPEG)
+- `src/floater/` — desktop orb node half (`hub.ts` multi-tab state machine / `manager.ts` subprocess management / `routes.ts` `/we-sync/floater`)
+- `native/we-capture/` — Rust native source (`main.rs` Windows Graphics Capture → JPEG; `src/bin/we-floater.rs` desktop orb window)
 - `bin/we-capture.exe` — shipped native capture renderer (Windows-only)
+- `bin/we-floater.exe` — shipped desktop orb (Windows-only, spawned on demand)
 - `docs/` — format & implementation docs (`scene-format.md` / `scene-fallback.md` / `tex-format-findings.md` / `mdl-skinning-findings.md`)
 - `tools/scene-renderer/` — built-in reference renderer (implements the protocol contract; real renderers replace it)
 - `lib/` — prebuilt artifacts (zero build for users)
@@ -523,6 +566,7 @@ dsh plugin --profile web add github:YRN-playmaker/dsh-wallpaper_share#test
 
 - **Market thumbnails do not load**: catalog thumbnails point at `raw.githubusercontent.com`, unreachable in some environments; the `onError` handler hides them.
 - **Wallpaper Engine directory missing**: when auto-detection resolves to a non-existent directory, wallpaper sync is unavailable (the market is unaffected) — set `CONFIG.wallpaperEngineDir` manually.
+- **Desktop orb is Windows-only**: it needs a Windows host plus the bundled `bin/we-floater.exe`; elsewhere (or when the file is missing) the panel toggle greys itself out.
 
 ## 📄 License
 

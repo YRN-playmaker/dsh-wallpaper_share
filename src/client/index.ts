@@ -15,6 +15,7 @@ import { DwpBackgroundLayer } from './dwp-background.ts'
 import { applyDwp, unapplyDwp, fetchApplied } from './market-api.ts'
 import { pulseVars, PULSE_DWP_ID, type PulseChange } from './pulse-vars.ts'
 import { clockSig, clockVars } from './clock-vars.ts'
+import { startFloaterReporter, type FloaterReporter } from './floater-report.ts'
 
 export const inject = ['slots', 'theme']
 
@@ -76,6 +77,9 @@ export interface WeSyncSettings {
   gazeEnabled: boolean
   /** 文字行锁定：眼动时把注视点 Y 锁到最近文字行中心（X 跟随），消除上下抖动 */
   gazeSnapText: boolean
+  /** 桌面悬浮球（仅 Windows + we-floater.exe 可用时生效）：本页被切到后台 / 浏览器最小化时，
+   *  桌面出现一个与侧边栏球同款的环形按钮（颜色随状态），单击切回本页 */
+  floater: boolean
   /** 沉浸模式：隐藏对话 chrome（上边栏 + 输入框），并把 web 壁纸 iframe 置顶解锁鼠标交互 */
   immersive: boolean
   /** 是否有待用户授权的请求（黄色状态信号） */
@@ -98,7 +102,7 @@ export function effectiveVisuals(): { panelAlpha: number; blur: number; shadow: 
 }
 
 /** 出厂默认值：无存档、存档损坏或字段越界时的回退基线。 */
-export const DEFAULT_SETTINGS: WeSyncSettings = { enabled: true, panelAlpha: 72, blur: 6, shadow: 30, monitor: '', focus: false, taskActive: false, renderMode: 'perf', gazeEnabled: false, gazeSnapText: true, immersive: false, approvalPending: false, dwpMounted: null }
+export const DEFAULT_SETTINGS: WeSyncSettings = { enabled: true, panelAlpha: 72, blur: 6, shadow: 30, monitor: '', focus: false, taskActive: false, renderMode: 'perf', gazeEnabled: false, gazeSnapText: true, floater: false, immersive: false, approvalPending: false, dwpMounted: null }
 
 /** 包内单例 store：apply 循环更新，面板组件订阅渲染。 */
 export const store = {
@@ -110,8 +114,13 @@ export const store = {
   /** 用户偏好（同步开关 / 渲染模式 / 显示器锁 / 透明度·模糊·阴影 / 专注·眼动）经 localStorage 持久化：
    *  写即存，刷新或重启 DSH 后自动恢复。实现见 settings.ts —— 包一层 Proxy，所有
    *  `store.settings.x = v` 的既有赋值点无需改动即自动落盘；派生态（taskActive /
-   *  approvalPending）与临时视图态（immersive）不在落盘白名单内。 */
-  settings: createPersistentSettings(DEFAULT_SETTINGS),
+   *  approvalPending）与临时视图态（immersive）不在落盘白名单内。
+   *  跨页签改动（storage 事件）就地同步并回调：notify 刷面板，syncFloater 让本页面立刻
+   *  上报新的 enabled 值——不然旧页签的内存态会把别人挂起的球误拆。 */
+  settings: createPersistentSettings(DEFAULT_SETTINGS, () => {
+    store.notify()
+    store.actions.syncFloater()
+  }),
   listeners: new Set<() => void>(),
   actions: {
     applyTheme: (): void => {},
@@ -120,6 +129,8 @@ export const store = {
     repoll: (): void => {},
     mountDwp: async (_id: string): Promise<boolean> => false,
     unmountDwp: async (): Promise<void> => {},
+    /** 悬浮球开关变更后立即重发 sync（真实现在下方 ctx.effect 里覆盖） */
+    syncFloater: (): void => {},
   },
   subscribe(fn: () => void): () => void {
     store.listeners.add(fn)
@@ -292,6 +303,42 @@ export function apply(ctx: CordisCtx): void {
 
   const STATUS_COLORS = { approval: '#eab308', running: '#3b82f6', idle: '#22c55e' }
 
+  // 页签身份：sessionStorage 存一份，刷新不变 —— 服务端按页记账（多页签互不踩踏），
+  // 刷新后新 reporter 用同一个 id 覆盖旧记录而不是留下要等 TTL 才过期的孤儿。
+  const floaterPageId = (): string => {
+    try {
+      let id = sessionStorage.getItem('we-sync.floater-page')
+      if (id === null) {
+        id = Math.random().toString(36).slice(2) + Date.now().toString(36)
+        sessionStorage.setItem('we-sync.floater-page', id)
+      }
+      return id
+    } catch { return 'legacy' /* 隐私模式等拿不到存储：退回旧版共享桶 */ }
+  }
+
+  // —— 桌面悬浮球上报器：可见性/标题/状态色 → node 半（纯实现与测试见 floater-report.ts）。
+  //   enabled 关闭时上报器只发轻量 sync（node 半收到即 teardown），零桌面痕迹。
+  let floaterReporter: FloaterReporter | null = null
+  try {
+    floaterReporter = startFloaterReporter({
+      visibilityState: () => (document.visibilityState === 'hidden' ? 'hidden' : 'visible'),
+      title: () => document.title,
+      pageId: floaterPageId,
+      onFocus: (fn) => { window.addEventListener('focus', fn); return () => window.removeEventListener('focus', fn) },
+      onBlur: (fn) => { window.addEventListener('blur', fn); return () => window.removeEventListener('blur', fn) },
+      onVisibilityChange: (fn) => { document.addEventListener('visibilitychange', fn); return () => document.removeEventListener('visibilitychange', fn) },
+      onPageHide: (fn) => { window.addEventListener('pagehide', fn); return () => window.removeEventListener('pagehide', fn) },
+      setInterval: (fn, ms) => window.setInterval(fn, ms),
+      clearInterval: (handle) => window.clearInterval(handle),
+      setTimeout: (fn, ms) => window.setTimeout(fn, ms),
+      clearTimeout: (handle) => window.clearTimeout(handle),
+      send: (url, body, keepalive) => {
+        void fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, keepalive }).catch(() => {})
+      },
+    }, () => store.settings.floater)
+    store.actions.syncFloater = () => floaterReporter?.syncNow()
+  } catch { /* 无 DOM（测试环境）等情况不影响页面其余部分 */ }
+
   function syncStatus(): void {
     // 优先级：待授权(黄) > 任务进行中(蓝) > 空闲(绿)
     const approval = document.querySelector('[data-approval-key]') !== null
@@ -301,6 +348,7 @@ export function apply(ctx: CordisCtx): void {
     }
     const color = approval ? STATUS_COLORS.approval : (store.settings.taskActive ? STATUS_COLORS.running : STATUS_COLORS.idle)
     orbBtn.style.borderColor = color
+    floaterReporter?.pingColor(color.slice(1)) // 悬浮球环色与侧边球同步（hex 无 #）
     orbBtn.title = approval ? '等待授权' : (store.settings.taskActive ? '任务进行中' : '空闲')
     // 仅在侧边栏收起时显示球形按钮（opacity/visibility 过渡动画）
     const sidebarCollapsed = document.querySelector('[data-sidebar-collapsed]') !== null
@@ -760,6 +808,9 @@ export function apply(ctx: CordisCtx): void {
     panelStyleTag.remove()
     immersiveStyleTag.remove()
     orbBtn.remove()
+    floaterReporter?.dispose()
+    floaterReporter = null
+    store.actions.syncFloater = () => {}
     destroyFocusLens()
     statusObserver.disconnect()
     document.removeEventListener('keydown', onImmersiveKey)

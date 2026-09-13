@@ -32,6 +32,8 @@ import { buildPulsePackage, PULSE_ID, PULSE_VERSION } from './workspace/pack.ts'
 import { LauncherInstaller, resolveEntryInside, isLauncherInternalDir } from './launcher/installer.ts'
 import { createLauncherRoutes } from './launcher/routes.ts'
 import { Yun139Client, fileCredStore } from './launcher/yun139.ts'
+import { FloaterManager } from './floater/manager.ts'
+import { createFloaterRoutes } from './floater/routes.ts'
 
 /** 最小化的 Cordis 上下文结构（独立构建不依赖 @deepseek-ai/cordis 的类型包） */
 interface CordisCtx {
@@ -1216,6 +1218,18 @@ export function apply(ctx: CordisCtx): void {
     saveAppDirs()
     appsCache = null
   }
+
+  // —— 桌面悬浮球（we-floater.exe，Windows 专属）：本页被切到后台 / 最小化时，桌面出现一个
+  //    与侧边栏球同款的环形按钮（颜色随状态），单击由 exe 经 UIA 把本页签重新带回前台。
+  //    client 半经 /we-sync/floater sync 上报（enabled/可见性/标题/颜色），进程细节见 src/floater/。
+  const floater = new FloaterManager({
+    posFile: normalize(homedir() + '/.dsh/storages/we-sync-floater-pos.json'),
+    log: (m) => console.log('[we-sync] ' + m),
+  })
+  for (const route of createFloaterRoutes({ hub: floater.hub, supported: () => floater.supported })) {
+    disposers.push(webServer.register(route))
+  }
+  disposers.push(() => floater.dispose())
 
   disposers.push(webServer.register({
     kind: 'exact',

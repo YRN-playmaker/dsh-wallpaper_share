@@ -19,7 +19,7 @@ export const SETTINGS_STORAGE_KEY = 'we-sync.settings'
 /** 落盘字段白名单；不在表内的字段（派生态 / 临时态）写入不触发保存，也不会被存下 */
 const PERSISTED_KEYS: readonly (keyof WeSyncSettings)[] = [
   'enabled', 'panelAlpha', 'blur', 'shadow', 'monitor', 'focus',
-  'renderMode', 'gazeEnabled', 'gazeSnapText',
+  'renderMode', 'gazeEnabled', 'gazeSnapText', 'floater',
 ]
 
 const asNumber = (v: unknown, fallback: number, min: number, max: number): number =>
@@ -45,6 +45,7 @@ export function sanitizeSettings(raw: unknown, d: WeSyncSettings): WeSyncSetting
     // 眼动是专注的子模式：专注没开就不可能存在眼动
     gazeEnabled: focus && asBoolean(o.gazeEnabled, d.gazeEnabled),
     gazeSnapText: asBoolean(o.gazeSnapText, d.gazeSnapText),
+    floater: asBoolean(o.floater, d.floater),
     // 派生态 / 临时态：永远从默认值起，不接受存档
     taskActive: d.taskActive,
     approvalPending: d.approvalPending,
@@ -66,8 +67,12 @@ export function readStoredSettings(defaults: WeSyncSettings): WeSyncSettings {
 /**
  * 生成「写即存」的设置对象：初始值来自存档，之后每次改动自动落盘。
  * 滑块拖动会高频触发写入，故合并成 250ms 的尾随写；页面隐藏 / 关闭前强制补一次，避免丢最后一次改动。
+ *
+ * onRemoteChange：跨页签同步 —— 另一个页签改了设置（storage 事件只在其他页签触发）时，
+ * 把新值就地写进本页面 target（绕开 Proxy 避免回写震荡）并回调，让面板镜像与悬浮球上报跟上
+ * （否则旧页签内存里 floater=false 会一直上报错误开关值，把别人挂起的球误拆——实测过的坑）。
  */
-export function createPersistentSettings(defaults: WeSyncSettings): WeSyncSettings {
+export function createPersistentSettings(defaults: WeSyncSettings, onRemoteChange?: () => void): WeSyncSettings {
   const target = readStoredSettings(defaults)
   let timer: number | null = null
 
@@ -87,6 +92,22 @@ export function createPersistentSettings(defaults: WeSyncSettings): WeSyncSettin
 
   window.addEventListener('pagehide', flush)
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flush() })
+
+  if (onRemoteChange !== undefined) {
+    window.addEventListener('storage', (e: StorageEvent) => {
+      if (e.key !== SETTINGS_STORAGE_KEY) return
+      let changed = false
+      try {
+        const next = readStoredSettings(defaults) as unknown as Record<string, unknown>
+        const rec = target as unknown as Record<string, unknown>
+        for (const key of PERSISTED_KEYS) {
+          const k = key as string
+          if (rec[k] !== next[k]) { rec[k] = next[k]; changed = true }
+        }
+      } catch { /* 坏存档忽略本轮，本页面继续用内存值 */ }
+      if (changed) onRemoteChange()
+    })
+  }
 
   return new Proxy(target, {
     set(obj, prop, value): boolean {
