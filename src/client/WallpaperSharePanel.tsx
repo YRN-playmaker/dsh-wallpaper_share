@@ -4,12 +4,13 @@ import { DwpEditorCard } from './DwpEditorCard.tsx'
  * 专注模式、渲染模式，以及透明度 / 模糊 / 阴影三个滑块（即时生效）。
  * 样式类名由 PANEL_CSS 在 apply 阶段注入，不依赖 CSS Modules。
  */
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ClipboardEvent } from 'react'
 import { store, PLUGIN_VERSION, PLUGIN_REPO_URL, type WeSyncInfo } from './index'
 import { startGaze, stopGaze, calibrate, onGazeStatus, hasCalibrationData, type GazeStatus } from './GazeLens.ts'
 import { fetchCatalog, fetchInstalled, buildCards, searchCards, collectTags, install, uninstall, type MarketEntry, type MarketCard } from './market-api.ts'
 import { fetchInstalled as fetchLauncherInstalled, installApp, uninstallApp, launchApp, setEntry, isValidHttpUrl, humanSize, get139Auth, set139Auth, getLauncherRoot, setLauncherRoot, type InstalledApp } from './launcher-api.ts'
 import { appsForSub, formatInstalledAt, launcherAppDir, matchLauncherRecord, partitionApps, type AppSub } from './library-model.ts'
+import { CONFIDENCE_AUTO, CONFIDENCE_LOW, parseInstallShareText } from './share-parser.ts'
 
 /* =========================================================================
  * 1. 国际化字典 (i18n Dictionary)
@@ -180,7 +181,7 @@ const DICT = {
     launcherTutorialPrep3Lead: '点击“',
     launcherTutorialPrep3Tail: '”（引号内文本为链接）',
     launcherTutorialUseTitle: '日常使用的流程：',
-    launcherTutorialUse1: '1. 在对话框内填入你的下载链接、解压密码、提取码、名称',
+    launcherTutorialUse1: '1. 把分享内容整段粘贴到上方输入框（自动解析），或直接在对话框内填入下载链接、解压密码、提取码、名称',
     launcherTutorialUse2: '2. 点击「下载安装」',
     launcherTutorialUse3: '3. 看到应用栏出现应用后，单击启动应用（每次启动有确认弹窗）',
     launcherAuthPlaceholder: 'Basic xxxx… 或 basic:手机号:token',
@@ -205,6 +206,22 @@ const DICT = {
     launcherShareFail: '分享解析失败（详情见括号内服务端信息）',
     launcherShareCode139: '该 139 分享需要提取码：请在提取码框填入后重试',
     launcherShareCode139Wrong: '139 提取码错误，请核对后重试',
+    // Smart Paste：整段分享文本 → 自动解析成下面四个字段（不替代手动填写）
+    launcherSmartPasteLabel: '粘贴链接或完整分享内容',
+    launcherSmartPastePlaceholder: '可直接粘贴完整分享文本。系统会自动识别链接、提取码、解压密码和启动文件。',
+    launcherSmartPasteParse: '解析',
+    launcherSmartPasteReparse: '重新解析',
+    launcherSmartPasteClear: '清空',
+    launcherSmartPasteDone: '已识别 {n} 项信息：{items}（可继续手动修改）',
+    launcherSmartPasteLow: '；其中 {items} 为低置信度，请核对',
+    launcherSmartPasteNone: '未从粘贴内容中识别到安装信息，请手动填写下方字段',
+    launcherSmartPasteKept: '识别到信息，但你已手动填写过，未覆盖（点「解析」按钮可覆盖）',
+    launcherSmartPasteKeptDetail: '已识别 {items}，但你已手动填写过，未覆盖（点「解析」按钮可覆盖）',
+    launcherSmartPasteSkipNote: '；{items} 保留你的手填内容（点「解析」按钮可覆盖）',
+    launcherFieldUrl: '链接',
+    launcherFieldCode: '提取码',
+    launcherFieldPwd: '解压密码',
+    launcherFieldExe: '启动文件',
     launcherInstall: '下载安装',
     launcherInstalling: '下载安装中…',
     launcherEmpty: '还没有安装的应用。粘贴直链后点「下载安装」。',
@@ -396,7 +413,7 @@ const DICT = {
     launcherTutorialPrep3Lead: 'Click “',
     launcherTutorialPrep3Tail: '” (the quoted text is the link)',
     launcherTutorialUseTitle: 'Daily usage:',
-    launcherTutorialUse1: '1. Fill in the download link, archive password, share passcode and title in the input row',
+    launcherTutorialUse1: '1. Paste the whole share post into the box above (auto-parsed), or fill in link, archive password, passcode and title directly',
     launcherTutorialUse2: '2. Click "Install"',
     launcherTutorialUse3: '3. Once the app tile appears in the library, click it to launch (a confirm dialog shows each time)',
     launcherAuthPlaceholder: 'Basic xxxx… or basic:phone:token',
@@ -421,6 +438,22 @@ const DICT = {
     launcherShareFail: 'Share resolve failed (see server detail in brackets)',
     launcherShareCode139: 'This 139 share needs a passcode — enter it in the passcode box and retry',
     launcherShareCode139Wrong: 'Wrong 139 passcode — check it and retry',
+    // Smart Paste: whole share post → the four fields below (does not replace manual input)
+    launcherSmartPasteLabel: 'Paste a link or the full share text',
+    launcherSmartPastePlaceholder: 'Paste the whole share post. The link, passcode, archive password and launcher file are detected automatically.',
+    launcherSmartPasteParse: 'Parse',
+    launcherSmartPasteReparse: 'Re-parse',
+    launcherSmartPasteClear: 'Clear',
+    launcherSmartPasteDone: 'Detected {n} item(s): {items} (you can still edit them below)',
+    launcherSmartPasteLow: '; {items} is low confidence — please double-check',
+    launcherSmartPasteNone: 'No install info detected in the pasted text — fill the fields manually',
+    launcherSmartPasteKept: 'Info detected, but your manual input was kept (click "Parse" to overwrite)',
+    launcherSmartPasteKeptDetail: 'Detected {items}, but your manual input was kept (click "Parse" to overwrite)',
+    launcherSmartPasteSkipNote: '; kept your manual input for {items} (click "Parse" to overwrite)',
+    launcherFieldUrl: 'link',
+    launcherFieldCode: 'passcode',
+    launcherFieldPwd: 'archive password',
+    launcherFieldExe: 'launcher file',
     launcherInstall: 'Download & Install',
     launcherInstalling: 'Downloading…',
     launcherEmpty: 'No apps installed yet. Paste a direct link and click "Download & Install".',
@@ -866,6 +899,19 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
   const [lPwdErr, setLPwdErr] = useState(false) // 解压密码语义错误时高亮密码框
   const [lCode, setLCode] = useState('') // 139 分享提取码（选填）：只用于分享链接校验
   const [lCodeErr, setLCodeErr] = useState(false) // 提取码语义错误时高亮提取码框
+  // Smart Paste（智能粘贴）：整段分享文本 → 解析成上面四个字段
+  const [lPaste, setLPaste] = useState('') // 原始粘贴文本（保留原文，用户可继续编辑）
+  const [lPasteHint, setLPasteHint] = useState('') // 「已识别 N 项信息」提示
+  const [lParsed, setLParsed] = useState(false) // 解析过一次 → 按钮变「重新解析」（可强制覆盖）
+  /** 用户手改过的字段：普通解析不覆盖它们，只有「重新解析」强制覆盖（见 runSmartParse） */
+  const lManual = useRef({ url: false, title: false, pwd: false, code: false })
+  /* Smart Paste 兜底自动解析：粘贴（onPaste）之外还有拖拽放入 / 中键粘贴 / 输入等路径不会触发
+   * paste 事件，这里按"停止输入 500ms"补一次解析（force=false，不覆盖手改字段）。 */
+  useEffect(() => {
+    if (lPaste.trim() === '') return
+    const id = window.setTimeout(() => { runSmartParse(lPaste, false); setLParsed(true) }, 500)
+    return () => { window.clearTimeout(id) }
+  }, [lPaste])
   const [lAuthOpen, setLAuthOpen] = useState(false) // 139 登录态设置行展开
   const [lAuth, setLAuth] = useState('') // 139 Authorization 输入
   const [lAuthPresent, setLAuthPresent] = useState('') // 已配置的掩码账号（'' = 未配置）
@@ -1303,6 +1349,79 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
     } catch { return '' }
   }
 
+  /* ── Smart Paste：把整段分享文本解析进四个字段 ────────────────────────
+   * 数据流：原文（保留在文本框里）→ parseInstallShareText（纯函数，utils 层）
+   *        → 按置信度决定是否填入 → 提示"已识别 N 项"。
+   * 覆盖规则（需求第十四节）：被动解析（粘贴 / 停止输入自动解析）不动用户手改过的字段
+   * （lManual）；点「解析 / 重新解析」= 显式操作，直接覆盖（force=true）。
+   * 置信度规则（需求第十二节）：< 0.5 不填；[0.5, 0.8) 填入但提示"低置信度"；
+   *                              >= 0.8 直接填入。 */
+  const runSmartParse = (raw: string, force: boolean): void => {
+    if (raw.trim() === '') { setLPasteHint(''); return }
+    const info = parseInstallShareText(raw)
+    const manual = lManual.current
+    const filled: string[] = []
+    const low: string[] = []
+    const skipped: string[] = []
+    const put = (
+      label: string,
+      value: string | undefined,
+      confidence: number,
+      dirty: boolean,
+      apply: (v: string) => void,
+    ): boolean => {
+      if (value === undefined || confidence < CONFIDENCE_LOW) return false
+      if (!force && dirty) { skipped.push(label); return false }
+      apply(value)
+      filled.push(label)
+      if (confidence < CONFIDENCE_AUTO) low.push(label)
+      return true
+    }
+    put(t.launcherFieldUrl, info.sourceUrl, info.confidence.sourceUrl, manual.url, setLUrl)
+    const setCode = put(t.launcherFieldCode, info.shareCode, info.confidence.shareCode, manual.code, setLCode)
+    const setPwd = put(t.launcherFieldPwd, info.archivePassword, info.confidence.archivePassword, manual.pwd, setLPwd)
+    put(t.launcherFieldExe, info.executableName, info.confidence.executableName, manual.title, setLTitle)
+    if (force) lManual.current = { url: false, title: false, pwd: false, code: false }
+    // 换过值就清掉上次安装失败留下的红框（"密码错"针对的是旧值）
+    if (setPwd) setLPwdErr(false)
+    if (setCode) setLCodeErr(false)
+    if (filled.length === 0) {
+      // 关键反馈：识别到了但因为你手改过而没覆盖 → 必须点名是哪一项，否则看起来就是"没解析出来"
+      setLPasteHint(info.matched > 0
+        ? (skipped.length > 0
+            ? t.launcherSmartPasteKeptDetail.replace('{items}', skipped.join(' / '))
+            : t.launcherSmartPasteKept)
+        : t.launcherSmartPasteNone)
+      return
+    }
+    let hint = t.launcherSmartPasteDone
+      .replace('{n}', String(filled.length))
+      .replace('{items}', filled.join(' / '))
+    if (low.length > 0) hint += t.launcherSmartPasteLow.replace('{items}', low.join(' / '))
+    if (skipped.length > 0) hint += t.launcherSmartPasteSkipNote.replace('{items}', skipped.join(' / '))
+    setLPasteHint(hint)
+  }
+
+  /**
+   * 点「解析 / 重新解析」：**显式点击 = 用户同意覆盖**，直接强制填入识别到的字段。
+   * 与被动解析（粘贴 / 停止输入 500ms）区分开：被动的那些绝不动用户手改过的字段
+   * （需求第十四节），而点按钮是明确的一次操作，这正是该节里"再次点击重新解析可覆盖"的语义。
+   */
+  const onSmartParseClick = (): void => {
+    runSmartParse(lPaste, true)
+    setLParsed(true)
+  }
+
+  /** 粘贴即自动解析（只针对本次粘贴的内容；解析后仍可继续编辑文本框，不破坏编辑能力）。 */
+  const onSmartPaste = (e: ClipboardEvent<HTMLTextAreaElement>): void => {
+    const text = e.clipboardData?.getData('text') ?? ''
+    if (text.trim() === '') return
+    runSmartParse(text, false)
+    setLParsed(true)
+  }
+
+  const onSmartPasteClear = (): void => { setLPaste(''); setLPasteHint('') }
+
   const onLauncherInstall = async (): Promise<void> => {
     const url = lUrl.trim()
     if (!isValidHttpUrl(url)) { flashL(t.launcherBadUrl); return }
@@ -1351,6 +1470,9 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
         setLEntryFor(out.record.id)
       }
       setLUrl(''); setLTitle(''); setLPwd(''); setLPwdErr(false); setLCode(''); setLCodeErr(false)
+      // Smart Paste 一并复位：安装成功后再点「解析」不应该把上次的信息填回来
+      setLPaste(''); setLPasteHint(''); setLParsed(false)
+      lManual.current = { url: false, title: false, pwd: false, code: false }
       flashL(t.flashLInstalled)
       void loadLauncher()
       void loadApps()
@@ -1946,12 +2068,36 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
                     : (
                         // ── 应用启动器：直链安装 + 一键启动（每次弹确认）──────────
                         <>
+                          {/* Smart Paste：整段分享文本 → 解析 → 自动填入下面四个字段 → 用户微调 */}
+                          <div className="wesync-paste">
+                            <div className="wesync-paste-head">
+                              <span className="wesync-paste-label">{t.launcherSmartPasteLabel}</span>
+                              <button
+                                className="wesync-btn wesync-paste-btn"
+                                disabled={lPaste.trim() === ''}
+                                onClick={onSmartParseClick}
+                              >{lParsed ? t.launcherSmartPasteReparse : t.launcherSmartPasteParse}</button>
+                              {lPaste !== ''
+                                ? <button className="wesync-btn wesync-paste-btn" onClick={onSmartPasteClear}>{t.launcherSmartPasteClear}</button>
+                                : null}
+                            </div>
+                            <textarea
+                              className="wesync-paste-area"
+                              rows={3}
+                              spellCheck={false}
+                              placeholder={t.launcherSmartPastePlaceholder}
+                              value={lPaste}
+                              onChange={(e) => { setLPaste(e.target.value) }}
+                              onPaste={onSmartPaste}
+                            />
+                            {lPasteHint !== '' ? <div className="wesync-paste-hint">{lPasteHint}</div> : null}
+                          </div>
                           <div className="wesync-dir-row">
                             <input
                               className="wesync-dir-input"
                               placeholder={t.launcherUrlPlaceholder}
                               value={lUrl}
-                              onChange={(e) => setLUrl(e.target.value)}
+                              onChange={(e) => { lManual.current.url = true; setLUrl(e.target.value) }}
                               onKeyDown={(e) => { if (e.key === 'Enter' && !lBusy) void onLauncherInstall() }}
                             />
                             <input
@@ -1959,7 +2105,7 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
                               style={{ maxWidth: 180 }}
                               placeholder={t.launcherTitlePlaceholder}
                               value={lTitle}
-                              onChange={(e) => setLTitle(e.target.value)}
+                              onChange={(e) => { lManual.current.title = true; setLTitle(e.target.value) }}
                             />
                             <input
                               className="wesync-dir-input"
@@ -1967,7 +2113,7 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
                               style={{ maxWidth: 150, borderColor: lPwdErr ? 'rgba(248,113,113,0.85)' : undefined }}
                               placeholder={t.launcherPwdPlaceholder}
                               value={lPwd}
-                              onChange={(e) => { setLPwd(e.target.value); if (lPwdErr) setLPwdErr(false) }}
+                              onChange={(e) => { lManual.current.pwd = true; setLPwd(e.target.value); if (lPwdErr) setLPwdErr(false) }}
                               onKeyDown={(e) => { if (e.key === 'Enter' && !lBusy) void onLauncherInstall() }}
                             />
                             <input
@@ -1975,7 +2121,7 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
                               style={{ maxWidth: 130, borderColor: lCodeErr ? 'rgba(248,113,113,0.85)' : undefined }}
                               placeholder={t.launcherCodePlaceholder}
                               value={lCode}
-                              onChange={(e) => { setLCode(e.target.value); if (lCodeErr) setLCodeErr(false) }}
+                              onChange={(e) => { lManual.current.code = true; setLCode(e.target.value); if (lCodeErr) setLCodeErr(false) }}
                               onKeyDown={(e) => { if (e.key === 'Enter' && !lBusy) void onLauncherInstall() }}
                             />
                             <button className="wesync-btn" disabled={lBusy} onClick={() => { void onLauncherInstall() }}>

@@ -801,6 +801,59 @@ body[data-ds-dark-theme] .wesync-gaze-status.is-error { color: #fdba74; }
   color: var(--dsw-alias-label-secondary);
 }
 
+/* ── 应用启动器 · Smart Paste（整段分享文本 → 自动解析进下面四个字段）──────
+   不是替代品：原文留在文本框里可继续编辑，解析结果仍可在输入框微调。 */
+.wesync-paste {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.wesync-paste-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wesync-paste-label {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.wesync-paste-btn {
+  flex: 0 0 auto;
+  font-size: 12px;
+  padding: 4px 12px;
+}
+
+.wesync-paste-area {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 62px;
+  max-height: 220px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+  font-family: inherit;
+  line-height: 1.6;
+  resize: vertical;
+}
+
+.wesync-paste-area::placeholder {
+  color: var(--dsw-alias-label-secondary);
+  opacity: 0.7;
+}
+
+.wesync-paste-hint {
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+}
+
 /* 壁纸库「市场」一栏：flash 提示 + 卡片元信息 + 安装/卸载按钮 */
 .wesync-market-flash {
   font-size: 12px; padding: 6px 10px; border-radius: 8px;
