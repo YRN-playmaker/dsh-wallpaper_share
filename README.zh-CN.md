@@ -5,7 +5,7 @@
 <div align="center">
   <a href="https://www.npmjs.com/package/dsh-wallpaper_share"><img alt="npm version" src="https://img.shields.io/npm/v/dsh-wallpaper_share" /></a>
   <a href="https://opensource.org/licenses/GPL-3.0"><img alt="License: GPL-3.0" src="https://img.shields.io/badge/License-GPL--3.0-blue.svg" /></a>
-  <a href="https://github.com/YRN-playmaker/dsh-wallpaper_share/releases"><img alt="插件版本 v26.9.20-rc" src="https://img.shields.io/badge/v26.9.20--rc-4d6bfe" /></a>
+  <a href="https://github.com/YRN-playmaker/dsh-wallpaper_share/releases"><img alt="插件版本 v20.9.29" src="https://img.shields.io/badge/v20.9.29-4d6bfe" /></a>
 </div>
 
 [中文](README.zh-CN.md) | [English → README.md](README.md#english)
@@ -162,7 +162,7 @@ scene 壁纸在捕获 / 完整档下的渲染优先级与回退链：
 | 🟣 **alpha（新版本）** | 适配 harness 为 alpha 架构的推荐版本 | `dsh plugin --profile web add dsh-wallpaper_share@alpha` |
 | 🟡 **test（测试版本）** | 用于测试的版本，可能有未完成功能 | `dsh plugin --profile web add dsh-wallpaper_share@test` |
 
-> 当前版本：**`26.9.20-rc`**（GitHub `main` / `rc` 分支）。本 rc 带来 **应用启动器 · 智能粘贴（Smart Paste）**：把「评测正文 + 链接 + 提取码 + 解压码 + 需求说明」的整段分享文本一次粘贴即可自动填入链接 / 提取码 / 解压密码 / 启动文件（本地正则解析、不联网、锚点 + 局部窗口防误识别，无协议裸域名与换行折断链接也能识别，识别结果仍可手动微调）；近期版本带来：壁纸库「管理」多选批量卸载、应用启动器卡片化简为「详细」、面板三页滚动（含占位的「dwp创作」）、宿主输入框按页显隐、**DWP 时钟变量**与**纹理分档**（预览/捕获用低清、增强/完整用高清）；`26.9.12-rc` 移除百度网盘分享链接支持（云盘分享仅保留 139）并适配 harness `0.1.5`。
+> 当前版本：**`20.9.29`**（GitHub `main` 分支）。本版本带来 **应用启动器 · 智能粘贴（Smart Paste）**：把「评测正文 + 链接 + 提取码 + 解压码 + 需求说明」的整段分享文本一次粘贴即可自动填入链接 / 提取码 / 解压密码 / 启动文件（本地正则解析、不联网、锚点 + 局部窗口防误识别，无协议裸域名与换行折断链接也能识别，识别结果仍可手动微调）；近期版本带来：壁纸库「管理」多选批量卸载、应用启动器改为名称 / 位置 / 下载时间三栏列表并移除详情展开、面板三页滚动（含占位的「dwp创作」）、宿主输入框按页显隐、**DWP 时钟变量**与**纹理分档**（预览/捕获用低清、增强/完整用高清）；`26.9.12-rc` 移除百度网盘分享链接支持（云盘分享仅保留 139）并适配 harness `0.1.5`。
 
 ### 🔧 其他安装方式
 
@@ -185,8 +185,8 @@ dsh plugin --profile web add github:YRN-playmaker/dsh-wallpaper_share
 #   从 GitHub 安装（仓库自带预构建 lib/，不需要构建许可；main = 最新档）
 dsh plugin --profile web add dsh-wallpaper_share
 #   从 npm 安装（默认 = latest 最新档）
-dsh plugin --profile web add ./dsh-wallpaper_share-26.9.20-rc.tgz
-#   本地 tarball 安装（26.9.20-rc）
+dsh plugin --profile web add ./dsh-wallpaper_share-20.9.29.tgz
+#   本地 tarball 安装（20.9.29）
 dsh plugin --profile web add github:YRN-playmaker/dsh-wallpaper_share#test
 #   从 GitHub 安装 test 分支（测试档，功能最新但不稳定；正式取 main）
 ```
@@ -264,7 +264,7 @@ dsh plugin --profile web add github:YRN-playmaker/dsh-wallpaper_share#test
 
 ## 🆕 已知问题
 
-> 适用版本：插件 `v26.9.20-rc` / Harness `0.1.5`。
+> 适用版本：插件 `v20.9.29` / Harness `0.1.5`。
 
 ### 兼容性（Harness 0.1.2 破坏性变更 · 已适配）
 

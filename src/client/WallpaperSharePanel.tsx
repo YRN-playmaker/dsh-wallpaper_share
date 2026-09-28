@@ -8,7 +8,7 @@ import { useEffect, useRef, useState, type ClipboardEvent } from 'react'
 import { store, PLUGIN_VERSION, PLUGIN_REPO_URL, type WeSyncInfo } from './index'
 import { startGaze, stopGaze, calibrate, onGazeStatus, hasCalibrationData, type GazeStatus } from './GazeLens.ts'
 import { fetchCatalog, fetchInstalled, buildCards, searchCards, collectTags, install, uninstall, type MarketEntry, type MarketCard } from './market-api.ts'
-import { fetchInstalled as fetchLauncherInstalled, installApp, uninstallApp, launchApp, setEntry, isValidHttpUrl, humanSize, get139Auth, set139Auth, getLauncherRoot, setLauncherRoot, type InstalledApp } from './launcher-api.ts'
+import { fetchInstalled as fetchLauncherInstalled, installApp, uninstallApp, launchApp, isValidHttpUrl, get139Auth, set139Auth, getLauncherRoot, setLauncherRoot, type InstalledApp } from './launcher-api.ts'
 import { appsForSub, formatInstalledAt, launcherAppDir, matchLauncherRecord, partitionApps, type AppSub } from './library-model.ts'
 import { CONFIDENCE_AUTO, CONFIDENCE_LOW, parseInstallShareText } from './share-parser.ts'
 
@@ -110,11 +110,9 @@ const DICT = {
     manage: '管理',
     manageDone: '完成',
     openSource: '打开源文件',
-    detail: '详细',
-    detailHide: '收起',
-    detailInstalledAt: '安装时间',
-    detailAddr: '地址',
-    detailExe: 'exe 文件',
+    launcherColumnName: '名称',
+    launcherColumnLocation: '位置',
+    launcherColumnDownloadedAt: '下载时间',
     launcherManageHint: '启动与卸载到「本地 → 应用」里操作。',
     confirmUninstallTitle: '确认卸载？',
     confirmUninstallBody: '将删除以下内容的本地文件（dwp 壁纸可在市场重装）：',
@@ -230,21 +228,15 @@ const DICT = {
     launcherLaunching: '启动中…',
     launcherOpenFolder: '打开文件夹',
     launcherUninstall: '卸载',
-    launcherSource: '来源',
-    launcherSha: 'SHA512',
-    launcherEntry: '入口',
     launcherConfirmTitle: '确认启动该程序？',
     launcherConfirmBody: '将从以下路径执行可执行文件。请确认来源可信：',
     launcherConfirmGo: '启动',
     launcherConfirmCancel: '取消',
-    launcherSetEntry: '设为入口',
-    launcherCandidates: '检测到多个可执行文件，当前入口：',
     flashLInstalled: '安装完成',
     flashLUninstalled: '已卸载',
     flashLLaunched: '已启动',
     flashLFailed: '操作失败',
-    launcherPreviewHint: '预览图：安装完成后可用下方「更新预览」按钮重新生成',
-    launcherUpdatePreview: '更新预览',
+    launcherPreviewHint: '预览图会在安装时自动生成',
     launcherBadUrl: '链接非法（仅支持 http/https 直链）',
     launcherNoEntry: '未找到可执行入口',
   },
@@ -341,11 +333,9 @@ const DICT = {
     manage: 'Manage',
     manageDone: 'Done',
     openSource: 'Open source file',
-    detail: 'Details',
-    detailHide: 'Hide',
-    detailInstalledAt: 'Installed',
-    detailAddr: 'Location',
-    detailExe: 'Executable',
+    launcherColumnName: 'Name',
+    launcherColumnLocation: 'Location',
+    launcherColumnDownloadedAt: 'Download time',
     launcherManageHint: 'Launch and uninstall from Library → Apps.',
     confirmUninstallTitle: 'Uninstall?',
     confirmUninstallBody: 'This deletes the local files of (DWP wallpapers can be reinstalled from the market):',
@@ -462,21 +452,15 @@ const DICT = {
     launcherLaunching: 'Launching…',
     launcherOpenFolder: 'Open folder',
     launcherUninstall: 'Uninstall',
-    launcherSource: 'Source',
-    launcherSha: 'SHA512',
-    launcherEntry: 'Entry',
     launcherConfirmTitle: 'Launch this program?',
     launcherConfirmBody: 'The executable below will be started. Make sure you trust its source:',
     launcherConfirmGo: 'Launch',
     launcherConfirmCancel: 'Cancel',
-    launcherSetEntry: 'Set as entry',
-    launcherCandidates: 'Multiple executables found. Current entry:',
     flashLInstalled: 'Installed',
     flashLUninstalled: 'Uninstalled',
     flashLLaunched: 'Launched',
     flashLFailed: 'Operation failed',
-    launcherPreviewHint: 'Preview: regenerate via "Update preview" below after install',
-    launcherUpdatePreview: 'Update preview',
+    launcherPreviewHint: 'The preview is generated automatically during installation',
     launcherBadUrl: 'Invalid link (http/https direct links only)',
     launcherNoEntry: 'No executable entry found',
   },
@@ -925,31 +909,6 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
   const [lFlash, setLFlash] = useState('')
   const [lSearch, setLSearch] = useState('')
   const [lConfirm, setLConfirm] = useState<InstalledApp | null>(null)
-  const [lEntryFor, setLEntryFor] = useState<string | null>(null) // 正在展开候选切换的 app id
-  const [lDetailFor, setLDetailFor] = useState<string | null>(null) // 正在展开详情（来源/哈希）的 app id
-  const [lChoices, setLChoices] = useState<Record<string, string[]>>({}) // 安装时返回的多入口候选（按 id）
-
-  // 展开「详细」后把内容滚进可视区：卡片贴在裁剪区下沿时，详情会长到裁剪区之外
-  // （实测 1500×950 下 185px 只露 41px），看起来就像"点了没反应"。
-  // 量出缺口写进引擎的 posRef，由 rAF 主循环下一帧落到 transform（不额外起动画）。
-  useEffect(() => {
-    if (lDetailFor === null) return
-    const raf = requestAnimationFrame(() => {
-      const host = panelRef.current
-      const vp = viewportRef.current
-      if (host === null || vp === null) return
-      const el = Array.from(host.querySelectorAll('[data-wesync-detail]'))
-        .find((x) => x.getAttribute('data-wesync-detail') === lDetailFor) ?? null
-      if (el === null) return
-      measure()
-      const overflow = el.getBoundingClientRect().bottom - vp.getBoundingClientRect().bottom + 12 // 留 12px 余量
-      if (overflow <= 0) return
-      const r = rangeOf(pageIdx('library'))
-      posRef.current = Math.max(r.top, Math.min(r.bottom, posRef.current + overflow))
-    })
-    return () => cancelAnimationFrame(raf)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lDetailFor])
 
   // store 是唯一事实源：每次 notify 都把设置项镜像回本地 state。
   // 面板只在挂载时读一次 store 的话，外部对设置的修正（显示器锁失效回退自动、眼动启动失败回拨 off）
@@ -1465,10 +1424,6 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
         flashLErr(t.flashLFailed + (out.error !== undefined ? '：' + out.error : ''))
         return
       }
-      if (out.record !== undefined && (out.candidates?.length ?? 0) > 1) {
-        setLChoices((m) => ({ ...m, [out.record!.id]: out.candidates! }))
-        setLEntryFor(out.record.id)
-      }
       setLUrl(''); setLTitle(''); setLPwd(''); setLPwdErr(false); setLCode(''); setLCodeErr(false)
       // Smart Paste 一并复位：安装成功后再点「解析」不应该把上次的信息填回来
       setLPaste(''); setLPasteHint(''); setLParsed(false)
@@ -1512,24 +1467,6 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
   }
 
   // 启动器标签页不放「卸载」按钮：卸载统一走「本地 → 管理 → 卸载」（先弹确认弹层）。
-
-  const onUpdatePreview = async (rec: InstalledApp): Promise<void> => {
-    const dataUrl = makeLauncherCard(rec.title)
-    if (dataUrl === '') { flashL(t.flashLFailed); return }
-    const res = await fetch('/we-sync/launcher/preview', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: rec.id, dataUrl }),
-    })
-    if (res.ok) { flashL(t.launcherUpdatePreview + ' ✓'); void loadApps() }
-    else flashL(t.flashLFailed)
-  }
-
-  const onSetEntry = async (rec: InstalledApp, file: string): Promise<void> => {
-    const r = await setEntry(rec.id, file, (u, i) => fetch(u, i))
-    if (r.ok) { flashL(t.launcherEntry + ' → ' + file); setLEntryFor(null); void loadApps() }
-    else flashL(t.flashLFailed + (r.error !== undefined ? '：' + r.error : ''))
-  }
 
   // 壁纸读取位置：加载自定义目录、添加/移除
   const loadDirs = async (): Promise<void> => {
@@ -2200,51 +2137,25 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
                                       {filteredL.length === 0
                                         ? <div className="wesync-app-empty">{t.launcherNoMatch}</div>
                                         : (
-                                            <div className="wesync-apps-grid">
-                                              {filteredL.map((rec) => {
-                                                const candidates = lChoices[rec.id] ?? []
-                                                return (
-                                                  <div key={rec.id} className="wesync-app-card wesync-market-card">
-                                                    <div className="wesync-app-thumbwrap">
-                                                      <img className="wesync-app-thumb" src={'/we-sync/launcher/preview-file?id=' + encodeURIComponent(rec.id)} alt={rec.title} loading="lazy"
-                                                        onError={(e) => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden' }} />
-                                                      <span className="wesync-app-badge wesync-badge-launcher">{t.typeLauncherApp}</span>
-                                                    </div>
-                                                    <div className="wesync-app-title">{rec.title}</div>
-                                                    <div className="wesync-market-meta">{humanSize(rec.size)} · {rec.file}</div>
-                                                    <div className="wesync-market-actions">
-                                                      <button
-                                                        className="wesync-btn wesync-detail-btn"
-                                                        onClick={() => { setLDetailFor(lDetailFor === rec.id ? null : rec.id) }}
-                                                      >{lDetailFor === rec.id ? t.detailHide : t.detail}</button>
-                                                    </div>
-                                                    {lDetailFor === rec.id
-                                                      ? (
-                                                          <div className="wesync-market-meta" data-wesync-detail={rec.id} style={{ width: '100%' }}>
-                                                            <div>{t.detailInstalledAt}: {formatInstalledAt(rec.installedAt)}</div>
-                                                            <div>{t.detailAddr}: <span style={{ wordBreak: 'break-all' }}>{launcherAppDir(lRoot, rec.slug)}</span></div>
-                                                            <div>{t.detailExe}: <span style={{ wordBreak: 'break-all' }}>{rec.file}</span></div>
-                                                            <div>{t.launcherSource}: <span style={{ wordBreak: 'break-all' }}>{rec.sourceUrl}</span></div>
-                                                            <div>{t.launcherSha}: <span style={{ wordBreak: 'break-all' }}>{rec.sha512.slice(0, 32)}…</span></div>
-                                                            <button className="wesync-btn" style={{ marginTop: 4 }} onClick={() => { void onUpdatePreview(rec) }}>{t.launcherUpdatePreview}</button>
-                                                            {candidates.length > 1
-                                                              ? (
-                                                                  <>
-                                                                    <div style={{ marginTop: 6 }}>{t.launcherCandidates}</div>
-                                                                    {candidates.map((f) => (
-                                                                      <button key={f} className="wesync-btn" style={{ margin: '2px 4px 0 0' }} onClick={() => { void onSetEntry(rec, f) }}>
-                                                                        {f === rec.file ? '● ' : ''}{f}{f === rec.file ? '' : ' → ' + t.launcherSetEntry}
-                                                                      </button>
-                                                                    ))}
-                                                                  </>
-                                                                )
-                                                              : null}
-                                                          </div>
-                                                        )
-                                                      : null}
-                                                  </div>
-                                                )
-                                              })}
+                                            <div className="wesync-launcher-table-wrap">
+                                              <table className="wesync-launcher-table">
+                                                <thead>
+                                                  <tr>
+                                                    <th scope="col">{t.launcherColumnName}</th>
+                                                    <th scope="col">{t.launcherColumnLocation}</th>
+                                                    <th scope="col">{t.launcherColumnDownloadedAt}</th>
+                                                  </tr>
+                                                </thead>
+                                                <tbody>
+                                                  {filteredL.map((rec) => (
+                                                    <tr key={rec.id}>
+                                                      <td className="wesync-launcher-name-cell">{rec.title}</td>
+                                                      <td className="wesync-launcher-location">{launcherAppDir(lRoot, rec.slug)}</td>
+                                                      <td className="wesync-launcher-downloaded">{formatInstalledAt(rec.installedAt)}</td>
+                                                    </tr>
+                                                  ))}
+                                                </tbody>
+                                              </table>
                                             </div>
                                           )}
                                     </>

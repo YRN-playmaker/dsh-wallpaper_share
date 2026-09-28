@@ -539,14 +539,6 @@ body[data-ds-dark-theme] .wesync-gaze-status.is-error { color: #fdba74; }
   margin: 6px 0 8px;
 }
 
-/* 应用启动器卡片：操作行只剩「详细」，撑满整行——点击区域大，
-   不再是一排挤在卡片底部、字号 11px 的小按钮（原先「启动 / … / 卸载」三个）。 */
-.wesync-detail-btn {
-  flex: 1;
-  font-size: 12px;
-  padding: 6px 10px;
-}
-
 /* 壁纸库「本地」栏 · 管理模式：卡片上的操作行（打开源文件 / 卸载）。
    只在「管理」开启时渲染，平时卡片上没有任何小按钮。 */
 .wesync-manage-row {
@@ -865,6 +857,45 @@ body[data-ds-dark-theme] .wesync-gaze-status.is-error { color: #fdba74; }
 .wesync-market-actions { margin-top: 8px; display: flex; gap: 6px; }
 .wesync-market-install, .wesync-market-uninstall { flex: 1; font-size: 12px; padding: 6px 8px; }
 .wesync-market-uninstall { opacity: 0.8; }
+
+/* 壁纸库 · 应用启动器：名称、安装位置与下载时间按行对齐。 */
+.wesync-launcher-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  margin-top: 8px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 8px;
+}
+.wesync-launcher-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 12px;
+}
+.wesync-launcher-table th,
+.wesync-launcher-table td {
+  padding: 8px 10px;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--dsw-alias-border-l1);
+  overflow-wrap: anywhere;
+}
+.wesync-launcher-table th {
+  color: var(--dsw-alias-label-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--dsw-alias-bg-layer-2);
+}
+.wesync-launcher-table th:nth-child(1),
+.wesync-launcher-table td:nth-child(1) { width: 30%; }
+.wesync-launcher-table th:nth-child(2),
+.wesync-launcher-table td:nth-child(2) { width: 44%; }
+.wesync-launcher-table th:nth-child(3),
+.wesync-launcher-table td:nth-child(3) { width: 26%; }
+.wesync-launcher-table tbody tr:hover { background: var(--dsw-alias-bg-overlay); }
+.wesync-launcher-name-cell { color: var(--dsw-alias-label-primary); }
+.wesync-launcher-location { color: var(--dsw-alias-label-secondary); }
+.wesync-launcher-downloaded { color: var(--dsw-alias-label-secondary); font-variant-numeric: tabular-nums; }
 
 /* ── 应用启动器：确认弹层（每次启动都要用户手势确认）────────────────── */
 .wesync-confirm-mask {
