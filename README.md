@@ -7,7 +7,7 @@
   <a href="https://www.npmjs.com/package/dsh-wallpaper_share"><img alt="npm downloads" src="https://img.shields.io/npm/dm/dsh-wallpaper_share" /></a>
   <a href="https://github.com/YRN-playmaker/dsh-wallpaper_share/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/YRN-playmaker/dsh-wallpaper_share" /></a>
   <a href="https://opensource.org/licenses/GPL-3.0"><img alt="License: GPL-3.0" src="https://img.shields.io/badge/License-GPL--3.0-blue.svg" /></a>
-  <a href="https://github.com/YRN-playmaker/dsh-wallpaper_share/releases"><img alt="插件版本 v20.9.29" src="https://img.shields.io/badge/v20.9.29-4d6bfe" /></a><br /><br />
+  <a href="https://github.com/YRN-playmaker/dsh-wallpaper_share/releases"><img alt="插件版本 v26.9.29" src="https://img.shields.io/badge/v26.9.29-4d6bfe" /></a><br /><br />
   <img alt="壁纸同步" src="https://img.shields.io/badge/-%E5%A3%81%E7%BA%B8%E5%90%8C%E6%AD%A5-4d6bfe" /> <img alt="场景渲染" src="https://img.shields.io/badge/-%E5%9C%BA%E6%99%AF%E6%B8%B2%E6%9F%93-4d6bfe" /> <img alt="DWP 市场" src="https://img.shields.io/badge/-DWP%20%E5%B8%82%E5%9C%BA-4d6bfe" /> <img alt="眼动追踪" src="https://img.shields.io/badge/-%E7%9C%BC%E5%8A%A8%E8%BF%BD%E8%B8%AA-4d6bfe" /> <img alt="专注模式" src="https://img.shields.io/badge/-%E4%B8%93%E6%B3%A8%E6%A8%A1%E5%BC%8F-4d6bfe" /> <img alt="多显示器" src="https://img.shields.io/badge/-%E5%A4%9A%E6%98%BE%E7%A4%BA%E5%99%A8-4d6bfe" /><br /><br />
 </div>
 
@@ -174,7 +174,7 @@ scene 壁纸在捕获 / 完整档下的渲染优先级与回退链：
 | 🔵 **rc（稳定版本）** | 适配 harness 为 rc 架构的推荐版本，新功能适配较慢 | `dsh plugin --profile web add dsh-wallpaper_share@rc010` |
 | 🟡 **test（测试版本）** | 用于测试的版本，可能有未完成功能 | `dsh plugin --profile web add dsh-wallpaper_share@test` |
 
-> 当前版本：**`20.9.29`**（GitHub `main` 分支）。本版本带来 **应用启动器 · 智能粘贴（Smart Paste）**：把「评测正文 + 链接 + 提取码 + 解压码 + 需求说明」的整段分享文本一次粘贴即可自动填入链接 / 提取码 / 解压密码 / 启动文件（本地正则解析、不联网、锚点 + 局部窗口防误识别，无协议裸域名与换行折断链接也能识别，识别结果仍可手动微调）；上一个版本带来 **桌面悬浮球**（Windows：页面切到后台 / 浏览器最小化时，桌面出现一个与侧边栏状态灯同款的环形按钮，单击即切回 3080 页面，可拖动记忆位置）；近期版本还带来：壁纸库「管理」多选批量卸载、应用启动器改为名称 / 位置 / 下载时间三栏列表并移除详情展开、面板三页滚动（含占位的「dwp创作」）、宿主输入框按页显隐、**DWP 时钟变量**与**纹理分档**（预览/捕获用低清、增强/完整用高清）；`26.9.12-rc` 移除百度网盘分享链接支持（云盘分享仅保留 139）并适配 harness `0.1.5`。
+> 当前版本：**`26.9.29`**（GitHub `main` 分支）。本版本带来 **应用启动器 · 智能粘贴（Smart Paste）**：把「评测正文 + 链接 + 提取码 + 解压码 + 需求说明」的整段分享文本一次粘贴即可自动填入链接 / 提取码 / 解压密码 / 启动文件（本地正则解析、不联网、锚点 + 局部窗口防误识别，无协议裸域名与换行折断链接也能识别，识别结果仍可手动微调）；上一个版本带来 **桌面悬浮球**（Windows：页面切到后台 / 浏览器最小化时，桌面出现一个与侧边栏状态灯同款的环形按钮，单击即切回 3080 页面，可拖动记忆位置）；近期版本还带来：壁纸库「管理」多选批量卸载、应用启动器改为名称 / 位置 / 下载时间三栏列表并移除详情展开、面板三页滚动（含占位的「dwp创作」）、宿主输入框按页显隐、**DWP 时钟变量**与**纹理分档**（预览/捕获用低清、增强/完整用高清）；`26.9.12-rc` 移除百度网盘分享链接支持（云盘分享仅保留 139）并适配 harness `0.1.5`。
 
 ### 🔧 其他安装方式
 
@@ -197,8 +197,8 @@ dsh plugin --profile web add github:YRN-playmaker/dsh-wallpaper_share
 #   从 GitHub 安装（仓库自带预构建 lib/，不需要构建许可；main = 最新档）
 dsh plugin --profile web add dsh-wallpaper_share
 #   从 npm 安装（默认 = latest 最新档）
-dsh plugin --profile web add ./dsh-wallpaper_share-20.9.29.tgz
-#   本地 tarball 安装（20.9.29）
+dsh plugin --profile web add ./dsh-wallpaper_share-26.9.29.tgz
+#   本地 tarball 安装（26.9.29）
 dsh plugin --profile web add github:YRN-playmaker/dsh-wallpaper_share#test
 #   从 GitHub 安装 test 分支（测试档，功能最新但不稳定；正式取 main）
 ```
@@ -453,7 +453,7 @@ The **Desktop orb** toggle in the "Visual effects" card (Windows only, off by de
 | 🔵 **rc (stable)** | Recommended build for a Harness on the rc architecture; new features are adapted more slowly | `dsh plugin --profile web add dsh-wallpaper_share@rc010` |
 | 🟡 **test (testing)** | For testing only; may contain unfinished features | `dsh plugin --profile web add dsh-wallpaper_share@test` |
 
-> Current version: **`20.9.29`** (GitHub `main` branch). This release adds **App Launcher · Smart Paste**: paste a whole messy share post (review text + link + passcode + archive password + requirements) once and the link, passcode, archive password and launcher file are filled in automatically — parsed locally with anchor + local-window heuristics (no network, no LLM), scheme-less domains and line-wrapped links included, and everything stays editable. The previous release added the **Desktop orb** (Windows: a ring button matching the sidebar status light appears when the page goes to the background or the browser is minimized — one click returns to the 3080 page, drag to move and it is remembered). Recent releases also brought: library "Manage" multi-select bulk uninstall, launcher apps displayed in a three-column Name / Location / Download time list without a details panel, a third scrolling page (a placeholder "DWP Studio"), the host composer hidden per page, plus **DWP clock variables** and **texture tiers** (Eco/Perf = low-res, Enhanced = high-res). `26.9.12-rc` removed Baidu Netdisk share-link support (cloud-drive shares are 139-only) and adapted to harness `0.1.5`.
+> Current version: **`26.9.29`** (GitHub `main` branch). This release adds **App Launcher · Smart Paste**: paste a whole messy share post (review text + link + passcode + archive password + requirements) once and the link, passcode, archive password and launcher file are filled in automatically — parsed locally with anchor + local-window heuristics (no network, no LLM), scheme-less domains and line-wrapped links included, and everything stays editable. The previous release added the **Desktop orb** (Windows: a ring button matching the sidebar status light appears when the page goes to the background or the browser is minimized — one click returns to the 3080 page, drag to move and it is remembered). Recent releases also brought: library "Manage" multi-select bulk uninstall, launcher apps displayed in a three-column Name / Location / Download time list without a details panel, a third scrolling page (a placeholder "DWP Studio"), the host composer hidden per page, plus **DWP clock variables** and **texture tiers** (Eco/Perf = low-res, Enhanced = high-res). `26.9.12-rc` removed Baidu Netdisk share-link support (cloud-drive shares are 139-only) and adapted to harness `0.1.5`.
 
 ### 🔧 Other install methods
 
@@ -476,8 +476,8 @@ dsh plugin --profile web add github:YRN-playmaker/dsh-wallpaper_share
 #   install from GitHub (repo ships prebuilt lib/, no build permission needed; main = latest tier)
 dsh plugin --profile web add dsh-wallpaper_share
 #   install from npm (default = latest tier)
-dsh plugin --profile web add ./dsh-wallpaper_share-20.9.29.tgz
-#   install from a local tarball (20.9.29)
+dsh plugin --profile web add ./dsh-wallpaper_share-26.9.29.tgz
+#   install from a local tarball (26.9.29)
 dsh plugin --profile web add github:YRN-playmaker/dsh-wallpaper_share#test
 #   install the test branch from GitHub (test tier — newest features, may be unstable; use main for the release)
 ```
