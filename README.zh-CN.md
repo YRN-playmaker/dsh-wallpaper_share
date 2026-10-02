@@ -207,7 +207,9 @@ dsh plugin --profile web add github:YRN-playmaker/dsh-wallpaper_share#test
 
 > 也可以在本仓库根目录直接 `pnpm install && pnpm build`（`tsdown` 独立构建，不依赖 DSH checkout）。
 > 面板标题行的版本号在构建期由 `tsdown` 的 `define` 从 `package.json` 注入，改版本号后**必须重新构建**才会反映到 UI。
-> 原生捕获器：`cd native/we-capture && cargo build --release`（需 `x86_64-pc-windows-gnu` 或 `-msvc` 工具链），产物拷到 `bin/we-capture.exe`。
+> 原生捕获器：`npm run build:native`（= `cd native/we-capture && cargo build --release --bins` + 把两个 exe 拷进 `bin/` + 复验；需 `x86_64-pc-windows-gnu` 或 `-msvc` 工具链）。
+> 发布前 `npm run check:package` 会校验 `bin/*.exe` 与 `native/we-capture/src` 同步（版本 + 源码指纹），产物过期直接失败——发布 CI 不会重编原生程序，务必先重建再发版。
+> 环境坑：Windows 用户目录含非 ASCII 字符（如中文用户名）时，mingw 链接器会因路径编码找不到 sysroot 库（`ld: cannot find ...\crt2.o`）。绕过方式是把工具链放到**纯 ASCII 路径**（联接不行，rustc 会把联接解析回真实路径）并设置 `RUSTUP_HOME` / `CARGO_HOME`，例如本仓库的 `.build-junc/rt` + `.build-junc/cargo`。
 
 ## ⚙️ 配置
 

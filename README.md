@@ -219,7 +219,9 @@ dsh plugin --profile web add github:YRN-playmaker/dsh-wallpaper_share#test
 
 > 也可以在本仓库根目录直接 `pnpm install && pnpm build`（`tsdown` 独立构建，不依赖 DSH checkout）。
 > 面板标题行的版本号在构建期由 `tsdown` 的 `define` 从 `package.json` 注入，改版本号后**必须重新构建**才会反映到 UI。
-> 原生捕获器：`cd native/we-capture && cargo build --release`（需 `x86_64-pc-windows-gnu` 或 `-msvc` 工具链），产物拷到 `bin/we-capture.exe`。
+> 原生捕获器：`npm run build:native`（= `cd native/we-capture && cargo build --release --bins` + 把两个 exe 拷进 `bin/` + 复验；需 `x86_64-pc-windows-gnu` 或 `-msvc` 工具链）。
+> 发布前 `npm run check:package` 会校验 `bin/*.exe` 与 `native/we-capture/src` 同步（版本 + 源码指纹），产物过期直接失败——发布 CI 不会重编原生程序，务必先重建再发版。
+> 环境坑：Windows 用户目录含非 ASCII 字符（如中文用户名）时，mingw 链接器会因路径编码找不到 sysroot 库（`ld: cannot find ...\crt2.o`）。绕过方式是把工具链放到**纯 ASCII 路径**（联接不行，rustc 会把联接解析回真实路径）并设置 `RUSTUP_HOME` / `CARGO_HOME`，例如本仓库的 `.build-junc/rt` + `.build-junc/cargo`（`npm run build:native` 会自动检测并使用）。
 
 ## ⚙️ 配置
 
@@ -498,7 +500,9 @@ dsh plugin --profile web add github:YRN-playmaker/dsh-wallpaper_share#test
 
 > You can also run `pnpm install && pnpm build` at this repo root (`tsdown` builds standalone, no DSH checkout needed).
 > The version shown in the panel title row is injected at build time from `package.json` via a `tsdown` `define` — bump the version and **rebuild**, or the UI keeps showing the old one.
-> Native capture: `cd native/we-capture && cargo build --release` (needs an `x86_64-pc-windows-gnu` or `-msvc` toolchain); copy the output to `bin/we-capture.exe`.
+> Native capture: `npm run build:native` (= `cd native/we-capture && cargo build --release --bins`, copy both exes into `bin/`, re-verify; needs an `x86_64-pc-windows-gnu` or `-msvc` toolchain).
+> `npm run check:package` verifies that `bin/*.exe` match `native/we-capture/src` (version + source fingerprint) and fails on stale artifacts — the publish CI never rebuilds native code, so always rebuild before releasing.
+> Environment gotcha: when the Windows user directory contains non-ASCII characters (e.g. a Chinese user name), the mingw linker cannot find its sysroot libraries (`ld: cannot find ...\crt2.o`) because of path encoding. Workaround: put the toolchain on a **pure-ASCII path** and set `RUSTUP_HOME` / `CARGO_HOME` — a junction does not work, since rustc resolves junctions back to the real path. This repo uses `.build-junc/rt` + `.build-junc/cargo`, which `npm run build:native` picks up automatically.
 
 ## ⚙️ Configuration
 

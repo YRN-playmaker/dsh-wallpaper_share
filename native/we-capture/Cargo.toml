@@ -1,9 +1,10 @@
 [package]
 name = "we-capture"
-version = "0.3.0"
+version = "0.4.2"
 edition = "2021"
 description = "Wallpaper Engine 实时画面捕获器：用 Windows Graphics Capture 抓 WE 壁纸窗口，按 SceneAdapter 协议输出 JPEG 帧流"
 license = "MIT"
+# build.rs 注入 src 指纹；版本号必须与 src/main.rs 的 VERSION 一致（npm run check:package 会校验）
 
 [[bin]]
 name = "we-capture"

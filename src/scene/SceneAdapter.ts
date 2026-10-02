@@ -36,6 +36,27 @@ const RESTART_DELAY_MS = 500
 /** 健康轮询间隔 */
 const HEALTH_INTERVAL_MS = 1000
 
+/**
+ * 捕获型 renderer 的最低可用版本。we-capture 0.3.0 是「每次唤醒只捡一帧 + 100ms 轮询兜底」，
+ * 出帧节奏被绑死在 100ms 上：任何壁纸都被压到 ~8fps，且与分辨率/画质/窗口可见性无关
+ * （实测 1080p 5.9fps、720p 7.84fps，反推出的「每帧约 95ms 固定开销」就是这个轮询超时）。
+ * 0.4.0 起改用 CreateFreeThreaded 事件驱动出帧，同一台机器同一张壁纸实测 8.1 → 23~25fps。
+ * 一旦旧二进制被打进发布包（26.9.12~26.9.29 就是这样漏了三版），这行日志能让用户直接看出原因。
+ */
+const MIN_CAPTURE_VERSION = '0.4.0'
+
+/** 语义化版本比较（只比较前 3 段数字）：a < b */
+function versionLess(a: string, b: string): boolean {
+  const pa = a.split('.').map((s) => Number.parseInt(s, 10))
+  const pb = b.split('.').map((s) => Number.parseInt(s, 10))
+  for (let i = 0; i < 3; i++) {
+    const x = Number.isFinite(pa[i]) ? (pa[i] as number) : 0
+    const y = Number.isFinite(pb[i]) ? (pb[i] as number) : 0
+    if (x !== y) return x < y
+  }
+  return false
+}
+
 export interface SceneTarget {
   key: string
   file: string
@@ -188,6 +209,7 @@ export class SceneAdapter {
       return
     }
     this.status = { state: 'starting', restarts: this.restarts, resolution: { width: this.config.width, height: this.config.height } }
+    this.warnIfCaptureOutdated()
     this.log('[SceneRenderer] Starting renderer')
 
     const proc = new SceneRendererProcess({ path: this.capabilities.bin, args: this.capabilities.args })
@@ -209,6 +231,22 @@ export class SceneAdapter {
       // 壁纸窗口；参考 renderer 忽略该字段。多显示器时让「背景显示器」锁定对性能模式生效。
       monitor: monitorIndexOf(target.key),
     })
+  }
+
+  /**
+   * 捕获型 renderer 版本过旧时给出可操作的警告。旧二进制被打进发布包时（26.9.12~26.9.29
+   * 就是源码 0.4.0 / 包内 0.3.0），用户的日志里只会看到「壁纸只有 ~8fps」而没有任何线索，
+   * 这行日志直接把根因和修复方式写清楚。
+   */
+  private warnIfCaptureOutdated(): void {
+    const version = this.capabilities?.version ?? ''
+    if (!version.startsWith('we-capture-')) return
+    const semver = version.slice('we-capture-'.length)
+    if (!versionLess(semver, MIN_CAPTURE_VERSION)) return
+    this.log(
+      '[SceneRenderer] ⚠ 捕获器 ' + version + ' 过旧（低于 ' + MIN_CAPTURE_VERSION + '）：出帧被 100ms 轮询封顶在 ~8fps，' +
+      '与分辨率 / 画质 / 窗口是否可见都无关。请更新到自带 we-capture ≥ ' + MIN_CAPTURE_VERSION + ' 的插件版本。',
+    )
   }
 
   private onStatus(s: Record<string, unknown>): void {

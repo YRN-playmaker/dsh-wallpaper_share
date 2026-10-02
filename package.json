@@ -24,6 +24,7 @@
   "scripts": {
     "build": "node tools/check-package.mjs && tsdown",
     "bundle": "node tools/check-package.mjs && tsdown",
+    "build:native": "node tools/build-native.mjs",
     "typecheck": "tsc --noEmit",
     "test": "node --test --experimental-test-isolation=none \"src/market/test/*.test.ts\" \"src/client/test/*.test.ts\" \"src/launcher/test/*.test.ts\" \"src/floater/test/*.test.ts\" \"src/workspace/test/*.test.ts\" \"src/daynight/test/*.test.ts\"",
     "check:package": "node tools/check-package.mjs",

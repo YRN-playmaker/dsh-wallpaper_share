@@ -68,6 +68,13 @@ use windows::Win32::UI::WindowsAndMessaging::{
 const BASE_SIZE: i32 = 40;
 const WM_APP_CMD: u32 = WM_APP + 1;
 
+/// 版本自报行（`we-floater.exe --version`）：发布检查用它比对 bin/ 里的产物是否与源码同步。
+/// 版本号必须与 Cargo.toml 的 package.version 一致。
+const VERSION: &str = "we-floater-0.4.2";
+/// 源码指纹 + 自描述标记（build.rs 构建期注入，与 we-capture 同一份 src 树指纹）。
+/// 连续字面量，供 tools/check-package.mjs 直接在 .exe 里搜出来校验产物是否过期。
+const BUILD_TAG: &str = concat!("we-floater-build src=", env!("WE_CAPTURE_SRC_HASH"));
+
 struct Globals {
     hwnd: isize,         // HWND 原始值（HWND 非 Send，跨线程存取用 isize）
     scale: f32,
@@ -107,6 +114,16 @@ fn out(line: &str) {
 }
 
 fn main() {
+    // 发布检查用：只打印即退出，不起窗口、不碰单实例互斥体（否则会干扰正在运行的悬浮球）
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() >= 2 && (args[1] == "--version" || args[1] == "-v") {
+        out(VERSION);
+        return;
+    }
+    if args.len() >= 2 && args[1] == "--build-info" {
+        out(&format!("{VERSION} {BUILD_TAG}"));
+        return;
+    }
     unsafe {
         let mtx = CreateMutexW(None, true, w!("Local\\DSH.WeFloater.SingleInstance"));
         if mtx.is_ok() && GetLastError() == ERROR_ALREADY_EXISTS {

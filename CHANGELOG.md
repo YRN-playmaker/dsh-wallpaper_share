@@ -1,5 +1,30 @@
 # Changelog
 
+## 未发布（Unreleased）
+
+### 🐛 修复
+
+- **源帧率 ≈ 目标帧率时隔帧丢弃（30fps 的源被输出成 ~15fps）**：节流用的 `last_emit` 原本在**帧处理完之后**打点，等于把每帧处理耗时（1080p 回读 + 降采样约 8~20ms）叠加进了节流周期 —— 源 30fps（33.3ms）+ 目标 30 时 `elapsed < interval` 会稳定成立，于是稳定隔帧丢弃、帧率对折。为这个场景预留的 `throttle_gap`（0.9× 相位容差）虽然定义了却从未被使用（编译器一直在报 `unused variable: throttle_gap`）。修复：`last_emit` 改为在**取到帧的时刻**打点（比较「上一帧到手 → 这一帧到手」），并真正启用 `throttle_gap`。同一测试窗口、目标 30fps 实测：`1200×750` 输出 **0.4.1 = 15.5~16.8fps → 0.4.2 = 23.3~24.3fps**（源 48fps，节流后取每 2 帧），且不再随每帧处理耗时呈台阶式下跌。
+- **心跳新增 `src_fps`（被捕获窗口自身的更新率，取自 FrameArrived 计数）**：与 `cap_fps`（我方产帧）、`fps`（编码完成）、`drop` 并列，可直接判定「源就慢 / 被我们拖慢 / 编码受限」。用它在本机实测到「14~15fps」的真相：正在播放场景壁纸时 `src_fps ≈ 15.0`，而 WE 自己的 `config.json` 里就是 `"fps": 15` —— 捕获端已与源严格一一对应（`src_fps = cap_fps = fps`、`drop 0`、`map 0.7ms / conv 2.8ms`）；这种情况下提高 DSH 背景帧率的唯一办法是把 WE 的帧率设置调高。
+- **Scene 壁纸经原生捕获只有 ~6–8fps —— 根因是发布包里的 `we-capture.exe` 一直是旧版 0.3.0**（issue：DSH 背景 6–8fps、桌面本身流畅，怀疑抓错顶层窗口层）。实测证明**与窗口层无关，是二进制过期**：
+  - `native/we-capture/src/main.rs` 早在 26.9.12 就升到 0.4.0（`CreateFreeThreaded` 事件驱动出帧，去掉「100ms 轮询捡帧」），但 `bin/we-capture.exe` 从 26.8.30 之后就没再重建，`--version` 仍报 `we-capture-0.3.0`；发布 CI 不重编原生程序（`npm publish` 直接打包仓库里的预构建产物，见 `publish-npm.yml`），于是 26.9.12 ~ 26.9.29 期间的每个发布版本都带着旧二进制。
+  - 旧版把出帧节奏绑死在「每次唤醒只捡一帧 + 100ms 超时兜底」上。同一台机器、同一个 1600×1000 测试窗口、同样 5 秒：**0.3.0 = 8.1fps**（map 1.2ms / conv 2.2ms / enc 6.6ms —— 即每帧约 113ms 全耗在等待），**0.4.0 = 23~25fps**。这正好解释 issue 里「与像素量无关的 ~95ms 固定开销」「降分辨率只 +33%」「最小化窗口 / 桌面全可见都不变」：瓶颈在采集循环，不在被捕获的窗口层。
+  - 用户实测的 1080p 5.9fps / 720p 7.84fps 亦完全吻合：1080p 的 map+conv 叠加在那 ~113ms 固定等待之上。
+  - 修复：源码 0.3.0 → **0.4.1**，并用仓库内 ASCII 路径的 Rust 工具链副本重建 `bin/we-capture.exe` 与 `bin/we-floater.exe`（原先的 0.3.0 二进制即为此处遗漏）。
+- **发布门禁：`npm run check:package` 现在会拒绝过期的原生产物**。`native/we-capture/build.rs` 在构建期把 `src/**/*.rs` 指纹（FNV-1a 64）注入二进制，`tools/check-package.mjs` 直接扫 `bin/*.exe` 字节（不执行 Windows 产物，Linux CI 同样生效）校验「Cargo.toml 版本 = 源码 `VERSION` 常量 = 产物内嵌版本」且「产物内嵌指纹 = 现算源码指纹」，不一致即失败并提示修复方式。新增 **`npm run build:native`**：`cargo build --release --bins` + 拷贝进 `bin/` + 复验，一步完成，避免「重建了但忘了拷」。
+- **捕获器诊断信息（同类 issue 可直接定位，无需用户逐项排除）**：
+  - 启动时把桌面各顶层根（Progman / 各 WorkerW）子孙窗数量、候选壁纸窗、最终选中的捕获目标（类名 / 句柄 / 是否可见 / 窗口矩形 / 客户区尺寸）打到 stderr。
+  - `[STATUS]` 心跳新增 `cap_fps`（捕获端产帧，含因编码端堆积而丢弃的帧）与 `drop`，与原有 `fps`（编码完成 = 协议实际出帧）分开，一眼区分「源 / 捕获受限」与「编码受限」。
+  - 新增 `--build-info`（打印版本 + 源码指纹，供发布检查扫描）。
+- **采集循环去事件耦合**：一次唤醒即排空帧池（到点入队、其余丢弃），不再「每次唤醒只出一帧」；无信号时的兜底轮询间隔 100ms → 50ms。这样即使 `FrameArrived` 被合并或丢失，也不会退化成 ~10fps 的轮询节奏。
+- **`SceneAdapter` 在捕获器过旧时打警告**：探测到 `we-capture-< 0.4.0` 时日志明确写出「出帧被 100ms 轮询封顶在 ~8fps，与分辨率 / 画质 / 可见性无关」及升级指引。
+
+### 🔧 细节
+
+- 顺带确认「能不能抓 WE 自己的渲染窗」：WGC 确实拒绝子窗口 —— 用 `WPEDesktopDX11Window` 的 HWND 调 `CreateForWindow` 直接失败（无任何帧产出），只能抓它的顶层根；而在本机实测中，该子窗的顶层根就是 `Progman` 本身（其余顶层 `WorkerW` 都是 170×47、无子窗的无关窗口），所以「换一层抓」在此环境下没有别的候选。诊断日志会打印实际选中的类名与句柄，今后遇到真的选层问题可直接对照。
+- README（中/英）原生捕获器章节补充：重建用 `npm run build:native`（或 `cargo build --release --bins`），发布前 `npm run check:package` 会校验产物与源码同步；并记录「用户目录含非 ASCII 字符时 mingw 链接器找不到 sysroot（ld: cannot find ... crt2.o）」的环境坑与绕过方式（把工具链放到纯 ASCII 路径并设 `RUSTUP_HOME` / `CARGO_HOME`）。
+- `docs/encoding-and-release.md` 增加原生二进制同步检查条目。
+
 ## 26.9.29 - 2026-09-29
 
 ### ✨ 新功能

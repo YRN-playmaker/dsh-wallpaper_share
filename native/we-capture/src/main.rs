@@ -13,7 +13,9 @@
 //! 许可：MIT。仅调用系统 WGC/D3D11 API，不含任何 WE/LWE 源码。
 
 use std::io::{self, BufRead, Write};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
+use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -47,13 +49,26 @@ use windows::Win32::UI::WindowsAndMessaging::{
     IsWindowVisible, GA_ROOT,
 };
 
-/// 版本自报行（SceneAdapter 读取 [VERSION]）
-const VERSION: &str = "we-capture-0.4.0";
+/// 版本自报行（SceneAdapter 读取 [VERSION]）。
+/// 必须与 Cargo.toml 的 package.version 一致：`npm run check:package` 会拿它和
+/// `bin/we-capture.exe` 内嵌的版本比对。
+const VERSION: &str = "we-capture-0.4.2";
+/// 源码指纹 + 自描述标记（build.rs 构建期注入）。`npm run check:package` 直接在 .exe 里搜这一段，
+/// 与现算的 native 源码指纹比对，从而发现「改了源码但忘了重建 / 忘了把产物拷到 bin/」的过期二进制。
+/// 26.9.12 起的发布包正是踩了这个坑：源码已是 0.4.0（事件驱动出帧），
+/// 而 bin/we-capture.exe 还是 0.3.0（100ms 轮询捡帧），实测任何壁纸都被压到 ~8fps。
+/// 必须是**一段连续字面量**（不能 format! 拼），否则二进制里搜不到。
+const BUILD_TAG: &str = concat!("we-capture-build src=", env!("WE_CAPTURE_SRC_HASH"));
 /// 帧格式：0 = JPEG
 const FMT_JPEG: u8 = 0;
 
 /// 编码流水线深度：捕获线程最多领先编码线程这么多帧，超出即丢帧（防内存堆积）
 const PIPE_DEPTH: usize = 3;
+
+/// 没有帧信号时的唤醒间隔：仅用于心跳/控制命令检查，以及「FrameArrived 没来」时的兜底轮询。
+/// 别调大：0.3.0 就是每次唤醒只捡一帧 + 100ms 轮询，导致与像素量无关的 ~8fps 天花板
+/// （实测 1080p/720p 分别 5.9/7.84fps，反推每帧约 95ms 固定开销，用户据此误判成「抓错窗口层」）。
+const IDLE_WAKE_MS: u64 = 50;
 
 /// 来自 stdin 的控制命令
 #[derive(Debug, Clone)]
@@ -99,6 +114,12 @@ fn main() {
         let args: Vec<String> = std::env::args().collect();
         if args.len() >= 2 && (args[1] == "--version" || args[1] == "-v") {
             println!("{VERSION}");
+            return;
+        }
+        // 构建信息：版本 + 源码指纹。发布检查（tools/check-package.mjs）直接在二进制里扫这一行，
+        // 因此即使不运行也能在 Linux CI 上校验 Windows 产物是否与源码同步。
+        if args.len() >= 2 && args[1] == "--build-info" {
+            println!("{VERSION} {BUILD_TAG}");
             return;
         }
         if args.len() >= 2 && args[1] == "--selftest" {
@@ -241,7 +262,7 @@ fn run_capture(
     // 1. 找 WE 壁纸窗口（或强制指定）：优先锁定 monitor_hint 对应显示器上的窗口。
     //    返回捕获目标（顶层根窗）与壁纸子窗的屏幕矩形（裁剪用）。
     let found = match force_hwnd {
-        Some(h) => FoundWindow { root: h, rect: None },
+        Some(h) => FoundWindow { root: h, rect: None, child: None },
         None => match find_we_window(monitor_hint) {
             Some(f) => f,
             None => {
@@ -287,9 +308,17 @@ fn run_capture(
         }
     };
     eprintln!(
-        "[we-capture] 捕获窗口 hwnd={:?} size={}x{}",
-        hwnd.0, item_size.Width, item_size.Height
+        "[we-capture] 捕获窗口 hwnd={:?} size={}x{} | 捕获目标 {}",
+        hwnd.0,
+        item_size.Width,
+        item_size.Height,
+        describe_window(hwnd)
     );
+    if let Some(child) = found.child {
+        if child != hwnd {
+            eprintln!("[we-capture] 镜像的 WE 渲染子窗 {}", describe_window(child));
+        }
+    }
 
     // 4b. 计算裁剪区域（帧坐标系，相对捕获窗口客户区原点）：
     //     多显示器时顶层根窗（Progman/WorkerW）横跨整个虚拟桌面，若整帧输出会把所有显示器
@@ -349,13 +378,18 @@ fn run_capture(
         let _ = session.SetIsCursorCaptureEnabled(false);
     }
 
-    // 6. 帧到达信号
+    // 6. 帧到达信号 + 源帧计数。
+    //    src_count 统计被捕获窗口自身更新了多少次（FrameArrived 次数），与我们的节流、回读、
+    //    编码全都无关——这是区分「源本来就慢」与「被我们拖慢」的唯一可靠口径。
     let (sig_tx, sig_rx) = mpsc::channel::<()>();
+    let src_count = Arc::new(AtomicU64::new(0));
+    let src_count_handler = Arc::clone(&src_count);
     let handler: windows::Foundation::TypedEventHandler<
         Direct3D11CaptureFramePool,
         windows::core::IInspectable,
     > = windows::Foundation::TypedEventHandler::new(
         move |_: &Option<Direct3D11CaptureFramePool>, _: &Option<windows::core::IInspectable>| {
+            src_count_handler.fetch_add(1, Ordering::Relaxed);
             let _ = sig_tx.send(());
             Ok(())
         },
@@ -376,17 +410,19 @@ fn run_capture(
 
     let frame_interval = Duration::from_nanos(1_000_000_000u64 / fps.max(1) as u64);
     // 节流相位容差：源帧率≈目标帧率时（如 WE 30fps 渲染 + 目标 30），帧间隔与节流间隔
-    // 同频，毫秒级抖动就会让 elapsed<interval 误判 → 2:1 抽取减半帧率。放宽 10% 相位。
+    // 同频，毫秒级抖动就会让 elapsed<interval 误判 → 2:1 抽取减半帧率（30fps 源掉成 15fps）。
+    // 放宽 10% 相位；并且节流计时以「取到这一帧的时刻」为准（见下面的 last_emit 打点位置）。
     let throttle_gap = frame_interval.mul_f64(0.9);
     let mut paused = false;
     let mut frame_no: u64 = 0;      // 捕获入队数
     let mut enc_done: u64 = 0;      // 编码完成数（心跳口径：编码 fps）
     let mut fps_count: u64 = 0;
+    let mut cap_count: u64 = 0;     // 捕获端产帧数（含因编码端堆积而丢弃的帧）→ 心跳里的 cap_fps
+    let mut dropped: u64 = 0;       // 因编码端堆积丢掉的帧
     let mut last_beat = Instant::now();
     let mut last_emit = Instant::now() - frame_interval;
     let mut running = true;
     let mut perf = Perf::default();
-    let mut job_seq: u64 = 0;
     // 回读纹理跨帧缓存（尺寸变化才重建），消除每帧 CreateTexture2D
     let mut staging_cache: Option<(ID3D11Texture2D, u32, u32)> = None;
 
@@ -418,8 +454,9 @@ fn run_capture(
             }
         }
 
-        // 等帧信号（最多 100ms 唤醒一次做心跳/控制检查）
-        let _ = sig_rx.recv_timeout(Duration::from_millis(100));
+        // 等帧信号（FrameArrived 在线程池线程上投递）。超时只做兜底：没有信号时也要能
+        // 跑心跳 / 收控制命令，并且在「事件没来」的病态情况下仍能按 IDLE_WAKE_MS 轮询捡帧。
+        let _ = sig_rx.recv_timeout(Duration::from_millis(IDLE_WAKE_MS));
 
         // 吸收编码线程已完成的帧计数（非阻塞）
         while let Ok((seq, enc_ms)) = done_rx.try_recv() {
@@ -435,34 +472,45 @@ fn run_capture(
                 drop(f);
             }
         } else {
-            // 节流到目标 fps：每帧都检查帧池，到点的那帧入队编码
+            // 节流到目标 fps：一次唤醒就排空帧池（到点的入队编码，其余丢弃），
+            // 不再「每次唤醒只出一帧」——那种写法把出帧节奏绑死在信号数量上，
+            // 事件一旦合并/丢失就会掉到兜底轮询的帧率上（0.3.0 的 8fps 正是如此）。
+            //
+            // last_emit 必须在 capture_frame **之前**打点：节流比较的是「上一帧到手 → 这一帧到手」
+            // 的间隔；若等这帧处理完再打点，就把每帧处理耗时（回读+降采样，1080p 约 10~20ms）
+            // 叠加进了节流周期，源 30fps + 目标 30 会稳定退化成隔帧丢弃 = 15fps。
             while let Ok(frame) = frame_pool.TryGetNextFrame() {
-                if last_emit.elapsed() < frame_interval {
+                if last_emit.elapsed() < throttle_gap {
                     drop(frame);
                     continue;
                 }
+                last_emit = Instant::now();
                 match capture_frame(&frame, &device, &context, out_w, out_h, crop_x, crop_y, crop_w, crop_h, &mut staging_cache, &mut perf) {
                     Ok((w, h, bgra, map_ms, conv_ms)) => {
-                        job_seq += 1;
+                        cap_count += 1;
                         let job = FrameJob { w, h, quality: quality.clamp(1, 100) as u8, bgra, map_ms, conv_ms };
                         // try_send：编码端堆帧（≥PIPE_DEPTH 未消化）即丢帧，绝不阻塞捕获
                         if job_tx.try_send(job).is_ok() {
                             frame_no += 1;
+                        } else {
+                            dropped += 1;
                         }
-                        last_emit = Instant::now();
                     }
                     Err(e) => {
                         eprintln!("[we-capture] 处理帧失败: {e}");
                     }
                 }
                 drop(frame);
-                break; // 每轮只出一帧，保持节流
             }
         }
 
-        // 心跳（口径 = 编码完成 fps；map/conv 来自捕获端累计，enc 为编码端均值）
+        // 心跳：三个口径分开报，任一层受限都能一眼定位。
+        //   src_fps = 被捕获窗口自身的更新率（FrameArrived 次数）——源就慢还是被我们拖慢
+        //   cap_fps = 捕获端产帧（经节流与回读/降采样之后）
+        //   fps     = 编码完成（协议实际出帧），drop = 编码端堆积丢弃
         if last_beat.elapsed() >= Duration::from_secs(1) {
             let secs = last_beat.elapsed().as_secs_f64().max(0.001);
+            let srcs = src_count.swap(0, Ordering::Relaxed);
             let (m, c, e) = if perf.n > 0 {
                 let k = perf.n as f64;
                 (perf.map / k, perf.conv / k, perf.enc / k)
@@ -470,14 +518,18 @@ fn run_capture(
                 (0.0, 0.0, 0.0)
             };
             eprintln!(
-                "[STATUS]{{\"fps\":{:.1},\"frame\":{},\"map_ms\":{:.1},\"conv_ms\":{:.1},\"enc_ms\":{:.1}}}",
+                "[STATUS]{{\"fps\":{:.1},\"cap_fps\":{:.1},\"src_fps\":{:.1},\"frame\":{},\"drop\":{},\"map_ms\":{:.1},\"conv_ms\":{:.1},\"enc_ms\":{:.1}}}",
                 fps_count as f64 / secs,
+                cap_count as f64 / secs,
+                srcs as f64 / secs,
                 enc_done,
+                dropped,
                 m,
                 c,
                 e
             );
             fps_count = 0;
+            cap_count = 0;
             perf = Perf::default();
             last_beat = Instant::now();
         }
@@ -490,7 +542,7 @@ fn run_capture(
     drop(job_tx);
     let _ = enc_thread.join();
     while done_rx.try_recv().is_ok() {}
-    eprintln!("[we-capture] 捕获结束，入队 {frame_no} 帧，编码完成 {enc_done} 帧");
+    eprintln!("[we-capture] 捕获结束，入队 {frame_no} 帧，编码完成 {enc_done} 帧，编码端堆积丢弃 {dropped} 帧");
 }
 
 /// 编码线程：FrameJob 的 BGRA 像素直入 jpeg-encoder（Bgra 色彩类型走 SIMD 快路径，
@@ -724,6 +776,8 @@ struct FoundWindow {
     root: HWND,
     /// 目标壁纸子窗在屏幕坐标系中的矩形（裁剪区域）；None = 不裁剪（整帧输出）
     rect: Option<RECT>,
+    /// 命中的 WE 渲染子窗（诊断用：抓到的到底是哪一层，直接打在 stderr 里）
+    child: Option<HWND>,
 }
 
 /// 查找 Wallpaper Engine 的壁纸窗口，并返回其**顶层祖先**（Progman/WorkerW）。
@@ -747,6 +801,11 @@ fn find_we_window(monitor_hint: u32) -> Option<FoundWindow> {
             let mut kids: Vec<HWND> = Vec::new();
             let ptr = &mut kids as *mut Vec<HWND> as isize;
             let _ = EnumChildWindows(parent, Some(enum_collect), LPARAM(ptr));
+            eprintln!(
+                "[we-capture] 桌面顶层根 {} 子孙窗 {} 个",
+                describe_window(parent),
+                kids.len()
+            );
             kids_all.extend(kids);
         };
         if let Ok(pm) = FindWindowExW(HWND::default(), HWND::default(), w!("Progman"), PCWSTR::null()) {
@@ -782,6 +841,9 @@ fn find_we_window(monitor_hint: u32) -> Option<FoundWindow> {
         if candidates.is_empty() {
             return None;
         }
+        for w in &candidates {
+            eprintln!("[we-capture] 候选壁纸窗 {}", describe_window(w.hwnd));
+        }
 
         // 指定了目标显示器（WE MonitorN ≈ Windows 显示器设置编号 N）：
         // 选中心落在该显示器矩形内的壁纸窗；找不到再回退「面积最大」。
@@ -793,7 +855,7 @@ fn find_we_window(monitor_hint: u32) -> Option<FoundWindow> {
                     .filter(|w| w.cx >= mr.left && w.cx < mr.right && w.cy >= mr.top && w.cy < mr.bottom)
                     .max_by_key(|w| w.area);
                 match on_target {
-                    Some(w) => return Some(FoundWindow { root: root_or_self(w.hwnd), rect: Some(w.rect) }),
+                    Some(w) => return Some(found_window(w)),
                     None => eprintln!(
                         "[we-capture] 显示器 {monitor_hint} 上没有 WE 壁纸窗口 → 回退到面积最大的窗口"
                     ),
@@ -807,11 +869,46 @@ fn find_we_window(monitor_hint: u32) -> Option<FoundWindow> {
         }
 
         // 兜底 / 未指定：面积最大
-        candidates
-            .iter()
-            .max_by_key(|w| w.area)
-            .map(|w| FoundWindow { root: root_or_self(w.hwnd), rect: Some(w.rect) })
+        candidates.iter().max_by_key(|w| w.area).map(found_window)
     }
+}
+
+/// 组装捕获目标并把「抓的到底是哪一层」打到 stderr：
+/// 类名 / 句柄 / 可见性 / 窗口矩形 / 客户区矩形（WE 渲染子窗 与 其顶层根各一行）。
+/// 这类诊断是 issue 反馈里最缺的信息——用户报「抓错层」时可直接对照，不必再猜。
+fn found_window(w: &WeWindow) -> FoundWindow {
+    let root = root_or_self(w.hwnd);
+    eprintln!("[we-capture] 选中壁纸窗 {}", describe_window(w.hwnd));
+    if root != w.hwnd {
+        eprintln!("[we-capture] → 顶层根（WGC 捕获目标）{}", describe_window(root));
+    }
+    FoundWindow { root, rect: Some(w.rect), child: Some(w.hwnd) }
+}
+
+/// 单窗口诊断串：类名 + 句柄 + 可见性 + 窗口矩形 + 客户区尺寸
+fn describe_window(hwnd: HWND) -> String {
+    let mut cls = [0u16; 256];
+    let n = unsafe { GetClassNameW(hwnd, &mut cls).max(0) as usize };
+    let name = String::from_utf16_lossy(&cls[..n.min(cls.len())]);
+    let mut wr = RECT::default();
+    let mut cr = RECT::default();
+    let visible = unsafe {
+        let _ = GetWindowRect(hwnd, &mut wr);
+        let _ = GetClientRect(hwnd, &mut cr);
+        IsWindowVisible(hwnd).as_bool()
+    };
+    format!(
+        "class={} hwnd=0x{:X} visible={} window=({},{} {}x{}) client={}x{}",
+        if name.is_empty() { "?" } else { name.as_str() },
+        hwnd.0 as isize,
+        visible,
+        wr.left,
+        wr.top,
+        (wr.right - wr.left).max(0),
+        (wr.bottom - wr.top).max(0),
+        (cr.right - cr.left).max(0),
+        (cr.bottom - cr.top).max(0)
+    )
 }
 
 /// 枚举系统显示器的矩形（EnumDisplayMonitors 顺序，通常与 Windows 显示器设置的编号一致）

@@ -18,6 +18,7 @@ BOM 不是插件功能或中文支持的需要。harness 的部分清单读取�
 
 ## 检查与发布
 
+0. 原生产物（`bin/we-capture.exe`、`bin/we-floater.exe`）必须与 `native/we-capture/src` 同步：`Cargo.toml` 的 `package.version` = 源码 `VERSION` 常量 = 产物内嵌版本，且产物内嵌的源码指纹 = 现算指纹（`native/we-capture/build.rs` 注入，`tools/check-package.mjs` 扫字节比对，Linux CI 同样生效）。发布 CI **不重编原生程序**（只打包仓库里的预构建产物），所以改过 `native/` 就必须重建：`npm run build:native`（cargo build + 拷进 `bin/` + 复验）。26.9.12 ~ 26.9.29 期间的发布版本正是漏了这一步：源码已是 0.4.0，包内却一直是 0.3.0，用户侧表现为场景壁纸只有 ~8fps。
 1. 修改清单后运行 npm run check:package 和 npm run test:package。
 2. npm run build / npm run bundle 会先检查清单。构建版本必须与清单一致。
 3. npm pack / npm publish 的 prepack 会再次检查；发布工作流还会显式运行检查及回归测试，不需要安装依赖。
