@@ -9,6 +9,18 @@ import { fetchCatalog, canAutoInstall, type Catalog, type CatalogEntry, type Fet
 import { verifyIntegrity } from './integrity.ts';
 import { InstalledStore, type InstalledRecord } from './store.ts';
 
+/** 仅允许 http(s) 且非内网/回环/链路本地地址（含云元数据 169.254.169.254），防 catalog URL 被用于 SSRF。 */
+function assertSafeUrl(url: string): void {
+  const u = new URL(url);
+  if (u.protocol !== 'https:' && u.protocol !== 'http:') throw new Error(`不允许的协议: ${u.protocol}`);
+  const host = u.hostname.toLowerCase();
+  if (host === 'localhost' || host === '169.254.169.254' || host === '::1' ||
+    /^127\./.test(host) || /^10\./.test(host) || /^192\.168\./.test(host) ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(host) || /^169\.254\./.test(host) || /^0\./.test(host)) {
+    throw new Error(`不允许访问内网/元数据地址: ${host}`);
+  }
+}
+
 export class NeedsPurchaseError extends Error {
   readonly salesUrl: string;
   readonly platform: string;
@@ -44,6 +56,7 @@ export class MarketClient {
     if (!canAutoInstall(entry)) {
       throw new NeedsPurchaseError(entry.sales?.url ?? entry.dwp.package.url, entry.sales?.platform ?? 'other');
     }
+    assertSafeUrl(entry.dwp.package.url);
     const res = await this.fetchFn(entry.dwp.package.url);
     if (!res.ok) throw new Error(`下载失败 ${entry.id}: HTTP ${res.status}`);
     const bytes = new Uint8Array(await res.arrayBuffer());
