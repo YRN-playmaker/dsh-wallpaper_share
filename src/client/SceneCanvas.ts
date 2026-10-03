@@ -2,12 +2,14 @@
  * SceneCanvas —— 浏览器半的 scene 动态背景层。
  *
  * 通过 WebSocket（/we-sync/scene/stream）接收 Node 中继的编码帧，
- * 解码为 ImageBitmap 后按 requestAnimationFrame 画到 <canvas>，覆盖铺满。
+ * 解码为 ImageBitmap 后按 requestAnimationFrame 画到 <canvas>。
+ * 原生捕获按页面桌面位置取对应区域；没有屏幕坐标的 renderer 使用 cover。
  *
  * 职责：canvas resize / devicePixelRatio / 帧解码 / rAF 调度 / 可见性暂停 /
- *       自动重连 / 模糊与缩放（模糊 opacity 仍在 CSS 层，不进 renderer）。
+ *       自动重连 / 窗口位置跟随 / CSS 模糊。
  */
-import { WS_HEADER_BYTES } from '../scene/SceneProtocol.ts'
+import { WS_HEADER_BYTES, parseCaptureScreen, type CaptureScreenRect } from '../scene/SceneProtocol.ts'
+import { captureDrawRect, estimateViewportInsets } from './capture-viewport.ts'
 
 export interface SceneCanvasHandlers {
   /** 首帧到达 → true；连接彻底失败（重试耗尽）→ false，由调用方回退纹理 */
@@ -34,6 +36,9 @@ export class SceneCanvas {
   private blurPx = 0
   private scale = 1
   private handlers: SceneCanvasHandlers
+  private captureScreen: CaptureScreenRect | null = null
+  private positionKey = ''
+  private calibratedInsets: { x: number; y: number; key: string } | null = null
 
   constructor(handlers: SceneCanvasHandlers = {}) {
     this.handlers = handlers
@@ -63,6 +68,7 @@ export class SceneCanvas {
     this.applyVisuals()
 
     window.addEventListener('resize', this.onResize)
+    window.addEventListener('pointermove', this.onPointerMove, { passive: true })
     document.addEventListener('visibilitychange', this.onVisibility)
 
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
@@ -82,8 +88,12 @@ export class SceneCanvas {
     }
     if (this.latest !== null) { try { this.latest.close() } catch { /* 忽略 */ } this.latest = null }
     window.removeEventListener('resize', this.onResize)
+    window.removeEventListener('pointermove', this.onPointerMove)
     document.removeEventListener('visibilitychange', this.onVisibility)
     if (this.el !== null) { this.el.remove(); this.el = null; this.ctx = null }
+    this.captureScreen = null
+    this.positionKey = ''
+    this.calibratedInsets = null
   }
 
   applyVisuals(blurPx?: number, scale?: number): void {
@@ -91,7 +101,13 @@ export class SceneCanvas {
     if (scale !== undefined) this.scale = scale
     if (this.el !== null) {
       this.el.style.filter = 'blur(' + Math.round(this.blurPx) + 'px)'
-      this.el.style.transform = 'scale(' + this.scale.toFixed(3) + ')'
+      // 捕获画面按桌面坐标对齐，模糊留边通过额外采样实现，不能再放大窗口内容。
+      const padding = this.captureScreen !== null ? Math.ceil(Math.max(0, this.blurPx) * 3) : 0
+      this.el.style.top = this.el.style.left = -padding + 'px'
+      this.el.style.width = this.el.style.height = 'calc(100% + ' + padding * 2 + 'px)'
+      this.el.style.transform = this.captureScreen !== null ? 'none' : 'scale(' + this.scale.toFixed(3) + ')'
+      this.resize()
+      this.scheduleDraw()
     }
   }
 
@@ -132,6 +148,18 @@ export class SceneCanvas {
 
   private onMessage(ev: MessageEvent): void {
     if (this.closed) return
+    if (typeof ev.data === 'string') {
+      try {
+        const message = JSON.parse(ev.data) as { type?: string; screen?: unknown }
+        if (message.type === 'capture-screen') {
+          this.captureScreen = parseCaptureScreen(message.screen)
+          this.positionKey = ''
+          this.calibratedInsets = null
+          this.applyVisuals()
+        }
+      } catch { /* 其他或损坏的元数据不影响帧解码 */ }
+      return
+    }
     const buf = ev.data as ArrayBuffer
     if (!(buf instanceof ArrayBuffer)) return
     const view = new DataView(buf)
@@ -190,10 +218,55 @@ export class SceneCanvas {
   private draw = (): void => {
     this.rafId = 0
     if (this.closed || this.ctx === null || this.el === null) return
+    if (document.hidden) return
+    if (this.captureScreen !== null) {
+      // 浏览器没有通用的窗口移动事件；即使 WE 暂停出帧，也要跟随窗口移动。
+      const key = [window.screenX, window.screenY, window.outerWidth, window.outerHeight,
+        window.innerWidth, window.innerHeight, window.devicePixelRatio, !!document.fullscreenElement].join(',')
+      if (key !== this.positionKey) {
+        this.positionKey = key
+        this.resize()
+        this.needDraw = true
+      }
+    }
     if (this.needDraw && this.latest !== null) {
       this.needDraw = false
-      this.drawCover(this.ctx, this.latest, this.el.width, this.el.height)
+      if (this.captureScreen !== null) this.drawCapture(this.ctx, this.latest)
+      else this.drawCover(this.ctx, this.latest, this.el.width, this.el.height)
     }
+    if (this.captureScreen !== null) this.rafId = requestAnimationFrame(this.draw)
+  }
+
+  private chromeKey(zoom: number): string {
+    return [window.outerWidth - window.innerWidth * zoom, window.outerHeight - window.innerHeight * zoom,
+      zoom, !!document.fullscreenElement].join(',')
+  }
+
+  private onPointerMove = (ev: PointerEvent): void => {
+    if (this.captureScreen === null || !ev.isTrusted) return
+    const zoom = (window.devicePixelRatio || 1) / this.captureScreen.pixelRatio
+    const key = this.chromeKey(zoom)
+    if (this.calibratedInsets?.key === key) return
+    const x = ev.screenX - window.screenX - ev.clientX * zoom
+    const y = ev.screenY - window.screenY - ev.clientY * zoom
+    // 用真实指针校准页面原点，兼容 Chrome 工具栏和无边框桌面窗口。
+    if (x >= -32 && x <= 64 && y >= -32 && y <= window.outerHeight) {
+      this.calibratedInsets = { x, y, key }
+      this.scheduleDraw()
+    }
+  }
+
+  private drawCapture(ctx: CanvasRenderingContext2D, bmp: ImageBitmap): void {
+    const screen = this.captureScreen!, el = this.el!
+    const zoom = (window.devicePixelRatio || 1) / screen.pixelRatio
+    const inset = this.calibratedInsets?.key === this.chromeKey(zoom) ? this.calibratedInsets
+      : estimateViewportInsets(window.outerWidth, window.outerHeight, window.innerWidth, window.innerHeight, zoom, !!document.fullscreenElement)
+    const rect = el.getBoundingClientRect()
+    const viewport = { left: window.screenX + inset.x + rect.left * zoom,
+      top: window.screenY + inset.y + rect.top * zoom, width: rect.width * zoom, height: rect.height * zoom }
+    const draw = captureDrawRect(screen, viewport, bmp.width, bmp.height, el.width, el.height)
+    ctx.clearRect(0, 0, el.width, el.height)
+    if (draw !== null) ctx.drawImage(bmp, draw.sx, draw.sy, draw.sw, draw.sh, draw.dx, draw.dy, draw.dw, draw.dh)
   }
 
   /** 以 cover 方式绘制（等比裁切铺满），与 background-size: cover 对齐 */

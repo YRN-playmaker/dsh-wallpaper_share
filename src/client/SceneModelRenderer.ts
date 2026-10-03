@@ -22,6 +22,10 @@ import { ParticleRuntime } from './ParticleRuntime.ts'
 import { ParticleGL } from './ParticleGL.ts'
 import { WaterwavesGL, type WaterwavesParams } from './WaterwavesGL.ts'
 import { NitroGL, type NitroParams } from './NitroGL.ts'
+import { ShakeGL } from './ShakeGL.ts'
+import { applyShake2D } from './Shake2D.ts'
+import { shakeOffset } from './shake-math.ts'
+import { decodeParticleBitmap } from './particle-texture.ts'
 
 export interface SceneModelRendererHandlers {
   onLiveChange?: (live: boolean) => void
@@ -334,8 +338,25 @@ export class SceneModelRenderer {
   private model: SceneModel | null = null
   private base: HTMLImageElement | null = null
   private layerTextures = new Map<number, ImageBitmap>()
-  /** 效果 mask 纹理（waterwaves/shake opacitymask）+ 通道模式（true=R8 alpha 语义用 A） */
-  private effectMasks = new Map<number, { bmp: ImageBitmap; useA: boolean; flowDir: [number, number] }>()
+  /** 效果 mask 纹理（waterwaves 的 opacitymask）+ 通道模式（true=R8 alpha 语义用 A） */
+  private effectMasks = new Map<number, { bmp: ImageBitmap; useA: boolean }>()
+  /** shake 效果纹理：**每个 shake pass** 一组方向场（g_Texture1）+ 不透明度 mask（g_Texture3）。
+   *  WE 把 scene.json 里列出的每个 effect 当作一次独立 pass 依次作用于图层纹理，
+   *  同一图层挂多个 shake（如 3258032485 单层 8 个方向场 = 各处毛发拉伸）必须逐个串联。 */
+  private shakeTex = new Map<number, Array<{
+    passIndex: number
+    flow: ImageBitmap
+    flowW: number
+    flowH: number
+    flowYFromAlpha: boolean
+    mask: ImageBitmap | null
+    maskW: number
+    maskH: number
+    maskFromAlpha: boolean
+  }>>()
+  /** WebGL shake 渲染器（惰性创建；多 pass 串联时与 shakeGL2 乒乓复用，避免读同一张纹理） */
+  private shakeGL: ShakeGL | null = null
+  private shakeGL2: ShakeGL | null = null
   /** WebGL waterwaves 渲染器（惰性创建） */
   private wwGL: WaterwavesGL | null = null
   /** WebGL nitro 渲染器（惰性创建） */
@@ -366,6 +387,10 @@ export class SceneModelRenderer {
   private staticBgReady = false
   /** 前缀静态层 id 集合（只缓存 z-order 底部的连续静态层段，避免动态层被压序） */
   private staticPrefixIds = new Set<number>()
+  /** 已就「无可用纹理」告警过的图层 id（占位/composelayer 层只提示一次，不再画调试脚手架） */
+  private warnedNoTexture = new Set<number>()
+  /** 单层绘制异常只警告一次的图层 id（一层出错不再吃掉整帧） */
+  private failedLayers = new Set<number>()
   /** WebGL 粒子渲染开关（坐标空间已修正，开启） */
   private static readonly USE_WEBGL_PARTICLES = true
   /** puppet 动画状态：puppet 图层 id → { 动画, 播放时间 } */
@@ -484,12 +509,23 @@ export class SceneModelRenderer {
     this.meshCanvases.clear()
     for (const v of this.effectMasks.values()) { try { if ('close' in v.bmp) v.bmp.close() } catch { /* 忽略 */ } }
     this.effectMasks.clear()
+    for (const v of this.shakeTex.values()) {
+      for (const one of v) {
+        try { one.flow.close() } catch { /* 忽略 */ }
+        if (one.mask !== null) { try { one.mask.close() } catch { /* 忽略 */ } }
+      }
+    }
+    this.shakeTex.clear()
     if (this.wwGL !== null) { this.wwGL.reset() }
+    if (this.shakeGL !== null) { this.shakeGL.reset() }
+    if (this.shakeGL2 !== null) { this.shakeGL2.reset() }
     for (const rt of this.runtimes.values()) rt.dispose()
     this.runtimes.clear()
     this.staticBg = null
     this.staticBgReady = false
     this.staticPrefixIds.clear()
+    this.warnedNoTexture.clear()
+    this.failedLayers.clear()
     this.setLive(false)
   }
 
@@ -499,6 +535,8 @@ export class SceneModelRenderer {
     if (this.particleGL !== null) { this.particleGL.dispose(); this.particleGL = null }
     if (this.glCanvas !== null) { this.glCanvas = null }
     if (this.wwGL !== null) { this.wwGL.dispose(); this.wwGL = null }
+    if (this.shakeGL !== null) { this.shakeGL.dispose(); this.shakeGL = null }
+    if (this.shakeGL2 !== null) { this.shakeGL2.dispose(); this.shakeGL2 = null }
   }
 
   applyVisuals(blurPx?: number, scale?: number): void {
@@ -566,10 +604,14 @@ export class SceneModelRenderer {
     const jobs: Array<Promise<void>> = []
     for (const layer of model.layers) {
       jobs.push(this.loadLayerTexture(layer))
+      // 效果纹理（waterwaves mask / shake 方向场+不透明度 mask）与图层纹理互相独立：
+      // 有自己纹理的图层同样需要加载效果纹理（此前 mask 加载被 return 跳过 = 效果退化成整层滑动）
+      jobs.push(this.loadEffectTextures(layer))
     }
   /** 粒子系统：创建运行时 + 加载粒子纹理（引擎资产 /we-sync/asset/texture） */
     for (const layer of model.layers) {
-      if (layer.particle !== null) {
+      // 隐藏雨层没有可见输出；不创建其数千粒子，也不加载对应纹理。
+      if (layer.particle !== null && layer.visible && layer.alpha > 0) {
         const rt = new ParticleRuntime(layer.particle, model.particleRateScale, model.particleSizeScale)
         this.runtimes.set(layer.id, rt)
         // WE Start Time 预模拟（官方语义：创建时预模拟，非延迟启动）
@@ -711,7 +753,7 @@ export class SceneModelRenderer {
 
   private async loadParticleTexture(rt: ParticleRuntime, name: string): Promise<void> {
     try {
-      const res = await fetch('/we-sync/asset/texture?name=' + encodeURIComponent(name), { cache: 'no-store' })
+      const res = await fetch('/we-sync/asset/texture?name=' + encodeURIComponent(name) + '&monitor=' + encodeURIComponent(this.monitor), { cache: 'no-store' })
       if (!res.ok) {
         console.warn('[particle tex] 加载失败', name, res.status)
         return
@@ -720,8 +762,7 @@ export class SceneModelRenderer {
       const frames = Number(res.headers.get('X-Sprite-Frames') ?? '0')
       const fw = Number(res.headers.get('X-Sprite-Width') ?? '0')
       const fh = Number(res.headers.get('X-Sprite-Height') ?? '0')
-      const blob = await res.blob()
-      const bmp = await createImageBitmap(blob)
+      const bmp = await decodeParticleBitmap(res)
       if (this.closed) { bmp.close(); return }
       // 径向软边仅用于小尺寸点状纹理（雪花/光点，<128px），避免硬边方块叠加成白线；
       // 大片纹理（雾/风，如 fog3）自带羽化形状，软边遮罩会破坏形状
@@ -741,7 +782,7 @@ export class SceneModelRenderer {
    *  法线纹理不做软边处理（需要原始 R/G/A 通道做 shader 解压）。 */
   private async loadParticleNormalTexture(rt: ParticleRuntime, name: string): Promise<void> {
     try {
-      const res = await fetch('/we-sync/asset/texture?name=' + encodeURIComponent(name), { cache: 'no-store' })
+      const res = await fetch('/we-sync/asset/texture?name=' + encodeURIComponent(name) + '&monitor=' + encodeURIComponent(this.monitor), { cache: 'no-store' })
       if (!res.ok) {
         console.warn('[particle normal tex] 加载失败', name, res.status)
         return
@@ -749,8 +790,7 @@ export class SceneModelRenderer {
       const frames = Number(res.headers.get('X-Sprite-Frames') ?? '0')
       const fw = Number(res.headers.get('X-Sprite-Width') ?? '0')
       const fh = Number(res.headers.get('X-Sprite-Height') ?? '0')
-      const blob = await res.blob()
-      const bmp = await createImageBitmap(blob)
+      const bmp = await decodeParticleBitmap(res, true)
       if (this.closed) { bmp.close(); return }
       rt.setNormalTexture(bmp, frames > 1 && fw > 0 && fh > 0 ? frames : 0, fw, fh)
     } catch (err) {
@@ -774,52 +814,88 @@ export class SceneModelRenderer {
       this.startAnimation()
       return
     }
-    // 效果 mask 纹理（waterwaves/shake 的 opacitymask，独立于图层纹理）
-    for (const e of layer.effects) {
-      const m = e.type === 'waterwaves' || e.type === 'shake' ? e.mask : null
-      if (m === null || this.effectMasks.has(layer.id)) continue
-      try {
-        // mask 引用（如 "masks/shake_mask_xxx"）规范化为 pkg 条目名 materials/<mask>.tex
-        const maskName = m.startsWith('materials/') ? m : 'materials/' + m + '.tex'
-        const res = await fetch('/we-sync/scene/texture?monitor=' + encodeURIComponent(this.monitor) + '&name=' + encodeURIComponent(maskName), { cache: 'no-store' })
-        if (!res.ok) continue
-        const blob = await res.blob()
-        const bmp = await createImageBitmap(blob)
-        if (this.closed) { bmp.close(); return }
-        // 通道判断：R8/RG88 解码为 alpha 语义（rgb=255, a=灰度）→ 用 A 通道；
-        // shake 的 direction map（RG 方向场）→ 平均方向（flowDir）
-        let useA = false
-        let flowDir: [number, number] = [0, -1]
+  }
+
+  /**
+   * 图层效果纹理（与图层自身纹理互相独立，必须单独加载）：
+   *   - waterwaves：g_Texture1 不透明度 mask（门控扰动区域）
+   *   - shake：g_Texture1 方向场（flowmask）+ g_Texture3 不透明度 mask（MASK combo）
+   * 此前这些加载被写在「图层纹理全部候选都失败」之后（`return` 之前不可达），
+   * 导致有纹理的图层永远拿不到效果 mask —— shake 退化成整层滑动、
+   * waterwaves 退化成全图扰动。现按效果类型独立加载。
+   */
+  private async loadEffectTextures(layer: SceneModelLayer): Promise<void> {
+    if (this.closed) return
+    const wwHas = layer.effects.some((e) => e.type === 'waterwaves' && e.mask !== null)
+    if (wwHas && !this.effectMasks.has(layer.id)) {
+      for (const e of layer.effects) {
+        const m = e.type === 'waterwaves' ? e.mask : null
+        if (m === null || this.effectMasks.has(layer.id)) continue
         try {
-          const tc = document.createElement('canvas')
-          tc.width = 16
-          tc.height = 16
-          const tg = tc.getContext('2d')
-          if (tg !== null) {
-            tg.drawImage(bmp, 0, 0, 16, 16)
-            const px = tg.getImageData(0, 0, 16, 16)
-            let all255 = true
-            let sr = 0
-            let sg = 0
-            let n = 0
-            for (let i = 0; i < px.data.length; i += 4) {
-              if (px.data[i] < 254) all255 = false
-              sr += px.data[i]
-              sg += px.data[i + 1]
-              n++
-            }
-            useA = all255
-            if (!all255 && n > 0) {
-              // direction map：flowMask = (rg - 0.498) * 2（官方语义）
-              flowDir = [(sr / n / 255 - 0.498) * 2, (sg / n / 255 - 0.498) * 2]
-              const len = Math.hypot(flowDir[0], flowDir[1])
-              if (len > 0.01) { flowDir[0] /= len; flowDir[1] /= len }
-            }
+          const got = await this.fetchEffectTexture(m)
+          if (got === null) continue
+          if (this.closed) { got.bmp.close(); return }
+          // 通道判断：R8 解码语义为 rgb=255/a=灰度 → 取 A；RGBA mask（黑白）→ 取 R
+          this.effectMasks.set(layer.id, { bmp: got.bmp, useA: this.texValueInAlpha(got.bmp) })
+          this.startAnimation()
+        } catch { /* mask 加载失败：无 mask 全图扰动 */ }
+      }
+    }
+    // shake：**逐个 pass** 加载方向场（g_Texture1）+ 不透明度 mask（g_Texture3）
+    const shakes = layer.effects.filter((e): e is Extract<LayerEffect, { type: 'shake' }> => e.type === 'shake')
+    if (shakes.length > 0 && !this.shakeTex.has(layer.id)) {
+      // 自检：旧版 node 半（未重启 DSH）产出的模型没有 flow 字段——此时 shake 拿不到方向场，
+      // 官方语义下位移恒为 0（画面完全不动）。明确报出来，避免误判成"前端没实现"。
+      const noFlow = shakes.filter((e) => typeof (e as { flow?: unknown }).flow !== 'string' || e.flow === null || e.flow === '')
+      if (noFlow.length === shakes.length) {
+        console.warn('[scene:effect] 图层 #' + layer.id + ' ' + layer.name + ' 的 ' + shakes.length +
+          ' 个 shake 都没有方向场字段（flow）——node 半是旧产物，请**重启 DSH 进程**后刷新页面')
+      }
+      const loaded: Array<{
+        passIndex: number
+        flow: ImageBitmap
+        flowW: number
+        flowH: number
+        flowYFromAlpha: boolean
+        mask: ImageBitmap | null
+        maskW: number
+        maskH: number
+        maskFromAlpha: boolean
+      }> = []
+      try {
+        for (const [passIndex, shk] of shakes.entries()) {
+          if (typeof shk.flow !== 'string' || shk.flow === '') continue
+          const flow = await this.fetchEffectTexture(shk.flow)
+          // 失败时不 return：本方法后面还有 nitro 纹理要加载
+          if (flow === null) continue
+          if (this.closed) { flow.bmp.close(); break }
+          let mask: { bmp: ImageBitmap; imgW: number; imgH: number } | null = null
+          if (shk.mask !== null) {
+            mask = await this.fetchEffectTexture(shk.mask)
+            if (this.closed) { flow.bmp.close(); if (mask !== null) mask.bmp.close(); break }
           }
-        } catch { /* 通道判断失败：默认 R */ }
-        this.effectMasks.set(layer.id, { bmp, useA, flowDir })
-        this.startAnimation()
-      } catch { /* mask 加载失败：无 mask 全图扰动 */ }
+          loaded.push({
+            passIndex,
+            flow: flow.bmp,
+            flowW: flow.imgW,
+            flowH: flow.imgH,
+            // RG88 解码把第二通道放进 A（rgb = 第一通道灰度）→ 方向场 y 取 A
+            flowYFromAlpha: this.texChannelsDuplicated(flow.bmp),
+            mask: mask !== null ? mask.bmp : null,
+            maskW: mask !== null ? mask.imgW : 0,
+            maskH: mask !== null ? mask.imgH : 0,
+            maskFromAlpha: mask !== null ? this.texValueInAlpha(mask.bmp) : false,
+          })
+        }
+        if (loaded.length > 0) {
+          this.shakeTex.set(layer.id, loaded)
+          console.log('[scene:effect] 图层 #' + layer.id + ' ' + layer.name + '：shake 生效 ' + loaded.length + '/' + shakes.length +
+            ' pass（方向场 ' + loaded.map((x) => (x.mask !== null ? 'flow+mask' : 'flow')).join(', ') + '）')
+          this.startAnimation()
+        } else if (shakes.length > 0) {
+          console.warn('[scene:effect] 图层 #' + layer.id + ' ' + layer.name + '：shake 方向场加载失败（' + shakes.length + ' 个 pass 全部不可用）')
+        }
+      } catch { /* 方向场加载失败：官方语义下位移为 0（保持原图） */ }
     }
     // nitro 效果纹理：噪声（WE 资产 clouds_256）+ 各 mask（pkg 内）
     const nitros = layer.effects.filter((e): e is Extract<LayerEffect, { type: 'nitro' }> => e.type === 'nitro')
@@ -859,6 +935,67 @@ export class SceneModelRenderer {
       this.nitroTex.set(layer.id, { noise: noiseBmp, masks })
       this.startAnimation()
     }
+  }
+
+  /** 效果 mask 引用（如 "masks/shake_mask_xxx"）→ pkg 条目名 materials/<name>.tex */
+  private async fetchEffectTexture(name: string): Promise<{ bmp: ImageBitmap; imgW: number; imgH: number } | null> {
+    try {
+      const entry = name.startsWith('materials/') ? name : 'materials/' + name + '.tex'
+      const res = await fetch('/we-sync/scene/texture?monitor=' + encodeURIComponent(this.monitor) + '&name=' + encodeURIComponent(entry), { cache: 'no-store' })
+      if (!res.ok) return null
+      const blob = await res.blob()
+      // 方向场的 A 是 y 数据，不能作为透明度预乘 RGB。ImageBitmap 上传到
+      // WebGL 时会忽略 UNPACK_PREMULTIPLY_ALPHA_WEBGL，必须在解码时关闭。
+      const bmp = await createImageBitmap(blob, { premultiplyAlpha: 'none', colorSpaceConversion: 'none' })
+      const imgW = Number(res.headers.get('X-WE-Image-W'))
+      const imgH = Number(res.headers.get('X-WE-Image-H'))
+      return {
+        bmp,
+        imgW: Number.isFinite(imgW) && imgW > 0 ? imgW : bmp.width,
+        imgH: Number.isFinite(imgH) && imgH > 0 ? imgH : bmp.height,
+      }
+    } catch {
+      return null
+    }
+  }
+
+  /** 16×16 采样做出通道语义判断（失败时退回保守默认） */
+  private sampleChannels(bmp: ImageBitmap): { r: number; g: number; b: number; a: number; allWhiteRGB: boolean; grayDup: boolean } | null {
+    try {
+      const tc = document.createElement('canvas')
+      tc.width = 16
+      tc.height = 16
+      const tg = tc.getContext('2d')
+      if (tg === null) return null
+      tg.drawImage(bmp, 0, 0, 16, 16)
+      const px = tg.getImageData(0, 0, 16, 16)
+      let sr = 0; let sg = 0; let sb = 0; let sa = 0; let n = 0
+      let allWhiteRGB = true
+      let grayDup = true
+      for (let i = 0; i < px.data.length; i += 4) {
+        const r = px.data[i]; const g = px.data[i + 1]; const b = px.data[i + 2]
+        if (r < 254 || g < 254 || b < 254) allWhiteRGB = false
+        if (r !== g || g !== b) grayDup = false
+        sr += r; sg += g; sb += b; sa += px.data[i + 3]
+        n++
+      }
+      if (n === 0) return null
+      return { r: sr / n, g: sg / n, b: sb / n, a: sa / n, allWhiteRGB, grayDup }
+    } catch {
+      return null
+    }
+  }
+
+  /** mask 值是否在 A 通道（R8 解码：rgb 全 255、值在 A） */
+  private texValueInAlpha(bmp: ImageBitmap): boolean {
+    const s = this.sampleChannels(bmp)
+    return s !== null && s.allWhiteRGB
+  }
+
+  /** 是否 RG88 解码语义（第一通道被复制到 rgb，第二通道在 A）——shake 方向场的 y 分量 */
+  private texChannelsDuplicated(bmp: ImageBitmap): boolean {
+    const s = this.sampleChannels(bmp)
+    return s !== null && s.grayDup && !s.allWhiteRGB
   }
 
   private async fetchTexture(name: string): Promise<{ bmp: ImageBitmap; imgW: number; imgH: number; sprite: { frames: number; fw: number; fh: number; per: number; rects: Array<[number, number, number, number]> | null } | null } | null> {
@@ -1272,7 +1409,6 @@ export class SceneModelRenderer {
             if (b.refract && !this.bgUploaded) {
               this.particleGL.uploadBackground(this.el)
               this.bgUploaded = true
-              console.log('[scene:GL] bg uploaded', this.el.width + 'x' + this.el.height)
             }
             this.particleGL.render(
               b.particles,
@@ -1284,6 +1420,9 @@ export class SceneModelRenderer {
                 frames: b.frames,
                 fw: b.fw,
                 fh: b.fh,
+                normalFrames: b.normalFrames,
+                normalFw: b.normalFw,
+                normalFh: b.normalFh,
                 refractAmount: b.refractAmount,
                 trail: b.trail,
               },
@@ -1431,7 +1570,8 @@ export class SceneModelRenderer {
         const wws = layer.effects
           .filter((e): e is Extract<LayerEffect, { type: 'waterwaves' }> => e.type === 'waterwaves')
           .map((e) => ({ ...e, strength: e.strength * effScale }))
-        const shk = layer.effects.find((e) => e.type === 'shake')
+        const shakes = layer.effects
+          .filter((e): e is Extract<LayerEffect, { type: 'shake' }> => e.type === 'shake')
         const nitros = layer.effects
           .filter((e): e is Extract<LayerEffect, { type: 'nitro' }> => e.type === 'nitro')
         if (wws.length > 0) {
@@ -1470,36 +1610,78 @@ export class SceneModelRenderer {
           } else {
             ctx.drawImage(eff, 0, 0, sw, sh, -dw / 2, -dh / 2, dw, dh)
           }
-        } else if (shk !== undefined && shk.type === 'shake') {
-          // 官方 shake：offset = sin(speed×t)（标量波形），位移 = offset × strength² × flow 方向
-          // （direction map 平均；无 flow 默认垂直）——单向位移，非圆周
-          const maskInfo2 = this.effectMasks.get(layer.id)
-          const fd = maskInfo2 !== undefined ? maskInfo2.flowDir : [0, -1]
-          const offset = Math.sin(this.animTime * shk.speed)
-          const amp = shk.strength * shk.strength * effScale
-          const dx = offset * amp * fd[0] * dw
-          const dy = offset * amp * fd[1] * dh
-          ctx.drawImage(src, 0, 0, sw, sh, -dw / 2 + dx, -dh / 2 + dy, dw, dh)
+        } else if (shakes.length > 0) {
+          // 官方 shake（effects/shake，逐字对齐 shaders/effects/shake.frag）：
+          //   flowMask = (方向场.rg - 0.498) × 2
+          //   texCoordOffset = offset(bounds/friction/speed/direction) × strength² × flowMask
+          //   位移后采样图层，再按不透明度 mask（g_Texture3，同样按位移后 UV 采样）混合
+          //
+          // **每个 shake 效果是一次独立 pass**：scene.json 里列 N 个 shake 就依次串 N 次
+          // （如 3258032485 单层 8 个方向场 = 画面各处毛发各自的拉伸/摆动）。此前只应用
+          // 第一个，其余形变全部丢失。
+          const stArr = this.shakeTex.get(layer.id)
+          // canvas 输入每帧上传，纹理键只区分图层和 pass，不累计逐帧缓存。
+          let curSrc: TexImageSource = src
+          let curOut: HTMLCanvasElement | null = null
+          const passes = stArr?.length ?? 0
+          for (let pi = 0; pi < passes; pi++) {
+            const st = stArr![pi]
+            // 个别方向场加载失败时，仍使用此纹理原来所属 pass 的速度/强度。
+            const shk = shakes[st.passIndex]
+            const offset = shakeOffset(this.animTime, {
+              speed: shk.speed,
+              bounds: shk.bounds,
+              friction: shk.friction,
+              direction: shk.direction,
+              audioProcessing: shk.audioProcessing,
+            })
+            const glKey = String(layer.id) + ':' + st.passIndex
+            const rects = {
+              src: { w: sw, h: sh },
+              flow: { w: st.flowW, h: st.flowH },
+              mask: st.mask !== null ? { w: st.maskW, h: st.maskH } : undefined,
+            }
+            let out: HTMLCanvasElement | null = null
+            if (this.shakeGL !== null || ShakeGL.available) {
+              // 乒乓复用两个 GL 实例：pass 的输入是上一 pass 的输出（同一张画布不能读+写）
+              const useA = pi % 2 === 0
+              if (useA ? this.shakeGL === null : this.shakeGL2 === null) {
+                if (useA) this.shakeGL = new ShakeGL()
+                else this.shakeGL2 = new ShakeGL()
+              }
+              const gl = useA ? this.shakeGL : this.shakeGL2
+              out = gl!.render(
+                curSrc, sw, sh, st.flow, st.flowYFromAlpha, st.mask, st.maskFromAlpha,
+                { offset, strength: shk.strength }, glKey, rects,
+              )
+            }
+            if (out === null) {
+              out = applyShake2D({
+                src: curSrc, sw, sh,
+                flow: st.flow, flowYFromAlpha: st.flowYFromAlpha,
+                mask: st.mask, maskFromAlpha: st.maskFromAlpha,
+                offset, strength: shk.strength,
+                rects,
+              })
+            }
+            if (out === null) break // 该 pass 无法执行 → 保留上一 pass 结果
+            curOut = out
+            curSrc = out
+          }
+          // 方向场缺失/WebGL 与 2D 均不可用 → 官方等价于「无位移」，保持原图
+          if (curOut !== null) ctx.drawImage(curOut, 0, 0, sw, sh, -dw / 2, -dh / 2, dw, dh)
+          else ctx.drawImage(src, 0, 0, sw, sh, -dw / 2, -dh / 2, dw, dh)
         } else {
           ctx.drawImage(src, 0, 0, sw, sh, -dw / 2, -dh / 2, dw, dh)
         }
-      } else {
-        // 占位标记（effect/composelayer/无纹理图层）：极小圆点，避免像"错误控件"
-        ctx.fillStyle = 'rgba(120, 170, 255, 0.5)'
-        ctx.beginPath()
-        ctx.arc(0, 0, 3, 0, Math.PI * 2)
-        ctx.fill()
+      } else if (!this.warnedNoTexture.has(layer.id)) {
+        // 无可用纹理（effect/composelayer 占位图层）：不画任何东西——早期版本在这里画
+        // 半透明圆点 + 图层名标注，属于调试脚手架，会污染真实壁纸画面，已移除；
+        // 诊断信息改为只在控制台打一次。
+        this.warnedNoTexture.add(layer.id)
+        console.warn('[scene:render] 图层无可用纹理，已跳过绘制：#' + layer.id + ' ' + layer.name + ' [' + layer.kind + ']')
       }
       ctx.restore()
-      // 图层名标注（画布坐标，保证可读）
-      ctx.font = '10px system-ui, sans-serif'
-      ctx.textBaseline = 'top'
-      ctx.fillStyle = 'rgba(255,255,255,0.85)'
-      ctx.strokeStyle = 'rgba(0,0,0,0.55)'
-      const label = '#' + layer.id + ' ' + layer.name + ' [' + layer.kind + (this.layerTextures.has(layer.id) ? ' tex' : '') + ']'
-      ctx.lineWidth = 3
-      ctx.strokeText(label, px + 6, py + 6)
-      ctx.fillText(label, px + 6, py + 6)
     }
 
     // 循环结束：flush 最后一段 GL 粒子（若 z-order 末尾是粒子层）

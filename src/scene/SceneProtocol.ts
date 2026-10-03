@@ -36,6 +36,25 @@ export const WS_HEADER_BYTES = 9
 /** renderer stdout 帧头之外的 payload 布局：1B format + 4B width + 4B height = 9 字节 */
 export const STDOUT_PAYLOAD_HEADER_BYTES = 9
 
+/** 捕获图像对应的桌面区域（Windows 逻辑屏幕坐标，不含任务栏裁切）。 */
+export interface CaptureScreenRect {
+  left: number
+  top: number
+  width: number
+  height: number
+  /** 原始捕获像素 / 逻辑屏幕像素；不受 JPEG 降采样影响。 */
+  pixelRatio: number
+}
+
+export function parseCaptureScreen(value: unknown): CaptureScreenRect | null {
+  if (value === null || typeof value !== 'object') return null
+  const r = value as Record<string, unknown>
+  if (![r.left, r.top, r.width, r.height, r.pixelRatio].every((v) => typeof v === 'number' && Number.isFinite(v))) return null
+  const { left, top, width, height, pixelRatio } = r as unknown as CaptureScreenRect
+  if (width <= 0 || height <= 0 || width > 65536 || height > 65536 || pixelRatio <= 0 || pixelRatio > 16) return null
+  return { left, top, width, height, pixelRatio }
+}
+
 /** Node → renderer 的 load 命令 */
 export interface SceneRenderRequest {
   cmd: 'load'
@@ -94,6 +113,7 @@ export interface SceneRenderStatus {
   /** 最近一帧编码/到达耗时（毫秒） */
   frameTimeMs?: number
   resolution?: { width: number; height: number }
+  captureScreen?: CaptureScreenRect
   lastError?: string
   /** 已自动重启次数 */
   restarts: number

@@ -347,6 +347,16 @@ fn run_capture(
     eprintln!(
         "[we-capture] 裁剪区域 x={crop_x} y={crop_y} w={crop_w} h={crop_h}（多显示器仅输出目标屏）"
     );
+    // 浏览器用这一区域将整屏帧对齐到页面的桌面位置。坐标沿用上面的 Win32
+    // 逻辑坐标；pixelRatio 来自降采样前的 WGC 尺寸，不能用 JPEG 的输出分辨率。
+    if let Some(rc) = found.rect {
+        let logical_w = (rc.right - rc.left).max(1);
+        let logical_h = (rc.bottom - rc.top).max(1);
+        eprintln!(
+            "[STATUS]{{\"captureScreen\":{{\"left\":{},\"top\":{},\"width\":{},\"height\":{},\"pixelRatio\":{:.6}}}}}",
+            rc.left, rc.top, logical_w, logical_h, crop_w as f64 / logical_w as f64
+        );
+    }
 
     // 5. 帧池 + 会话。
     //    CreateFreeThreaded：帧到达事件在线程池线程上直接派发，不依赖

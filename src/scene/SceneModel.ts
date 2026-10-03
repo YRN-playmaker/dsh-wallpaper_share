@@ -193,7 +193,9 @@ export interface SceneModelLayer {
 
 export type LayerEffect =
   | { type: 'waterwaves'; direction: number; speed: number; scale: number; strength: number; exponent: number; mask: string | null }
-  | { type: 'shake'; bounds: [number, number]; friction: [number, number]; speed: number; strength: number; mask: string | null }
+  /** shake（官方 effects/shake）：UV 位移 = offset(bounds/friction/speed/direction) × strength² × 方向场，
+   *  再按不透明度 mask 混合。flow = g_Texture1（方向场），mask = g_Texture3（不透明度）。 */
+  | { type: 'shake'; bounds: [number, number]; friction: [number, number]; speed: number; strength: number; direction: number; audioProcessing: boolean; flow: string | null; mask: string | null }
   | { type: 'opacity'; alpha: number }
   | { type: 'bloom'; gamma: number; opacity: number; radius: number; strength: number; threshold: number }
   | { type: 'nitro'; colorStart: [number, number, number]; colorEnd: [number, number, number]; multiply: number; ranges: [number, number]; scales: [number, number]; speeds: [number, number, number, number]; smoothness: number; mask: string | null; noise: string | null }
@@ -465,6 +467,18 @@ function parseLayerEffects(o: Record<string, unknown>): LayerEffect[] {
     // mask 纹理：passes[0].textures[1]（g_Texture1 opacitymask，非 null 时）
     const textures = Array.isArray(pass0.textures) ? pass0.textures as unknown[] : []
     const mask = textures.length > 1 && typeof textures[1] === 'string' && textures[1] !== '' ? textures[1] : null
+    /** textures[n] 的条目名（非空字符串时） */
+    const texAt = (i: number): string | null => (textures.length > i && typeof textures[i] === 'string' && textures[i] !== '' ? textures[i] as string : null)
+    // 效果 pass 的 combo（如 shake 的 DIRECTION / AUDIOPROCESSING）
+    const combos = (pass0.combos ?? {}) as Record<string, unknown>
+    const comboOn = (name: string): boolean => {
+      const v = combos[name]
+      return v === true || (typeof v === 'number' && v !== 0) || (typeof v === 'string' && v !== '' && v !== '0' && v !== 'false')
+    }
+    const comboNum = (name: string, d: number): number => {
+      const x = Number(combos[name])
+      return Number.isFinite(x) ? x : d
+    }
     const n = (v: unknown, d: number): number => {
       const x = Number(v)
       return Number.isFinite(x) ? x : d
@@ -493,7 +507,13 @@ function parseLayerEffects(o: Record<string, unknown>): LayerEffect[] {
         friction: v2(csv.friction, [1, 1]),
         speed: n(csv.speed, 1),
         strength: n(csv.strength, 0.1),
-        mask,
+        // DIRECTION combo：0 center / 1 left / 2 right（默认 center）
+        direction: comboNum('DIRECTION', 0),
+        // AUDIOPROCESSING combo：打开时官方用音频脉冲取代计时脉冲（本渲染器无音频分析）
+        audioProcessing: comboOn('AUDIOPROCESSING'),
+        // shake 的纹理槽位：g_Texture1 = 方向场（flowmask），g_Texture3 = 不透明度 mask
+        flow: texAt(1),
+        mask: texAt(3),
       })
     } else if (file.includes('opacity')) {
       out.push({ type: 'opacity', alpha: n(csv.alpha, 1) })
@@ -556,7 +576,8 @@ function resolveParticleSystem(pkg: ParsedPkg, ref: string, obj: Record<string, 
     let blending = 'translucent'
     let overbright = 1
     let refract = false
-    let refractAmount = 0
+    // genericparticle 的材质默认值；显式 0 仍表示无折射偏移。
+    let refractAmount = 0.05
     let hasAlpharandom = false
     if (matRef !== '') {
       try {

@@ -25,7 +25,7 @@ import {
   describeSceneStatus,
   type SceneFallbackResult,
 } from './SceneFallback.ts'
-import type { SceneCapabilities, SceneFrame, SceneRenderStatus } from './SceneProtocol.ts'
+import { parseCaptureScreen, type SceneCapabilities, type SceneFrame, type SceneRenderStatus } from './SceneProtocol.ts'
 
 /** renderer 崩溃后最多自动重启次数 */
 const MAX_RESTARTS = 1
@@ -148,6 +148,7 @@ export class SceneAdapter {
 
   /** 停止进程但不改变 target（客户端断开时调用，保持可重新启动） */
   private stopProcess(): void {
+    if (this.target !== null) this.hub.setCaptureScreen(this.target.key, null)
     if (this.process !== null) {
       this.process.kill()
       this.process = null
@@ -209,12 +210,13 @@ export class SceneAdapter {
       return
     }
     this.status = { state: 'starting', restarts: this.restarts, resolution: { width: this.config.width, height: this.config.height } }
+    this.hub.setCaptureScreen(target.key, null)
     this.warnIfCaptureOutdated()
     this.log('[SceneRenderer] Starting renderer')
 
     const proc = new SceneRendererProcess({ path: this.capabilities.bin, args: this.capabilities.args })
     proc.on('frame', this.onFrame)
-    proc.on('status', (s) => this.onStatus(s))
+    proc.on('status', (s) => { if (this.process === proc) this.onStatus(s) })
     proc.on('version', (v) => { this.log('[SceneRenderer] Renderer version: ' + v) })
     proc.on('log', (line) => this.log(line))
     proc.on('exit', (code, signal) => this.onExit(proc, code, signal))
@@ -250,9 +252,11 @@ export class SceneAdapter {
   }
 
   private onStatus(s: Record<string, unknown>): void {
+    const captureScreen = parseCaptureScreen(s.captureScreen) ?? this.status.captureScreen
+    if (s.captureScreen !== undefined && this.target !== null) this.hub.setCaptureScreen(this.target.key, captureScreen ?? null)
     const fps = typeof s.fps === 'number' ? s.fps : this.status.fps
     const frameIndex = typeof s.frame === 'number' ? s.frame : this.status.frameIndex
-    this.status = { state: 'running', pid: this.process?.pid ?? undefined, fps, frameIndex, resolution: this.status.resolution, restarts: this.restarts }
+    this.status = { state: 'running', pid: this.process?.pid ?? undefined, fps, frameIndex, resolution: this.status.resolution, captureScreen, restarts: this.restarts }
   }
 
   private onExit(proc: SceneRendererProcess, code: number | null, signal: string | null): void {

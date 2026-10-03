@@ -1,8 +1,36 @@
 # Changelog
 
-## 未发布（Unreleased）
+## 26.10.3 - 2026-10-04
+
+- 中文与英文 README 重新整理并同步，补充三档渲染、捕获窗口跟随、安装升级与排查说明；独立中文文档保持一致。
+- Revised and synchronized the Chinese and English README, including render modes, window-following capture, installation, upgrades and troubleshooting.
 
 ### 🐛 修复
+
+- **捕获模式跟随窗口位置**：原生 scene 帧按页面在所选显示器上的桌面区域裁切，窗口移动和调整大小时保持桌面比例；WE 暂停出帧时也跟随移动。捕获器上报降采样前的屏幕矩形与像素比例，经 WS 文本元数据通知页面并在重连时重发；兼容原有二进制帧头。处理浏览器标题栏、网页缩放、负坐标和部分越界；模糊改用额外采样留边，避免放大导致错位。旧捕获器 / 参考渲染器无坐标时仍使用 cover。新增裁切单测与 `node tools/test-capture-browser.mjs` 浏览器回归。
+- **Rainy Day（3465215190）完整模式雨滴**：允许俄文等 Unicode 素材名，同时保留路径穿越校验；粒子纹理裁到真实内容尺寸，颜色与法线图集分别采样。快速雨丝启用原材质折射，法线随粒子旋转，修正拖尾的屏幕方向、首帧法线上传覆盖背景绑定和透明度二次预乘；缺省折射强度使用 0.05，显式 0 保持无偏移。隐藏雨层不再创建运行时；普通雨滴不记录逐帧轨迹，背景纹理复用存储，移除逐帧上传日志。新增粒子回归与 `node tools/test-particle-browser.mjs` 像素验证。
+- **凌波丽『night』完整模式的整层平移与串联动画停滞**：方向场 ImageBitmap 解码关闭 alpha 预乘与颜色转换，避免把中性 RG88 方向误读成全图横向位移。大于 1.5MP 的 Canvas2D 回退改为缩小后按局部方向场形变，再恢复原尺寸；WebGL 串联 pass 的 canvas 输入每帧重新上传，避免缓存第一帧。提高 4K UV 采样精度，保留方向场内容区域，并在某个方向场加载失败时保持后续 pass 与参数的对应关系。新增 `node tools/test-shake-browser.mjs`，验证多帧串联、RG88 中性场、4K 局部形变、透明度 mask、纹理裁剪和 ImageBitmap 方向。
+- **同一图层的多个效果只应用了第一个 → "毛发拉伸/摆动"大面积缺失（Ayanami Rei-凌波丽『night』3258032485 实测）**：WE 把 `scene.json` 里列出的**每个 effect 当作一次独立 pass** 依次作用于图层纹理；本渲染器此前用 `layer.effects.find(...)` 只取第一个 shake，其余全部丢弃。该壁纸是**单张 4K 立绘 + 8 个 shake**（8 个方向场分别覆盖画面各处的头发，`bounds "0 1"`、`strength 0.1/0.066`、速度各异），所以"毛发处的拉伸形变"只剩 1/8、几乎看不见。
+  - 修复：shake 改为 **N 次 pass 串联**——`shakeTex` 存每个 pass 自己的方向场/不透明度 mask；绘制时按 scene.json 顺序逐个 pass，**上一个 pass 的输出作为下一个 pass 的输入**（WebGL 用两个 `ShakeGL` 实例乒乓交替，因为同一张画布不能同时读+写；Canvas2D 回退天然支持串联）。图层只有 1 个 shake 时行为与之前完全一致。
+  - 回归验证（`_dev/harness` 端到端）：8 pass vs 只留 1 pass 的逐像素差异**恰好落在头发区域**（差异图只剩发丝轮廓），其余画面不变；"暑假还会回来吧？"壁纸与改动前仍为 0.262/255（无回归）。
+  - 新增**效果自检日志**（避免"看不到效果"被误判成实现缺失）：图层效果加载后打一行
+    `[scene:effect] 图层 #id <name>：shake 生效 N/M pass（方向场 flow…）`；若模型里根本没有
+    `flow` 字段（= **node 半仍是旧产物、只刷新浏览器没重启 DSH**），则打
+    `…的 N 个 shake 都没有方向场字段（flow）——请重启 DSH 进程后刷新页面`。
+    实测 3258032485：`shake 生效 8/8 pass`，t=0 → t=0.7 的画面差异集中在头发（峰值 58/255）。
+- **达妮娅 Denia（workshop 3791428510）「眨眼」在完整渲染下变成"眼睛整层滑动"** —— shake 效果（官方 `effects/shake`）此前只实现了「标量正弦 × 平均方向」的整层平移，且**方向场/不透明度 mask 根本没加载**（见下一条），于是眼睛层以 `sin(t)` 的节奏上下滑动 ±0.16×0.6×355 ≈ ±34 纹理像素（周期 2π ≈ 6.28s），永远不闭眼。现按 pkg 内随附的官方 `shaders/effects/shake.frag` 逐字对齐实现：
+  - **波形与脉冲**：WE `common.h` 把 `M_PI_2` 定义成 **2π**（不是 π/2），所以 `sin(frac(time/M_PI_2)*M_PI_2)` 就是 `sin(time)`（周期 2π/speed）；`bounds` 是**脉冲阈值**而不是位移范围——`saturate((offset-bounds.x)/(bounds.y-bounds.x))`，达妮娅的 `0.992 0.998` 把一个周期压成约 **0.22s** 的窄脉冲（= 一次眨眼），其余时间位移恒为 0；`friction` 是上升/下降沿幂曲线；`DIRECTION`（0 center / 1 left / 2 right）与 `AUDIOPROCESSING` 分支同样还原（本渲染器无音频分析，按"有声音"处理，避免把 DIRECTION=1 的眼睛永久顶成闭眼）。
+  - **逐像素位移 + 双 mask**：`texCoordOffset = offset × strength² × flowMask`（`flowMask = (方向场.rg - 0.498) × 2`），按位移后 UV 采样图层，再按**不透明度 mask（g_Texture3，同样按位移后 UV 采样）**与原图混合——即官方 MASK combo 的语义；此前只有"平均方向整层平移"，既没有逐像素方向场也没有不透明度门控。
+  - 新增 `src/client/shake-math.ts`（纯函数 + 单测：周期/脉冲宽度/摩擦/DIRECTION/音频分支/flowMask）、`src/client/ShakeGL.ts`（WebGL 逐像素位移，与 `WaterwavesGL` 同构）、`src/client/Shake2D.ts`（WebGL 不可用时的 CPU 回退，>1.5MP 图层在缩小后的纹理上保留局部形变）。
+  - 图层纹理可能带未用边距（本壁纸是 256×384 画布 / 201×355 图像），着色器现按内容区域比例采样（`u_SrcRect`/`u_FlowRect`/`u_MaskRect`），否则会取错区域、mask 也会错位。
+- **效果 mask 纹理此前从未被加载**（水波 `waterwaves` 与 `shake` 同时受影响）：mask 加载代码写在 `loadLayerTexture()` 的纹理候选循环**之后**，而候选命中时会 `return` —— 于是"自己有纹理"的图层永远拿不到效果 mask（shake 退化成整层滑动、waterwaves 退化成无门控的全图扰动）。现拆出独立的 `loadEffectTextures()`，与图层纹理并行加载；水波 mask 恢复门控（只在 mask 覆盖区域内扰动）。
+- **RG88 方向场的 y 分量取错通道**：官方 RG88 解码语义是 `rgb = 第一通道 / alpha = 第二通道`（`_sample.rrrg`），方向场 y 分量在 **A** 通道；旧实现对 mask 做 16×16 采样时读的是 `.g`（= 第一通道副本），等于把方向场当成"对角位移"，而且只用平均值近似整个方向场。
+- **`ShakeGL` 输出上下颠倒 / 采样区域错误 → "人物关节位置严重错误"（"暑假还会回来吧？" 3766677415 实测复现并修复）**：新写的 shake WebGL 实现依赖 `UNPACK_FLIP_Y_WEBGL = 1` 来做「画布 UV ↔ 图像 UV」的换算，但**该 pixelStore 参数对 `ImageBitmap` 源（本渲染器的图层纹理）在 Chrome 里会被忽略，只对 canvas 源生效**（四色方向探针实测：canvas 源输出正常、bitmap 源整体上下翻转）。结果是所有带 shake 的图层（发束/角色/头发…）被画成上下翻转 + 采样错区，肉眼表现为"头发糊在脸上、关节错位"。
+  - 修复：上传统一改为 `UNPACK_FLIP_Y_WEBGL = 0`（不再依赖浏览器的源类型差异），方向换算放在着色器里显式完成——先把画布 UV 转成**图像 UV（y 向下）**，再按内容区域比例映射到纹理；位移量在图像空间叠加（与官方 `shake.frag` 一致）。
+  - 回归验证：修复后 `_dev/harness` 端到端渲染与 HEAD（改动前）逐像素差异 **0.262/255**（此前 2.24，差异集中在人物区域），人物恢复正确外观；达妮娅眼睛层的眨眼也逐帧确认（t=0 睁眼 / t=π/2 闭眼）。
+  - 记录在 `docs/effect-shake.md`：**不要依赖 `UNPACK_FLIP_Y_WEBGL` 处理 ImageBitmap**；`WaterwavesGL` / `NitroGL` 仍用旧约定（探针显示 `WaterwavesGL.render` 在本机直接返回 null、实际走 Canvas2D 回退，故未爆发；后续单独排查）。
+- **调试脚手架残留导致每帧抛异常（`warnedNoTexture` 未声明）**：工作区里"移除图层名标注/占位蓝点"的改动引用了 `this.warnedNoTexture`，但**没有声明这个字段**（`tsc` 报 TS2339）。运行时它恒为 `undefined` → `renderScene()` 每帧在第一个"无纹理图层"处抛 `TypeError`，**该帧后半段图层全部不再绘制**（表现为部件缺失/错位，与上一条叠加更难分辨）。
+  - 修复：补上 `private warnedNoTexture = new Set<number>()`（`stop()` 时清空），并新增 `failedLayers` 字段备用。
 
 - **源帧率 ≈ 目标帧率时隔帧丢弃（30fps 的源被输出成 ~15fps）**：节流用的 `last_emit` 原本在**帧处理完之后**打点，等于把每帧处理耗时（1080p 回读 + 降采样约 8~20ms）叠加进了节流周期 —— 源 30fps（33.3ms）+ 目标 30 时 `elapsed < interval` 会稳定成立，于是稳定隔帧丢弃、帧率对折。为这个场景预留的 `throttle_gap`（0.9× 相位容差）虽然定义了却从未被使用（编译器一直在报 `unused variable: throttle_gap`）。修复：`last_emit` 改为在**取到帧的时刻**打点（比较「上一帧到手 → 这一帧到手」），并真正启用 `throttle_gap`。同一测试窗口、目标 30fps 实测：`1200×750` 输出 **0.4.1 = 15.5~16.8fps → 0.4.2 = 23.3~24.3fps**（源 48fps，节流后取每 2 帧），且不再随每帧处理耗时呈台阶式下跌。
 - **心跳新增 `src_fps`（被捕获窗口自身的更新率，取自 FrameArrived 计数）**：与 `cap_fps`（我方产帧）、`fps`（编码完成）、`drop` 并列，可直接判定「源就慢 / 被我们拖慢 / 编码受限」。用它在本机实测到「14~15fps」的真相：正在播放场景壁纸时 `src_fps ≈ 15.0`，而 WE 自己的 `config.json` 里就是 `"fps": 15` —— 捕获端已与源严格一一对应（`src_fps = cap_fps = fps`、`drop 0`、`map 0.7ms / conv 2.8ms`）；这种情况下提高 DSH 背景帧率的唯一办法是把 WE 的帧率设置调高。

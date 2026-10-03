@@ -32,6 +32,10 @@ export interface GlRenderOptions {
   frames: number
   fw: number
   fh: number
+  /** 法线贴图可有独立的图集尺寸；0 = 整张单帧法线。 */
+  normalFrames?: number
+  normalFw?: number
+  normalFh?: number
   /** REFRACT 折射强度（材质 ui_editor_properties_refract_amount，可为负） */
   refractAmount: number
   /** spritetrail 批次：纹理 v 轴沿速度方向（UV 采样 (y,x) 而非 (x,y)） */
@@ -51,6 +55,7 @@ uniform float u_Trail;      // 1 = spritetrail（纹理 v 轴沿线，采样 (y,
 out vec4 v_Color;
 out vec2 v_QuadUv;
 out float v_Frame;
+out vec2 v_Rotation;
 void main() {
   // 官方 ComputeParticlePosition：宽度 = size（right 轴），高度 = size × textureRatio（up 轴）
   vec2 corner = (a_Pos - 0.5) * vec2(a_Size, a_Size * a_Aspect);
@@ -65,14 +70,16 @@ void main() {
   // drop 纹理 32×128：128px 的 v 轴沿线拉成雨丝，32px 的 u 轴为雨滴宽度。
   v_QuadUv = a_Pos;
   v_Frame = a_Frame;
+  v_Rotation = vec2(c, s);
 }`
 
 const FRAG = `#version 300 es
-precision mediump float;
+precision highp float;
 uniform sampler2D u_Tex;
 uniform sampler2D u_Bg;
 uniform sampler2D u_NormalTex;  // REFRACT 法线贴图（RG88/RGBA8888n 布局）
 uniform vec4 u_FrameInfo;   // (frames, cols, fw/texW, fh/texH)
+uniform vec4 u_NormalFrameInfo;
 uniform float u_Refract;    // 0 | 1
 uniform float u_RefractAmount;
 uniform vec2 u_Viewport;    // CSS 像素尺寸（粒子 NDC）
@@ -80,6 +87,7 @@ uniform vec2 u_ViewportPx;  // 物理像素尺寸（gl_FragCoord 折射用）
 in vec4 v_Color;
 in vec2 v_QuadUv;
 in float v_Frame;
+in vec2 v_Rotation;
 out vec4 fragColor;
 void main() {
   float frame = v_Frame;
@@ -96,11 +104,19 @@ void main() {
     //          = (normal.x × amount, −normal.y × amount) × normal.a × v_Color.a
     //   法线解压：RG88 与 RGBA8888n 布局通用 —— x 在 alpha、y 在 green、mask 在 red
     //   （decodeTex 对 RG88 输出 rgb=R、a=G；RGBA8888n 原样保留 RGBA）
-    vec4 nrm = texture(u_NormalTex, uv);
+    // 彩色水花可能是 24 帧图集，法线却是一张单帧图；两者分别计算 UV。
+    float normalFrame = mod(frame, max(1.0, u_NormalFrameInfo.x));
+    vec2 normalUv = (vec2(mod(normalFrame, u_NormalFrameInfo.y),
+                         floor(normalFrame / u_NormalFrameInfo.y)) + v_QuadUv) * u_NormalFrameInfo.zw;
+    vec4 nrm = texture(u_NormalTex, normalUv);
     vec2 n = nrm.ag * 2.0 - 1.0;
     float mask = nrm.r;
     vec2 scrUv = gl_FragCoord.xy / u_ViewportPx;
-    vec2 refr = vec2(n.x * u_RefractAmount, -n.y * u_RefractAmount) * mask * v_Color.a;
+    // 法线 x 沿 quad 的 right，y 沿 up（图像坐标 y 向下）。旋转后的雨滴/
+    // 拖尾必须同时旋转折射方向，不能仍用固定的屏幕水平/垂直轴。
+    vec2 refr = vec2(n.x * v_Rotation.x + n.y * v_Rotation.y,
+                     n.x * v_Rotation.y - n.y * v_Rotation.x)
+      * u_RefractAmount * mask * v_Color.a;
     color.rgb *= texture(u_Bg, vec2(scrUv.x, 1.0 - scrUv.y) + refr).rgb;
   }
   // 预乘 alpha 输出（画布 premultipliedAlpha:true）：
@@ -127,15 +143,20 @@ export class ParticleGL {
   /** 纹理缓存（以纹理对象为 key，避免同尺寸不同内容冲突） */
   private texCache = new Map<object, WebGLTexture>()
   private bgTex: WebGLTexture | null = null
+  private bgW = 0
+  private bgH = 0
   private data = new Float32Array(8192 * 10)
   private maxParticles = 8192
   private uViewport: WebGLUniformLocation | null = null
   private uViewportPx: WebGLUniformLocation | null = null
   private uFrameInfo: WebGLUniformLocation | null = null
+  private uNormalFrameInfo: WebGLUniformLocation | null = null
   private uRefract: WebGLUniformLocation | null = null
   private uRefractAmount: WebGLUniformLocation | null = null
   private uTrail: WebGLUniformLocation | null = null
   private uNormalTex: WebGLUniformLocation | null = null
+  private uTex: WebGLUniformLocation | null = null
+  private uBg: WebGLUniformLocation | null = null
   /** 法线纹理缓存（独立于主纹理缓存，同图复用） */
   private normalTexCache = new Map<object, WebGLTexture>()
   /** 空白法线纹理缓存 key（REFRACT 批次未带法线时绑定，mask=0 折射关闭） */
@@ -175,6 +196,7 @@ export class ParticleGL {
       this.texCache.clear()
       this.normalTexCache.clear()
       this.bgTex = null
+      this.bgW = this.bgH = 0
       this.buildProgramAndBuffers()
       console.warn('[ParticleGL] WebGL 上下文已恢复')
     })
@@ -196,10 +218,13 @@ export class ParticleGL {
     this.uViewport = gl.getUniformLocation(prog, 'u_Viewport')
     this.uViewportPx = gl.getUniformLocation(prog, 'u_ViewportPx')
     this.uFrameInfo = gl.getUniformLocation(prog, 'u_FrameInfo')
+    this.uNormalFrameInfo = gl.getUniformLocation(prog, 'u_NormalFrameInfo')
     this.uRefract = gl.getUniformLocation(prog, 'u_Refract')
     this.uRefractAmount = gl.getUniformLocation(prog, 'u_RefractAmount')
     this.uTrail = gl.getUniformLocation(prog, 'u_Trail')
     this.uNormalTex = gl.getUniformLocation(prog, 'u_NormalTex')
+    this.uTex = gl.getUniformLocation(prog, 'u_Tex')
+    this.uBg = gl.getUniformLocation(prog, 'u_Bg')
     this.setupBuffers()
     return true
   }
@@ -239,6 +264,7 @@ export class ParticleGL {
     for (const t of this.normalTexCache.values()) gl.deleteTexture(t)
     this.normalTexCache.clear()
     if (this.bgTex !== null) { gl.deleteTexture(this.bgTex); this.bgTex = null }
+    this.bgW = this.bgH = 0
   }
 
   /** 完全释放（renderer 生命周期结束）：删除 GPU 资源 + 显式丢失上下文 */
@@ -256,6 +282,7 @@ export class ParticleGL {
     for (const t of this.normalTexCache.values()) gl.deleteTexture(t)
     this.normalTexCache.clear()
     if (this.bgTex !== null) { gl.deleteTexture(this.bgTex); this.bgTex = null }
+    this.bgW = this.bgH = 0
     if (this.prog !== null) gl.deleteProgram(this.prog)
     if (this.vao !== null) gl.deleteVertexArray(this.vao)
     if (this.instBuf !== null) gl.deleteBuffer(this.instBuf)
@@ -359,6 +386,8 @@ export class ParticleGL {
     const tex = gl.createTexture()
     if (tex === null) return null
     gl.bindTexture(gl.TEXTURE_2D, tex)
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 0)
+    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, 0)
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source)
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
@@ -382,7 +411,15 @@ export class ParticleGL {
     } else {
       gl.bindTexture(gl.TEXTURE_2D, this.bgTex)
     }
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, canvas)
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 0)
+    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, 0)
+    if (this.bgW !== canvas.width || this.bgH !== canvas.height) {
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, canvas)
+      this.bgW = canvas.width
+      this.bgH = canvas.height
+    } else {
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, canvas)
+    }
   }
 
   /**
@@ -425,24 +462,33 @@ export class ParticleGL {
     gl.uniform2f(this.uViewportPx, viewPxW, viewPxH)
     const cols = opts.frames > 1 && opts.fw > 0 ? Math.max(1, Math.floor(tex.width / opts.fw)) : 1
     gl.uniform4f(this.uFrameInfo, opts.frames, cols, opts.fw > 0 ? opts.fw / tex.width : 1, opts.fh > 0 ? opts.fh / tex.height : 1)
+    const normalSprite = normalTex !== null && (opts.normalFrames ?? 0) > 1 && (opts.normalFw ?? 0) > 0 && (opts.normalFh ?? 0) > 0
+    gl.uniform4f(this.uNormalFrameInfo,
+      normalSprite ? opts.normalFrames! : 1,
+      normalSprite ? Math.max(1, Math.floor(normalTex!.width / opts.normalFw!)) : 1,
+      normalSprite ? opts.normalFw! / normalTex!.width : 1,
+      normalSprite ? opts.normalFh! / normalTex!.height : 1)
     gl.uniform1f(this.uRefract, opts.refract ? 1 : 0)
-    // 官方 refract_amount（材质 ui_editor_properties_refract_amount，可为负）；
-    // 非法则回退旧径向近似强度 0.06
-    gl.uniform1f(this.uRefractAmount, Number.isFinite(opts.refractAmount) && opts.refractAmount !== 0 ? opts.refractAmount : 0.06)
+    // 0 是显式关闭偏移，不能把它替换为非零值。
+    gl.uniform1f(this.uRefractAmount, Number.isFinite(opts.refractAmount) ? opts.refractAmount : 0.05)
     gl.uniform1f(this.uTrail, opts.trail ? 1 : 0)
 
     gl.activeTexture(gl.TEXTURE0)
     gl.bindTexture(gl.TEXTURE_2D, glTex)
-    gl.uniform1i(gl.getUniformLocation(this.prog, 'u_Tex'), 0)
+    gl.uniform1i(this.uTex, 0)
     if (opts.refract && this.bgTex !== null) {
       gl.activeTexture(gl.TEXTURE1)
       gl.bindTexture(gl.TEXTURE_2D, this.bgTex)
-      gl.uniform1i(gl.getUniformLocation(this.prog, 'u_Bg'), 1)
+      gl.uniform1i(this.uBg, 1)
     }
     // 法线贴图（TEXTURE2）：REFRACT 批次带法线 → 采样 (a,g) 解压 + red mask；
     // 无法线 → 绑定空白 1px 纹理，mask=0 折射关闭（不会全屏黑色采样）
     let glNormal: WebGLTexture | null = null
     if (opts.refract) {
+      // 上传法线时固定使用槽位 2，避免覆盖刚绑定到槽位 1 的背景纹理。
+      gl.activeTexture(gl.TEXTURE2)
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 0)
+      gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, 0)
       if (normalTex !== null) {
         glNormal = this.normalTexCache.get(normalTex) ?? null
         if (glNormal === null) {
@@ -476,7 +522,7 @@ export class ParticleGL {
       if (glNormal !== null) {
         gl.activeTexture(gl.TEXTURE2)
         gl.bindTexture(gl.TEXTURE_2D, glNormal)
-        gl.uniform1i(gl.getUniformLocation(this.prog, 'u_NormalTex'), 2)
+        gl.uniform1i(this.uNormalTex, 2)
       }
     }
 

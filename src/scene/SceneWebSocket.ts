@@ -1,17 +1,18 @@
 /**
- * 极简 RFC 6455 WebSocket 服务端（仅服务端→浏览器推送二进制帧），
+ * 极简 RFC 6455 WebSocket 服务端（服务端→浏览器推送帧与捕获坐标），
  * 用于把 SceneAdapter 的最新帧广播给 SceneCanvas。
  *
  * 不依赖任何第三方 ws 库：DSH 的 webServer 提供 `registerUpgrade` 路由，
  * 回调收到已协商前的 (req, socket, head)，这里完成握手与后续帧收发。
- * 客户端只消费二进制帧（opcode 0x2），服务端只需解析 close/ping/pong。
+ * 图像为二进制帧（opcode 0x2），捕获坐标为 JSON 文本（opcode 0x1）；
+ * 服务端只需解析客户端的 close/ping/pong。
  *
  * WS 消息负载（Node → 浏览器）：`[1B format][4B LE width][4B LE height][payload]`
  */
 import { createHash } from 'node:crypto'
 import type { IncomingMessage } from 'node:http'
 import type { Duplex } from 'node:stream'
-import { WS_HEADER_BYTES, type SceneFrame } from './SceneProtocol.ts'
+import { WS_HEADER_BYTES, type SceneFrame, type CaptureScreenRect } from './SceneProtocol.ts'
 
 /** RFC 6455 握手魔数 GUID */
 const WS_GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11'
@@ -34,6 +35,7 @@ export class SceneFrameHub {
   private clients = new Set<SceneWsClient>()
   private logFn: (line: string) => void
   private onClientsChanged: (count: number) => void
+  private capture: { monitor: string; screen: CaptureScreenRect | null } | null = null
 
   constructor(logFn?: (line: string) => void, onClientsChanged?: (count: number) => void) {
     this.logFn = logFn ?? (() => {})
@@ -57,6 +59,11 @@ export class SceneFrameHub {
     socket.on('error', () => this.drop(client))
     socket.on('close', () => this.drop(client))
 
+    // 新页面也要拿到捕获坐标，不能只依赖捕获器启动时的一次通知。
+    if (this.capture !== null && (monitor === '' || monitor === this.capture.monitor)) {
+      this.sendCapture(client, this.capture.screen)
+    }
+
     // head 里可能带着升级后的首帧数据
     if (head.length > 0) this.onData(client, head)
   }
@@ -69,6 +76,20 @@ export class SceneFrameHub {
       if (c.monitor !== '' && c.monitor !== monitor) continue
       try { c.socket.write(msg) } catch { this.drop(c) }
     }
+  }
+
+  /** 文本元数据独立于原有二进制帧头，旧客户端会忽略它。 */
+  setCaptureScreen(monitor: string, screen: CaptureScreenRect | null): void {
+    this.capture = { monitor, screen }
+    for (const c of this.clients) {
+      if (!c.closed && (c.monitor === '' || c.monitor === monitor)) this.sendCapture(c, screen)
+    }
+  }
+
+  private sendCapture(client: SceneWsClient, screen: CaptureScreenRect | null): void {
+    try {
+      client.socket.write(this.encodeServerFrame(Buffer.from(JSON.stringify({ type: 'capture-screen', screen })), 0x1))
+    } catch { this.drop(client) }
   }
 
   closeAll(): void {

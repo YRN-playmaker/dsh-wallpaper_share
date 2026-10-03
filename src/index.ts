@@ -22,6 +22,7 @@ import { sceneFingerprint, isNativeRenderer } from './scene/SceneCapabilities.ts
 import { buildSceneModel, type SceneModel } from './scene/SceneModel.ts'
 import { parseScenePkg, type ParsedPkg } from './scene/ScenePkg.ts'
 import { decodeTex, texMimeOf, texMipToPng } from './scene/SceneTex.ts'
+import { isSafeAssetTextureName } from './scene/asset-texture-name.ts'
 import { MarketClient } from './market/pull.ts'
 import { createMarketRoutes } from './market/routes.ts'
 import { createDwpServeRoutes } from './market/serve.ts'
@@ -1378,8 +1379,8 @@ export function apply(ctx: CordisCtx): void {
       }
       let name: string
       try { name = decodeURIComponent(match[1]) } catch { name = '' }
-      // 放行空格/中文（workshop 纹理名如 "particles 256x1280 blank"）；仍拒绝路径穿越
-      if (!/^[a-zA-Z0-9_\/\-\.\s\u4e00-\u9fff]+$/.test(name) || name.includes('..') || state.weDir === '') {
+      // workshop 纹理含中文、俄文等 Unicode 文件名；仍拒绝路径穿越。
+      if (!isSafeAssetTextureName(name) || state.weDir === '') {
         res.statusCode = 403
         res.end('forbidden')
         return

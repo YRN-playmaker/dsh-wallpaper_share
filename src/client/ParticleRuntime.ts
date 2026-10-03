@@ -46,6 +46,9 @@ interface Particle {
 }
 
 export class ParticleRuntime {
+  private desc: ParticleSystemDesc
+  private rateScale: number
+  private sizeScale: number
   private particles: Particle[] = []
   private acc = 0
   private time = 0
@@ -80,7 +83,10 @@ export class ParticleRuntime {
   private normalFw = 0
   private normalFh = 0
 
-  constructor(private desc: ParticleSystemDesc, private rateScale = 1, private sizeScale = 1, eventFollow = false) {
+  constructor(desc: ParticleSystemDesc, rateScale = 1, sizeScale = 1, eventFollow = false) {
+    this.desc = desc
+    this.rateScale = rateScale
+    this.sizeScale = sizeScale
     this.rendererType = desc.renderer?.type ?? 'sprite'
     this.trailLength = desc.renderer?.length ?? 0
     this.trailMaxLength = desc.renderer?.maxlength ?? 0
@@ -182,6 +188,9 @@ export class ParticleRuntime {
     frames: number
     fw: number
     fh: number
+    normalFrames: number
+    normalFw: number
+    normalFh: number
     additive: boolean
     refract: boolean
     refractAmount: number
@@ -194,6 +203,9 @@ export class ParticleRuntime {
       frames: number
       fw: number
       fh: number
+      normalFrames: number
+      normalFw: number
+      normalFh: number
       additive: boolean
       refract: boolean
       refractAmount: number
@@ -241,7 +253,7 @@ export class ParticleRuntime {
             const rvx = p.vx * ca - p.vy * sa
             const rvy = p.vx * sa + p.vy * ca
             const svx = rvx * lx * df
-            const svy = rvy * ly * df
+            const svy = -rvy * ly * df // 模型 y 向上，屏幕 y 向下
             const spd = Math.hypot(svx, svy)
             const maxL = rt.trailMaxLength > 0 ? rt.trailMaxLength : Infinity
             const minL = rt.trailMinLength > 0 ? rt.trailMinLength : 0
@@ -259,7 +271,6 @@ export class ParticleRuntime {
               gy = y                               // 居中于粒子（WE 语义）
             }
           }
-          if (rt.desc.refract && rt.rendererType === 'spritetrail') alpha *= 0.5
           const frac = 1 - p.life / p.maxLife
           const frame = rt.pickFrame(p, frac, frames)
           list.push({
@@ -277,8 +288,11 @@ export class ParticleRuntime {
             frames,
             fw,
             fh,
+            normalFrames: rt.normalFrames,
+            normalFw: rt.normalFw,
+            normalFh: rt.normalFh,
             additive: rt.desc.blending === 'additive',
-            refract: rt.desc.refract && rt.rendererType === 'sprite',
+            refract: rt.desc.refract,
             refractAmount: rt.desc.refractAmount,
             trail: rt.rendererType === 'spritetrail',
           })
@@ -383,9 +397,12 @@ export class ParticleRuntime {
       const frac = 1 - p.life / p.maxLife
       p.x += p.vx * dt
       p.y += p.vy * dt
-      // ropetrail 路径历史（记录移动后的位置，最多 24 点）
-      p.history.push({ x: p.x, y: p.y })
-      if (p.history.length > 24) p.history.shift()
+      // 只有 ropetrail 需要路径历史。雨滴 sprite/spritetrail 不记录逐帧坐标，
+      // 避免密集雨幕每秒产生大量短命对象并触发垃圾回收。
+      if (this.rendererType === 'ropetrail') {
+        p.history.push({ x: p.x, y: p.y })
+        if (p.history.length > 24) p.history.shift()
+      }
       p.vx += g[0] * dt
       p.vy += g[1] * dt
       // movement drag：速度阻尼
@@ -594,8 +611,8 @@ export class ParticleRuntime {
       //   stretch = max(minLength, min(局部速度 × length, maxLength))  ← 局部速度
       //   屏幕拖尾长度 = size × textureRatio × stretch × |屏幕速度|/|局部速度|
       const localSpd = Math.hypot(p.vx, p.vy)
-      const svx = p.vx * lx * df
-      const svy = p.vy * ly * df
+      const svx = (p.vx * ca - p.vy * sa) * lx * df
+      const svy = -(p.vx * sa + p.vy * ca) * ly * df
       const spd = Math.hypot(svx, svy)
       const maxL = this.trailMaxLength > 0 ? this.trailMaxLength : Infinity
       const minL = this.trailMinLength > 0 ? this.trailMinLength : 0
@@ -607,9 +624,9 @@ export class ParticleRuntime {
         const len = streakLen
         const wid = pw
         // Canvas rotate 顺时针（屏幕 y 向下）：dest (wid, len) 的 len 轴
-        // 经 rotate(θ) 后指向 (sinθ, cosθ)，须 = 屏幕速度方向 → θ = atan2(svx, svy)
+        // 经 rotate(θ) 后指向 (-sinθ, cosθ)，须 = 屏幕速度方向。
         // （旧 atan2(-svy, svx) 把 len 轴转到水平 → 雨滴横躺"太扁"）
-        const ang = Math.atan2(svx, svy)
+        const ang = Math.atan2(-svx, svy)
         ctx.save()
         ctx.translate(x, y)
         ctx.rotate(ang)
