@@ -4,6 +4,7 @@
 
 - 中文与英文 README 重新整理并同步，补充三档渲染、捕获窗口跟随、安装升级与排查说明；独立中文文档保持一致。
 - Revised and synchronized the Chinese and English README, including render modes, window-following capture, installation, upgrades and troubleshooting.
+- 原生指纹计算将 CRLF 统一为 LF，修复 Windows 与 Linux 干净 checkout 的误报，并增加跨平台换行回归；随包程序已重建。
 
 ### 🐛 修复
 

@@ -67,14 +67,16 @@ export function nativeSourceFiles(root) {
   return out.sort();
 }
 
-/** native 源码指纹：32 位十六进制（= build.rs 注入 .exe 的 WE_CAPTURE_SRC_HASH） */
+/** native 源码指纹：16 位十六进制；CRLF 规范为 LF（与 build.rs 一致） */
 export function nativeSourceFingerprint(root) {
   const base = nativeRoot(root);
   let h = FNV_OFFSET;
   for (const rel of nativeSourceFiles(root)) {
     h = fnv1a64(Buffer.from(rel, 'utf8'), h);
     h = fnv1a64(Buffer.from([0x00]), h);
-    h = fnv1a64(readFileSync(join(base, rel)), h);
+    const bytes = readFileSync(join(base, rel));
+    const normalized = Buffer.from(bytes.toString('utf8').replace(/\r\n/g, '\n'), 'utf8');
+    h = fnv1a64(normalized, h);
     h = fnv1a64(Buffer.from([0xff]), h);
   }
   return h.toString(16).padStart(16, '0');

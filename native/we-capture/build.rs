@@ -7,6 +7,7 @@
 //!
 //! 算法必须与 tools/check-package.mjs 的 nativeSourceFingerprint() 完全一致：
 //! FNV-1a 64，按相对路径（统一正斜杠）升序，逐文件哈希 [路径字节, 0x00, 内容字节, 0xFF]。
+//! 内容先把 CRLF 规范为 LF，保证 Git 在 Windows/Linux checkout 后得到相同指纹。
 //! 两侧都用字节序比较 ASCII 路径，因此排序结果一致。
 
 use std::fs;
@@ -50,7 +51,11 @@ fn main() {
         h = fnv(h, rel.as_bytes());
         h = fnv(h, &[0x00]);
         if let Ok(bytes) = fs::read(path) {
-            h = fnv(h, &bytes);
+            let normalized: Vec<u8> = bytes.iter().enumerate()
+                .filter(|(i, b)| !(**b == b'\r' && bytes.get(i + 1) == Some(&b'\n')))
+                .map(|(_, b)| *b)
+                .collect();
+            h = fnv(h, &normalized);
         }
         h = fnv(h, &[0xff]);
     }

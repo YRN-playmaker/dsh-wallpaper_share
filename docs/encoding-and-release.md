@@ -25,6 +25,7 @@ BOM 不是插件功能或中文支持的需要。harness 的部分清单读取�
 4. 打包后解开实际 tarball，核对 package/package.json 无 BOM 且 host/client 入口存在。不要仅检查开发目录。
 5. 在干净 checkout、独立 DSH_HOME 中安装实际包，验证启动、新会话和 wallpaper_share 标签页。不得用开发机 link 安装成功代替发布包验证。
 6. 记录测试使用的 harness 版本、Node 版本和操作系统；至少覆盖 Windows 与发布 CI 的 Linux。
+   原生源码指纹在 Rust 构建与 Node 检查两侧都将 CRLF 规范为 LF，避免 Git checkout 的平台换行差异被误判为源码修改。
 7. 确认后再由维护者选择新版本发布。不要覆盖已发布版本，不要仅修本地而忘记提交。
 
 ## 故障排查

@@ -50,6 +50,23 @@ test('finds embedded build markers in binary bytes', () => {
   assert.equal(binaryBuildFingerprint(bin, 'we-floater'), null);
 });
 
+test('native fingerprint survives Windows and Linux checkout line endings but detects source edits', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'wesync-lines-'));
+  try {
+    const source = join(dir, 'native', 'we-capture', 'src', 'main.rs');
+    mkdirSync(dirname(source), { recursive: true });
+    const text = '// 中文\nconst VERSION: &str = "we-capture-0.4.2";\n';
+    writeFileSync(source, text, 'utf8');
+    const lf = nativeSourceFingerprint(dir);
+    writeFileSync(source, text.replace(/\n/g, '\r\n'), 'utf8');
+    assert.equal(nativeSourceFingerprint(dir), lf);
+    writeFileSync(source, text.replace('0.4.2', '0.4.3'), 'utf8');
+    assert.notEqual(nativeSourceFingerprint(dir), lf);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('repository native binaries are in sync with the native source', () => {
   const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
   assert.ok(nativeSourceFiles(root).includes('src/main.rs'));
