@@ -1,6 +1,17 @@
 # dsh-wallpaper_share
 
+<div align="center">
+  <a href="https://www.npmjs.com/package/dsh-wallpaper_share"><img alt="npm version" src="https://img.shields.io/npm/v/dsh-wallpaper_share" /></a>
+  <a href="LICENSE"><img alt="GPL-3.0 license" src="https://img.shields.io/badge/License-GPL--3.0-blue.svg" /></a>
+  <a href="https://github.com/YRN-playmaker/dsh-wallpaper_share"><img alt="GitHub version 26.10.3" src="https://img.shields.io/badge/GitHub-26.10.3-4d6bfe" /></a>
+</div>
+
 [English](README.md#english) · [双语 README](README.md)
+
+<div align="center">
+  <video src="https://github.com/user-attachments/assets/4461d385-de62-42be-8420-7edce5606f44"
+         muted autoplay loop playsinline controls width="100%"></video>
+</div>
 
 <a id="中文"></a>
 ## 中文
@@ -87,15 +98,23 @@ dsh plugin --profile web add ./dsh-wallpaper_share-26.10.3.tgz
 - **应用启动器**：支持 HTTP(S) 直链及 139 分享链接，导入 `.zip`、`.7z` 或 `.exe`；智能粘贴可从分享文本识别链接、提取码、解压密码和启动文件。应用在「本地 → 应用」启动，列表显示名称、位置与下载时间。
 - **DWP 背景**：挂载自定义壁纸包后由 WebGL2 渲染，低配时回退 Canvas2D；挂载期间暂停 WE 同步。内置工作区脉搏可展示近期文件变化，支持昼夜变量与纹理档位。
 
-<details>
-<summary>界面截图</summary>
+**壁纸同步界面**
 
 ![壁纸同步界面](https://github.com/user-attachments/assets/6f147644-6283-456b-a9eb-c9c6d9925079)
+
+**专注模式演示**
+
+<img width="426" height="240" alt="专注模式演示" src="https://github.com/user-attachments/assets/57daf64c-ff2b-40c7-aeef-73cac46c4c2b" />
+
+**壁纸库界面**
+
 ![壁纸库界面](https://github.com/user-attachments/assets/7567c226-7ea4-4fcb-a3b7-11190ee681ff)
+
+**设置面板**
+
 ![设置面板](https://github.com/user-attachments/assets/7d652c07-8344-4de3-abbd-75620375c0b6)
 
 截图用于介绍界面，具体布局以当前版本为准。
-</details>
 
 <a id="zh-config"></a>
 ### 配置
