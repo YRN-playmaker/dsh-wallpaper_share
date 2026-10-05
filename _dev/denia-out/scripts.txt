@@ -1,0 +1,6 @@
+script occurrences: 6 / scene.json 48068 chars
+--- 1621 --- "script" : "'use strict';\n\nconst BGM = {\n\t'vocal':'Dasvidaniya',\n\t'instrumental':'Dasvidaniya (Instrumental)'\n}\n\n/**\n * @param {Object} changedUserProperties - only includes user properties 
+--- 2794 --- "script" : "'use strict';\n// Please note: Do not remove this line or asset references may break.\nexport let __workshopId = '2419741250';\n\n/**\n * Configure these to control smoothing and the frequ
+first "430" at 29214: .00000 787.00000" }, { "disablepropagation" : false, "effects" : [ { "file" : "effects/shake/effect.json", "id" : 430, "name" : "眨眼", "passes" : [ { "combos" : { "DIRECTION" : 1 }, "constantshader
+first "eye" at 65: "camera" : { "center" : "254.24792 41.02934 -1.00000", "eye" : "254.24792 41.02934 0.00000", "up" : "0.00000 1.00000 0.00000" }, "general" : { "ambientcolor" : "0.30000 0.30000 0.30000", "bl
+first "blink" at -1: 

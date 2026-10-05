@@ -1,0 +1,352 @@
+"camera" : 
+	{
+		"center" : "-5.14987 264.02518 -1.00000",
+		"eye" : "-5.14987 264.02518 0.00000",
+		"up" : "0.00000 1.00000 0.00000"
+	},
+	"general" : 
+	{
+		"ambientcolor" : "0.30000 0.30000 0.30000",
+		"bloom" : false,
+		"bloomhdrfeather" : 0.1,
+		"bloomhdriterations" : 8,
+		"bloomhdrscatter" : 1.619,
+		"bloomhdrstrength" : 2.0,
+		"bloomhdrthreshold" : 1.0,
+		"bloomstrength" : 2.0,
+		"bloomthreshold" : 0.64999998,
+		"bloomtint" : "1.00000 1.00000 1.00000",
+		"camerafade" : true,
+		"cameraparallax" : false,
+		"cameraparallaxamount" : 0.5,
+		"cameraparallaxdelay" : 0.1,
+		"cameraparallaxmouseinfluence" : 0.5,
+		"camerapreview" : true,
+		"camerashake" : false,
+		"camerashakeamplitude" : 0.5,
+		"camerashakeroughness" : 1.0,
+		"camerashakespeed" : 3.0,
+		"clearcolor" : "0.70000 0.70000 0.70000",
+		"clearenabled" : true,
+		"farz" : 10000.0,
+		"fov" : 50.0,
+		"gravitydirection" : "0.00000 -1.00000 0.00000",
+		"gravitystrength" : 1.0,
+		"hdr" : false,
+		"nearz" : 0.0099999998,
+		"orthogonalprojection" : 
+		{
+			"height" : 4343,
+			"width" : 7721
+		},
+		"perspectiveoverridefov" : 90.0,
+		"skylightcolor" : "0.30000 0.30000 0.30000",
+		"winddirection" : "0.70700 0.70700 0.00000",
+		"windenabled" : false,
+		"windstrength" : 1.0,
+		"zoom" : 1.0
+	},
+	"objects" : 
+	[
+		{
+			"disablepropagation" : false,
+			"id" : 17,
+			"image" : "models/原图.json",
+			"locktransforms" : true,
+			"name" : "原图",
+			"origin" : "3860.50000 2171.50000 0.00000",
+			"size" : "7721.00000 4343.00000"
+		},
+		{
+			"disablepropagation" : false,
+			"effects" : 
+			[
+				{
+					"file" : "effects/shake/effect.json",
+					"id" : 183,
+					"name" : "",
+					"passes" : 
+					[
+						{
+							"constantshadervalues" : 
+							{
+								"bounds" : "0 1",
+								"friction" : "1 1",
+								"speed" : 1.53,
+								"strength" : 0.214
+							},
+							"id" : 184,
+							"textures" : [ null, "masks/shake_mask_4a7ac84e" ]
+						}
+					],
+					"visible" : true
+				},
+				{
+					"file" : "effects/foliagesway/effect.json",
+					"id" : 207,
+					"name" : "",
+					"passes" : 
+					[
+						{
+							"constantshadervalues" : 
+							{
+								"phase" : 0,
+								"power" : 1.06,
+								"ratio" : 7.13,
+								"scale" : 0.33,
+								"scrolldirection" : 1.3018903,
+								"speeduv" : 5.0,
+								"strength" : 0.4
+							},
+							"id" : 208,
+							"textures" : [ null, "masks/foliagesway_mask_b0e3b559", null ]
+						}
+					],
+					"visible" : false
+				}
+			],
+			"id" : 47,
+			"image" : "models/发束.json",
+			"locktransforms" : true,
+			"name" : "发束",
+			"origin" : "5596.71436 2388.07617 0.00000",
+			"size" : "693.00000 620.00000"
+		},
+		{
+			"disablepropagation" : false,
+			"effects" : 
+			[
+				{
+					"file" : "effects/shake/effect.json",
+					"id" : 273,
+					"name" : "",
+					"passes" : 
+					[
+						{
+							"constantshadervalues" : 
+							{
+								"bounds" : "0 1",
+								"friction" : "1 1",
+								"speed" : 1.34,
+								"strength" : 0.092
+							},
+							"id" : 274,
+							"textures" : [ null, "masks/shake_mask_135029a1" ]
+						}
+					],
+					"visible" : true
+				}
+			],
+			"id" : 25,
+			"image" : "models/角色.json",
+			"locktransforms" : true,
+			"name" : "角色",
+			"origin" : "4904.01367 1994.26685 0.00000",
+			"size" : "2342.00000 3704.00000"
+		},
+		{
+			"disablepropagation" : false,
+			"id" : 22,
+			"image" : "models/车窗.json",
+			"locktransforms" : true,
+			"name" : "车窗",
+			"origin" : "4601.05566 1212.62305 0.00000",
+			"size" : "3288.00000 2289.00000"
+		},
+		{
+			"disablepropagation" : false,
+			"id" : 28,
+			"image" : "models/手.json",
+			"locktransforms" : true,
+			"name" : "手",
+			"origin" : "3666.95752 360.31769 0.00000",
+			"size" : "776.00000 437.00000"
+		},
+		{
+			"disablepropagation" : false,
+			"effects" : 
+			[
+				{
+					"file" : "effects/shake/effect.json",
+					"id" : 82,
+					"name" : "",
+					"passes" : 
+					[
+						{
+							"constantshadervalues" : 
+							{
+								"bounds" : "0 1",
+								"friction" : "1 1",
+								"speed" : 2.23,
+								"strength" : 0.192
+							},
+							"id" : 83,
+							"textures" : [ null, "masks/shake_mask_9d0c9426" ]
+						}
+					],
+					"visible" : true
+				},
+				{
+					"file" : "effects/waterwaves/effect.json",
+					"id" : 153,
+					"name" : "",
+					"passes" : 
+					[
+						{
+							"constantshadervalues" : 
+							{
+								"direction" : 2.3044973,
+								"exponent" : 1.11,
+								"scale" : 9,
+								"speed" : 3.72,
+								"strength" : 0.09
+							},
+							"id" : 154,
+							"textures" : [ null, "masks/waterwaves_mask_53d307fd" ]
+						}
+					],
+					"visible" : true
+				}
+			],
+			"id" : 41,
+			"image" : "models/头发 下 右.json",
+			"locktransforms" : true,
+			"name" : "头发 下 右",
+			"origin" : "5360.64697 2378.08936 0.00000",
+			"size" : "395.00000 410.00000"
+		},
+		{
+			"disablepropagation" : false,
+			"effects" : 
+			[
+				{
+					"file" : "effects/shake/effect.json",
+					"id" : 234,
+					"name" : "",
+					"passes" : 
+					[
+						{
+							"constantshadervalues" : 
+							{
+								"bounds" : "0 1",
+								"friction" : "1 1",
+								"speed" : 2.72,
+								"strength" : 0.245
+							},
+							"id" : 235,
+							"textures" : [ null, "masks/shake_mask_73426e96" ]
+						}
+					],
+					"visible" : true
+				},
+				{
+					"file" : "effects/waterwaves/effect.json",
+					"id" : 264,
+					"name" : "",
+					"passes" : 
+					[
+						{
+							"constantshadervalues" : 
+							{
+								"direction" : -2.7294808,
+								"exponent" : 0.86,
+								"scale" : 4.96,
+								"speed" : 4.96,
+								"strength" : 0.12
+							},
+							"id" : 265,
+							"textures" : [ null, "masks/waterwaves_mask_f989a04a" ]
+						}
+					],
+					"visible" : true
+				}
+			],
+			"id" : 44,
+			"image" : "models/头发 下 左.json",
+			"locktransforms" : true,
+			"name" : "头发 下 左",
+			"origin" : "4650.75830 2245.68677 0.00000",
+			"size" : "380.00000 269.00000"
+		},
+		{
+			"disablepropagation" : false,
+			"id" : 31,
+			"image" : "models/脸.json",
+			"locktransforms" : true,
+			"name" : "脸",
+			"origin" : "4897.71094 2742.16309 0.00000",
+			"size" : "1039.00000 1221.00000"
+		},
+		{
+			"disablepropagation" : false,
+			"effects" : 
+			[
+				{
+					"file" : "effects/shake/effect.json",
+					"id" : 337,
+					"name" : "",
+					"passes" : 
+					[
+						{
+							"constantshadervalues" : 
+							{
+								"bounds" : "0 1",
+								"friction" : "1 1",
+								"speed" : 2.48,
+								"strength" : 0.134
+							},
+							"id" : 338,
+							"textures" : [ null, "masks/shake_mask_22b618d3", "masks/shake_mask_5a0a6b32" ]
+						}
+					],
+					"visible" : true
+				},
+				{
+					"file" : "effects/waterwaves/effect.json",
+					"id" : 473,
+					"name" : "",
+					"passes" : 
+					[
+						{
+							"constantshadervalues" : 
+							{
+								"direction" : 0,
+								"exponent" : 0.99,
+								"scale" : 19.81,
+								"speed" : 5.21,
+								"strength" : 0.04
+							},
+							"id" : 474,
+							"textures" : [ null, "masks/waterwaves_mask_335eda11" ]
+						}
+					],
+					"visible" : true
+				}
+			],
+			"id" : 34,
+			"image" : "models/头发.json",
+			"locktransforms" : true,
+			"name" : "头发",
+			"origin" : "4934.32568 3123.25000 0.00000",
+			"size" : "2125.00000 1564.00000"
+		},
+		{
+			"alpha" : 0.95999998,
+			"color" : "0.88235 0.88235 0.88235",
+			"disablepropagation" : false,
+			"id" : 73,
+			"image" : "models/_.json",
+			"locktransforms" : true,
+			"name" : "漫画文字框",
+			"origin" : "3369.65283 2370.77344 0.00000",
+			"size" : "1361.00000 524.00000",
+			"visible" : 
+			{
+				"user" : "newproperty",
+				"value" : true
+			}
+		}
+	],
+	"version" : 5
+}{
+	

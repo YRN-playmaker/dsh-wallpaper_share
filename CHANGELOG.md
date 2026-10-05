@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- 修复 Harness 桌面端 Capture 无法连接：帧流使用宿主提供的 `__DSH_TRANSPORT__.streamBaseUrl`，避免将 `dsh-app://app` 错拼成 `ws://app`；网页端继续使用页面地址。新增桌面连接地址与浏览器帧流回归验证。
+
 ## 26.10.3 - 2026-10-04
 
 - 中文与英文 README 重新整理并同步，补充三档渲染、捕获窗口跟随、安装升级与排查说明；独立中文文档保持一致。

@@ -1,5 +1,5 @@
 // Chrome + 真实帧中继回归：窗口移动、标题栏、网页缩放、静态帧及旧协议回退。
-// 用法：node tools/test-capture-browser.mjs [Chrome 路径] [--native]
+// 用法：node tools/test-capture-browser.mjs [Chrome 路径] [--native] [--desktop-transport]
 import assert from 'node:assert/strict'
 import { createServer } from 'node:http'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
@@ -16,6 +16,7 @@ const requireBuild = createRequire(import.meta.resolve('tsdown'))
 const { rolldown } = await import(pathToFileURL(requireBuild.resolve('rolldown')).href)
 const tempRoot = resolve(tmpdir()), work = mkdtempSync(join(tempRoot, 'we-capture-view-'))
 const native = process.argv.includes('--native')
+const desktopTransport = process.argv.includes('--desktop-transport')
 const adapter = native ? new SceneAdapter({
   weDir: resolve(root, '..'),
   config: { sceneRendererPath: join(root, 'bin/we-capture.exe'), wallpaperEngineAssetsDir: '', width: 1920, height: 1080, fps: 30, quality: 85 },
@@ -123,7 +124,7 @@ async function browserNativeTests() {
   return { geometry, frame, initial, moved, initialPixel, movedPixel, checks: 3 }
 }
 
-let server, chrome, ws
+let server, streamServer, chrome, ws
 try {
   const build = await rolldown({ input: join(root, 'src/client/SceneCanvas.ts'), platform: 'browser' })
   await build.write({ file: join(work, 'canvas.mjs'), format: 'esm' }); await build.close()
@@ -135,14 +136,23 @@ try {
       hub.setCaptureScreen('Monitor1', req.url === '/clear' ? null : screen); res.end('ok'); return
     }
     res.setHeader('Content-Type', 'text/html; charset=utf-8')
-    res.end(`<style>html,body{margin:0}</style><script type="module">window.result = (${(native ? browserNativeTests : browserTests).toString()})().then(value => ({value}), error => ({error: error.stack}))</script>`)
+    const transport = desktopTransport
+      ? `globalThis.__DSH_TRANSPORT__ = { streamBaseUrl: 'http://127.0.0.1:${streamServer.address().port}' };` : ''
+    res.end(`<style>html,body{margin:0}</style><script type="module">${transport}window.result = (${(native ? browserNativeTests : browserTests).toString()})().then(value => ({value}), error => ({error: error.stack}))</script>`)
   })
-  server.on('upgrade', (req, socket, head) => {
+  // 桌面宿主的帧流与页面地址不同；错误地使用 location.host 必须让回归失败。
+  streamServer = desktopTransport ? createServer((_req, res) => { res.writeHead(404); res.end() }) : server
+  if (desktopTransport) {
+    server.on('upgrade', (_req, socket) => socket.destroy())
+    await new Promise(r => streamServer.listen(0, '127.0.0.1', r))
+  }
+  streamServer.on('upgrade', (req, socket, head) => {
+    assert.equal(new URL(req.url, 'http://localhost').pathname, '/we-sync/scene/stream')
     hub.handleUpgrade(req, socket, head)
     if (!native) setTimeout(() => hub.broadcast('Monitor1', { format: 'rgba', width: 480, height: 270, data: pixels, ts: Date.now() }), 10)
   })
   await new Promise(r => server.listen(0, '127.0.0.1', r))
-  chrome = spawn(process.argv.slice(2).find(arg => arg !== '--native') ?? 'C:/Program Files/Google/Chrome/Application/chrome.exe',
+  chrome = spawn(process.argv.slice(2).find(arg => !arg.startsWith('--')) ?? 'C:/Program Files/Google/Chrome/Application/chrome.exe',
     ['--headless=new', '--no-first-run', '--no-default-browser-check', '--remote-debugging-port=0',
       '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows',
       '--window-size=600,400', '--user-data-dir=' + join(work, 'profile'), 'about:blank'], { stdio: 'ignore', windowsHide: true })
@@ -176,9 +186,10 @@ try {
     if (result) break
   }
   assert.ok(result, 'browser tests did not finish'); assert.ok(!result.error, result.error)
-  console.log('PASS capture viewport ' + (native ? 'native ' : '') + 'browser regression: ' + JSON.stringify(result.value))
+  console.log('PASS capture viewport ' + (native ? 'native ' : '') + (desktopTransport ? 'desktop transport ' : '') + 'browser regression: ' + JSON.stringify(result.value))
 } finally {
   ws?.close(); hub.closeAll(); adapter?.dispose(); chrome?.kill(); server?.close()
+  if (streamServer !== server) streamServer?.close()
   assert.ok(resolve(work).startsWith(tempRoot + sep) && dirname(resolve(work)) === tempRoot)
   try { rmSync(work, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }) } catch {}
 }

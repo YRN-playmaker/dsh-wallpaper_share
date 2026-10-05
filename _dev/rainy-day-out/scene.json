@@ -1,0 +1,2423 @@
+{
+  "camera": {
+    "center": "0.00000 0.00000 -1.00000",
+    "eye": "0.00000 0.00000 0.00000",
+    "up": "0.00000 1.00000 0.00000"
+  },
+  "general": {
+    "ambientcolor": "0.30000 0.30000 0.30000",
+    "bloom": false,
+    "bloomhdrfeather": 0.1,
+    "bloomhdriterations": 8,
+    "bloomhdrscatter": 1.619,
+    "bloomhdrstrength": 2,
+    "bloomhdrthreshold": 1,
+    "bloomstrength": 0.41,
+    "bloomthreshold": 0,
+    "bloomtint": "1.00000 1.00000 1.00000",
+    "camerafade": true,
+    "cameraparallax": false,
+    "cameraparallaxamount": 0.5,
+    "cameraparallaxdelay": 0.1,
+    "cameraparallaxmouseinfluence": 0.5,
+    "camerapreview": true,
+    "camerashake": false,
+    "camerashakeamplitude": 0.5,
+    "camerashakeroughness": 1,
+    "camerashakespeed": 3,
+    "clearcolor": "0.70000 0.70000 0.70000",
+    "clearenabled": true,
+    "farz": 10000,
+    "fov": 50,
+    "gravitydirection": "0.00000 -1.00000 0.00000",
+    "gravitystrength": 1,
+    "hdr": false,
+    "lightconfig": {
+      "point": 2,
+      "pointshadow": 2
+    },
+    "nearz": 0.0099999998,
+    "orthogonalprojection": {
+      "height": 1080,
+      "width": 1920
+    },
+    "perspectiveoverridefov": 90,
+    "skylightcolor": "0.30000 0.30000 0.30000",
+    "winddirection": "0.70700 0.70700 0.00000",
+    "windenabled": false,
+    "windstrength": 1,
+    "zoom": 1
+  },
+  "objects": [
+    {
+      "id": 2532,
+      "name": "欢迎解包学习的友友：）",
+      "origin": "960.00000 540.00000 0.00000"
+    },
+    {
+      "id": 2533,
+      "name": "壁纸中的大多数雨粒子可以在创意工坊搜”雨（自用）“找到",
+      "origin": "960.00000 540.00000 0.00000"
+    },
+    {
+      "castshadow": false,
+      "effects": [
+        {
+          "file": "effects/foliagesway/effect.json",
+          "id": 306,
+          "name": "",
+          "passes": [
+            {
+              "constantshadervalues": {
+                "phase": 0.5,
+                "power": 1,
+                "ratio": 0.30000001,
+                "scale": 0.050000001,
+                "scrolldirection": -0.82420677,
+                "speeduv": 5,
+                "strength": 0.40000001
+              },
+              "id": 307,
+              "textures": [
+                null,
+                "masks/foliagesway_mask_6a85bbf1",
+                null
+              ]
+            }
+          ],
+          "visible": true
+        },
+        {
+          "file": "effects/waterwaves/effect.json",
+          "id": 264,
+          "name": "",
+          "passes": [
+            {
+              "constantshadervalues": {
+                "direction": -0.70742321,
+                "exponent": 1,
+                "scale": 26.92,
+                "speed": 3.3699999,
+                "strength": 0.079999998
+              },
+              "id": 265,
+              "textures": [
+                null,
+                "masks/waterwaves_mask_90ddbc8e"
+              ]
+            }
+          ],
+          "visible": true
+        },
+        {
+          "file": "effects/workshop/2718465779/pulse_/effect.json",
+          "id": 2669,
+          "name": "",
+          "passes": [
+            {
+              "constantshadervalues": {
+                "amount": 1.09,
+                "bounds": "0 1",
+                "noiseamount": 0,
+                "noisespeed": 0.5,
+                "phase": 0,
+                "power": 0.5,
+                "speed": 1.52,
+                "tinthigh": "0.40000 0.40392 0.50196",
+                "tintlow": "1 1 1"
+              },
+              "id": 2670,
+              "textures": [
+                null,
+                null,
+                "pulse_mask_e4707aa6",
+                "masks/pulse__mask_1a6d01ce"
+              ]
+            }
+          ],
+          "visible": true
+        },
+        {
+          "file": "effects/workshop/2718465779/pulse_/effect.json",
+          "id": 2793,
+          "name": "",
+          "passes": [
+            {
+              "constantshadervalues": {
+                "amount": 0.91000003,
+                "bounds": "0 1",
+                "noiseamount": 0,
+                "noisespeed": 0.5,
+                "phase": 0,
+                "power": 0.54000002,
+                "speed": 1.97,
+                "tinthigh": "0.4 0.403921568627451 0.5019607843137255",
+                "tintlow": "1 1 1"
+              },
+              "id": 2794,
+              "textures": [
+                null,
+                null,
+                "masks/pulse__mask_4dda51d4",
+                "masks/pulse__mask_5d645bb8"
+              ]
+            }
+          ],
+          "visible": true
+        },
+        {
+          "file": "effects/workshop/2795521260/color_grading/effect.json",
+          "id": 2890,
+          "name": "",
+          "passes": [
+            {
+              "constantshadervalues": {
+                "Brightness": 0.17,
+                "Channel influence": "1 1 1",
+                "Contrast": 0.059999999,
+                "Opacity": 1
+              },
+              "id": 2891
+            }
+          ],
+          "visible": true
+        },
+        {
+          "file": "effects/pulse/effect.json",
+          "id": 6414,
+          "name": "",
+          "passes": [
+            {
+              "constantshadervalues": {
+                "amount": 0.33000001,
+                "bounds": "0 1",
+                "noiseamount": 0,
+                "noisespeed": 0.5,
+                "phase": 0,
+                "power": 0.56999999,
+                "speed": 2.0599999,
+                "tinthigh": "1 0 0",
+                "tintlow": "1 1 1"
+              },
+              "id": 6415,
+              "textures": [
+                null,
+                null,
+                "masks/pulse_mask_f6aa8d85"
+              ]
+            }
+          ],
+          "visible": true
+        },
+        {
+          "file": "effects/pulse/effect.json",
+          "id": 8559,
+          "name": "",
+          "passes": [
+            {
+              "constantshadervalues": {
+                "amount": 1,
+                "bounds": "0 1",
+                "noiseamount": 0,
+                "noisespeed": 0.5,
+                "phase": 0,
+                "power": 1,
+                "speed": 2.3800001,
+                "tinthigh": "0.5019607843137255 0.5176470588235295 0.8431372549019608",
+                "tintlow": "1 1 1"
+              },
+              "id": 8560,
+              "textures": [
+                null,
+                null,
+                "masks/pulse_mask_460d69bc"
+              ]
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "id": 119,
+      "image": "models/背景.json",
+      "name": "背景",
+      "origin": "947.30859 540.87701 0.00000",
+      "scale": "1.01000 1.01000 1.00000",
+      "size": "2000.00000 1080.00000"
+    },
+    {
+      "id": 2710,
+      "name": "音频变换",
+      "origin": "216.25092 956.22229 0.00000",
+      "visible": {
+        "user": "newproperty",
+        "value": true
+      }
+    },
+    {
+      "angles": "0.00000 -0.00000 0.27925",
+      "castshadow": false,
+      "effects": [
+        {
+          "file": "effects/blendgradient/effect.json",
+          "id": 2483,
+          "name": "",
+          "passes": [
+            {
+              "constantshadervalues": {
+                "alpha": 1,
+                "edgebrightness": 1,
+                "edgecolor": "0.35294117647058826 0.37254901960784315 0.7372549019607844",
+                "gradientscale": 0.25,
+                "multiply": {
+                  "animation": {
+                    "c0": [
+                      {
+                        "back": {
+                          "enabled": true,
+                          "magic": true,
+                          "x": -1,
+                          "y": 0
+                        },
+                        "frame": 0,
+                        "front": {
+                          "enabled": true,
+                          "magic": true,
+                          "x": 0.50847459,
+                          "y": 0
+                        },
+                        "lockangle": true,
+                        "locklength": true,
+                        "value": 1
+                      },
+                      {
+                        "back": {
+                          "enabled": true,
+                          "magic": true,
+                          "x": -0.50847459,
+                          "y": 0
+                        },
+                        "frame": 59,
+                        "front": {
+                          "enabled": true,
+                          "magic": true,
+                          "x": 1,
+                          "y": 0
+                        },
+                        "lockangle": true,
+                        "locklength": true,
+                        "value": 0
+                      }
+                    ],
+                    "options": {
+                      "fps": 60,
+                      "length": 60,
+                      "mode": "single",
+                      "wraploop": null
+                    },
+                    "previewvalue": 1
+                  },
+                  "script": "'use strict';\n\n/**\n * @param {MediaThumbnailEvent} event\n */\nexport function mediaThumbnailChanged(event) {\n\tthisObject.getAnimation().play();\n}",
+                  "value": 1
+                }
+              },
+              "id": 2485,
+              "usertextures": [
+                null,
+                {
+                  "name": "$mediaThumbnail",
+                  "type": "system"
+                }
+              ]
+            }
+          ],
+          "visible": true
+        },
+        {
+          "file": "effects/workshop/2795521260/color_grading/effect.json",
+          "id": 2705,
+          "name": "",
+          "passes": [
+            {
+              "constantshadervalues": {
+                "Brightness": 0.059999999,
+                "Channel influence": "1 1 1",
+                "Contrast": 0.059999999,
+                "Opacity": 1
+              },
+              "id": 2706
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "id": 2480,
+      "image": "models/图层 53.json",
+      "name": "画",
+      "origin": "-8.67116 9.88885 0.00000",
+      "parent": 2710,
+      "scale": "1.01000 1.01000 1.00000",
+      "size": "212.00000 342.00000"
+    },
+    {
+      "angles": "0.00000 -0.00000 0.00000",
+      "castshadow": false,
+      "effects": [
+        {
+          "file": "effects/workshop/2795521260/color_grading/effect.json",
+          "id": 2713,
+          "name": "",
+          "passes": [
+            {
+              "constantshadervalues": {
+                "Brightness": 0.17,
+                "Channel influence": "1 1 1",
+                "Contrast": 0.059999999,
+                "Opacity": 1
+              },
+              "id": 2714
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "id": 2476,
+      "image": "models/图层 54.json",
+      "name": "画框",
+      "origin": "-24.63024 -39.21979 0.00000",
+      "parent": 2710,
+      "scale": "1.01000 1.01000 1.00000",
+      "size": "290.00000 337.00000"
+    },
+    {
+      "id": 4632,
+      "name": "音频条",
+      "origin": "909.47351 694.19397 0.00000",
+      "visible": {
+        "user": "newproperty8",
+        "value": true
+      }
+    },
+    {
+      "angles": "0.00000 -0.00000 0.02670",
+      "castshadow": false,
+      "effects": [
+        {
+          "file": "effects/workshop/3082978660/enhanced_simple_audio_bars/effect.json",
+          "id": 37997,
+          "name": "",
+          "passes": [
+            {
+              "combos": {
+                "V_REMAPPING": 1
+              },
+              "constantshadervalues": {
+                "Anti-alias blurring ": "0.05, 0.00",
+                "Bar Color": {
+                  "user": "newproperty10",
+                  "value": "0.36078 0.40000 0.74902"
+                },
+                "Bar Count": {
+                  "user": "newproperty11",
+                  "value": 32
+                },
+                "Bar Spacing": 0.36000001,
+                "Lower/Upper Bar Bounds": "0.05 0.21",
+                "Minimum Height (Will be multiplied by the bar width)": 0,
+                "Radius": 1,
+                "Volume Factor": 1,
+                "ui_editor_properties_opacity": {
+                  "user": "newproperty26",
+                  "value": 0.57999998
+                }
+              },
+              "id": 37998
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "id": 37996,
+      "image": "models/util/solidlayer.json",
+      "name": "音频",
+      "origin": "-686.14923 -188.42593 0.00000",
+      "parent": 4632,
+      "size": "500.00000 200.00000"
+    },
+    {
+      "angles": "0.00000 -0.00000 0.02670",
+      "castshadow": false,
+      "effects": [
+        {
+          "file": "effects/workshop/3082978660/enhanced_simple_audio_bars/effect.json",
+          "id": 37858,
+          "name": "",
+          "passes": [
+            {
+              "combos": {
+                "V_REMAPPING": 1
+              },
+              "constantshadervalues": {
+                "Anti-alias blurring ": "0.05, 0.00",
+                "Bar Color": {
+                  "user": "newproperty9",
+                  "value": "0.58431 0.60000 0.72549"
+                },
+                "Bar Count": {
+                  "user": "newproperty11",
+                  "value": 32
+                },
+                "Bar Spacing": 0.36000001,
+                "Lower/Upper Bar Bounds": "0.05 0.21",
+                "Minimum Height (Will be multiplied by the bar width)": 0,
+                "Radius": 1,
+                "Volume Factor": 1,
+                "ui_editor_properties_opacity": {
+                  "user": "opacity",
+                  "value": 1
+                }
+              },
+              "id": 37859
+            }
+          ],
+          "visible": true
+        },
+        {
+          "file": "effects/pulse/effect.json",
+          "id": 4642,
+          "name": "",
+          "passes": [
+            {
+              "combos": {
+                "AUDIOPROCESSING": 3
+              },
+              "constantshadervalues": {
+                "amount": 1.4299999,
+                "audioamount": 0.51999998,
+                "audiobounds": "0.5 1.0",
+                "audioexponent": 2.55,
+                "bounds": "0 1",
+                "frequencymax": 2,
+                "frequencymin": 1,
+                "noiseamount": 0,
+                "noisespeed": 0.5,
+                "phase": 0,
+                "power": 1,
+                "speed": 3,
+                "tinthigh": "0.3215686274509804 0.3333333333333333 0.4117647058823529",
+                "tintlow": "1 1 1"
+              },
+              "id": 4643
+            }
+          ],
+          "visible": {
+            "user": "newproperty22",
+            "value": true
+          }
+        }
+      ],
+      "id": 37856,
+      "image": "models/util/solidlayer.json",
+      "name": "音频",
+      "origin": "-689.04028 -189.52386 0.00000",
+      "parent": 4632,
+      "size": "500.00000 200.00000"
+    },
+    {
+      "castshadow": false,
+      "effects": [
+        {
+          "file": "effects/workshop/2795521260/color_grading/effect.json",
+          "id": 37933,
+          "name": "",
+          "passes": [
+            {
+              "constantshadervalues": {
+                "Brightness": 0.17,
+                "Channel influence": "1 1 1",
+                "Contrast": 0.059999999,
+                "Opacity": 1
+              },
+              "id": 0
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "id": 37913,
+      "image": "models/1.json",
+      "name": "栏杆",
+      "origin": "405.01260 440.15878 0.00000",
+      "scale": "1.01000 1.01000 1.00000",
+      "size": "926.00000 183.00000"
+    },
+    {
+      "alpha": {
+        "user": "newproperty7",
+        "value": 1
+      },
+      "anchor": "none",
+      "angles": "0.00000 0.00000 -0.05236",
+      "backgroundbrightness": 1,
+      "backgroundcolor": "0.00000 0.00000 0.00000",
+      "blockalign": false,
+      "castshadow": false,
+      "color": {
+        "user": "newproperty6",
+        "value": "0.85490 0.85882 0.89804"
+      },
+      "depthtest": "enabled",
+      "effects": [
+        {
+          "file": "effects/skew/effect.json",
+          "id": 2679,
+          "name": "",
+          "passes": [
+            {
+              "constantshadervalues": {
+                "bottom": 0.029999999,
+                "left": -0.059999999,
+                "right": -0.039999999,
+                "top": -0.0099999998
+              },
+              "id": 2680
+            }
+          ],
+          "visible": true
+        },
+        {
+          "file": "effects/pulse/effect.json",
+          "id": 2720,
+          "name": "",
+          "passes": [
+            {
+              "constantshadervalues": {
+                "amount": 3,
+                "bounds": "0 1",
+                "noiseamount": 0,
+                "noisespeed": 0,
+                "phase": 0,
+                "power": 1,
+                "speed": 1.7,
+                "tinthigh": "1 1 1",
+                "tintlow": "1 1 1"
+              },
+              "id": 2721
+            }
+          ],
+          "visible": {
+            "user": "newproperty5",
+            "value": true
+          }
+        }
+      ],
+      "font": "systemfont_arial",
+      "horizontalalign": "left",
+      "id": 2520,
+      "limitrows": true,
+      "limituseellipsis": false,
+      "limitwidth": true,
+      "maxrows": 1,
+      "maxwidth": 2133.2446,
+      "name": "歌曲名",
+      "opaquebackground": false,
+      "origin": "202.88889 503.62750 0.00000",
+      "padding": 32,
+      "pointsize": 32,
+      "scale": "0.14000 0.14000 1.00000",
+      "size": "1394.00000 217.00000",
+      "text": {
+        "script": "'use strict';\n\nvar mediaData = \"\";\n\n/**\n * @param {String} value - for property 'text'\n * @return {String} - update current property value\n */\nexport function update(value) {\n\treturn mediaData;\n}\n\n/**\n * @param {MediaPropertiesEvent} event\n */\nexport function mediaPropertiesChanged(event) {\n\tmediaData = event.title;\n}",
+        "value": "東の空から始まる世界"
+      },
+      "verticalalign": "center",
+      "visible": {
+        "user": "newproperty4",
+        "value": true
+      }
+    },
+    {
+      "angles": "0.00000 -0.00000 0.00000",
+      "castshadow": false,
+      "effects": [
+        {
+          "file": "effects/opacity/effect.json",
+          "id": 4617,
+          "name": "",
+          "passes": [
+            {
+              "constantshadervalues": {
+                "alpha": 1
+              },
+              "id": 4618,
+              "textures": [
+                null,
+                "masks/opacity_mask_1b8f8473"
+              ]
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "id": 2481,
+      "image": "models/util/composelayer.json",
+      "name": "路面雨滴",
+      "origin": "958.72290 213.03903 0.00000",
+      "size": "1960.00000 600.00000"
+    },
+    {
+      "angles": "-0.00000 -0.00000 -0.44506",
+      "id": 5986,
+      "instanceoverride": null,
+      "name": "Rain_Splash(Parent)",
+      "origin": "-482.68646 -139.64076 0.00000",
+      "parent": 2481,
+      "particle": "particles/workshop/2128373241/Rain_Splash_copy2.json",
+      "scale": "1.00000 0.25000 1.00000"
+    },
+    {
+      "angles": "-0.00000 -0.00000 -0.34371",
+      "id": 604,
+      "instanceoverride": null,
+      "name": "Rain_Splash(Parent)",
+      "origin": "-31.07397 -96.68608 0.00000",
+      "parent": 2481,
+      "particle": "particles/workshop/2128373241/Rain_Splash_copy2.json",
+      "scale": "1.00000 0.20000 1.00000"
+    },
+    {
+      "castshadow": false,
+      "effects": [
+        {
+          "file": "effects/waterwaves/effect.json",
+          "id": 226,
+          "name": "",
+          "passes": [
+            {
+              "constantshadervalues": {
+                "direction": -2.6035528,
+                "exponent": 1,
+                "scale": 8.9799995,
+                "speed": 4.0500002,
+                "strength": 0.079999998
+              },
+              "id": 227,
+              "textures": [
+                null,
+                "masks/waterwaves_mask_fc52e098"
+              ]
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "id": 223,
+      "image": "models/线4.json",
+      "name": "线4",
+      "origin": "855.88861 354.62225 0.00000",
+      "size": "450.00000 280.00000"
+    },
+    {
+      "angles": "-0.00000 -0.00000 -0.07355",
+      "id": 2758,
+      "instanceoverride": {
+        "alpha": 0.059999999,
+        "colorn": "0.75294 0.75294 0.75294",
+        "lifetime": 1.5,
+        "rate": 2.5
+      },
+      "name": "Long wind trail",
+      "origin": "1284.60229 624.37103 0.00000",
+      "particle": "particles/workshop/3181337767/wind-blur.json",
+      "scale": "-1.00000 1.68085 1.00000"
+    },
+    {
+      "animationlayers": [
+        {
+          "additive": false,
+          "animation": 1191,
+          "blend": 1,
+          "blendin": false,
+          "blendout": false,
+          "blendtime": 0.5,
+          "id": 1414,
+          "name": "YAN",
+          "rate": 0.75999999,
+          "visible": true
+        },
+        {
+          "additive": true,
+          "animation": 8641,
+          "blend": 1,
+          "blendin": false,
+          "blendout": false,
+          "blendtime": 0.5,
+          "id": 8666,
+          "name": "呼吸",
+          "rate": 0.85000002,
+          "visible": true
+        },
+        {
+          "additive": true,
+          "animation": 3358,
+          "blend": 1,
+          "blendin": false,
+          "blendout": false,
+          "blendtime": 0.5,
+          "id": 3383,
+          "name": "动画 3",
+          "rate": 0.60000002,
+          "visible": true
+        }
+      ],
+      "castshadow": false,
+      "effects": [
+        {
+          "file": "effects/waterwaves/effect.json",
+          "id": 176,
+          "name": "",
+          "passes": [
+            {
+              "constantshadervalues": {
+                "direction": 2.9314854,
+                "exponent": 1,
+                "scale": 17.950001,
+                "speed": 3.5999999,
+                "strength": 0.079999998
+              },
+              "id": 177,
+              "textures": [
+                null,
+                "masks/waterwaves_mask_8837337e"
+              ]
+            }
+          ],
+          "visible": true
+        },
+        {
+          "file": "effects/waterwaves/effect.json",
+          "id": 334,
+          "name": "",
+          "passes": [
+            {
+              "constantshadervalues": {
+                "direction": -2.727566,
+                "exponent": 1,
+                "scale": 31.4,
+                "speed": 4.0500002,
+                "strength": 0.079999998
+              },
+              "id": 335,
+              "textures": [
+                null,
+                "masks/waterwaves_mask_f2347bb9"
+              ]
+            }
+          ],
+          "visible": true
+        },
+        {
+          "file": "effects/opacity/effect.json",
+          "id": 383,
+          "name": "",
+          "passes": [
+            {
+              "constantshadervalues": {
+                "alpha": 1
+              },
+              "id": 384,
+              "textures": [
+                null,
+                "masks/opacity_mask_cc946378"
+              ]
+            }
+          ],
+          "visible": true
+        },
+        {
+          "file": "effects/workshop/2718465779/pulse_/effect.json",
+          "id": 436,
+          "name": "",
+          "passes": [
+            {
+              "constantshadervalues": {
+                "amount": 0.56,
+                "bounds": "0 1",
+                "noiseamount": 0,
+                "noisespeed": 0,
+                "phase": 0,
+                "power": 1,
+                "speed": 1,
+                "tinthigh": "0.09411764705882353 0.7529411764705882 0.7529411764705882",
+                "tintlow": "1 1 1"
+              },
+              "id": 437,
+              "textures": [
+                null,
+                null,
+                "masks/pulse__mask_b18d64d9",
+                null
+              ]
+            }
+          ],
+          "visible": {
+            "user": "newproperty1",
+            "value": true
+          }
+        },
+        {
+          "file": "effects/workshop/2795521260/color_grading/effect.json",
+          "id": 2752,
+          "name": "",
+          "passes": [
+            {
+              "constantshadervalues": {
+                "Brightness": 0,
+                "Channel influence": "1 1 1",
+                "Contrast": 0.36000001,
+                "Opacity": 1
+              },
+              "id": 2753,
+              "textures": [
+                null,
+                "masks/color_grading_mask_ac4dbf85"
+              ]
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "id": 22,
+      "image": "models/人物.json",
+      "name": "人物",
+      "origin": "236.00150 503.83633 0.00000",
+      "scale": "1.01000 1.01000 1.00000",
+      "size": "1100.00000 1350.00000"
+    },
+    {
+      "attachment": "Attachment",
+      "id": 13041,
+      "instanceoverride": {
+        "id": 13043,
+        "size": 1.4
+      },
+      "name": "Rain_secondary",
+      "origin": "-278.15701 25.44845 0.00000",
+      "parent": 22,
+      "particle": "particles/workshop/2446129945/Rain2.json",
+      "scale": "0.77877 0.55482 0.52708"
+    },
+    {
+      "attachment": "Attachment",
+      "id": 2456,
+      "instanceoverride": null,
+      "name": "Rain_secondary",
+      "origin": "41.79181 239.35297 0.00000",
+      "parent": 22,
+      "particle": "particles/new_particle_system11.json",
+      "scale": "0.77877 0.55482 0.52708"
+    },
+    {
+      "angles": "0.00000 -0.00000 0.00000",
+      "animationlayers": [
+        {
+          "additive": false,
+          "animation": 8694,
+          "blend": 1,
+          "blendin": false,
+          "blendout": false,
+          "blendtime": 0.5,
+          "id": 8697,
+          "name": "呼吸",
+          "rate": 0.85000002,
+          "visible": true
+        },
+        {
+          "additive": true,
+          "animation": 3406,
+          "blend": 1,
+          "blendin": false,
+          "blendout": false,
+          "blendtime": 0.5,
+          "id": 3549,
+          "name": "动画 2",
+          "rate": 0.60000002,
+          "visible": true
+        }
+      ],
+      "castshadow": false,
+      "effects": [
+        {
+          "file": "effects/reflection/effect.json",
+          "id": 8698,
+          "name": "",
+          "passes": [
+            {
+              "constantshadervalues": {
+                "alpha": 0.079999998,
+                "direction": -2.1096818,
+                "offset": -0.079999998
+              },
+              "id": 8699
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "id": 123,
+      "image": "models/伞.json",
+      "name": "伞",
+      "origin": "234.99203 233.55530 0.00000",
+      "parent": 22,
+      "size": "922.00000 784.00000"
+    },
+    {
+      "angles": "-0.00000 -0.00000 -0.57350",
+      "attachment": "Attachment",
+      "id": 4255,
+      "instanceoverride": {
+        "id": 4257
+      },
+      "name": "rain_on_the_glass1",
+      "origin": "119.19102 402.69626 0.00000",
+      "parent": 22,
+      "particle": "particles/yuluj.json",
+      "scale": "0.99010 0.99010 1.00000"
+    },
+    {
+      "angles": "-0.00000 -0.00000 -0.17883",
+      "attachment": "Attachment",
+      "id": 23862,
+      "instanceoverride": {
+        "id": 23864,
+        "lifetime": 0.44,
+        "size": 0.56999999
+      },
+      "name": "rain_on_the_glass1",
+      "origin": "-260.37701 150.96970 0.00000",
+      "parent": 22,
+      "particle": "particles/yuluj.json",
+      "scale": "0.99010 0.99010 1.00000"
+    },
+    {
+      "angles": "-0.00000 -0.00000 -0.54826",
+      "attachment": "Attachment",
+      "id": 2405,
+      "instanceoverride": {
+        "alpha": 0.47999999,
+        "count": 0.13,
+        "id": 104,
+        "rate": 1.13,
+        "size": 0.73000002
+      },
+      "name": "2",
+      "origin": "46.45029 339.04172 0.00000",
+      "parent": 22,
+      "particle": "particles/new_particle_sy2.1.json",
+      "scale": "0.77661 1.98041 1.88139"
+    },
+    {
+      "angles": "-0.00000 -0.00000 -0.33133",
+      "attachment": "Attachment",
+      "id": 2488,
+      "instanceoverride": {
+        "alpha": 0.83999997,
+        "count": 0.11,
+        "rate": 1.14,
+        "size": 0.44,
+        "speed": 1.92
+      },
+      "name": "2",
+      "origin": "-252.64554 162.17737 0.00000",
+      "parent": 22,
+      "particle": "particles/workshop/3462439536/new_particle_system_copy1.json",
+      "scale": "0.77661 1.98041 1.88139"
+    },
+    {
+      "angles": "-0.00000 -0.00000 -0.40287",
+      "attachment": "Attachment",
+      "id": 2402,
+      "instanceoverride": {
+        "alpha": 0.50999999,
+        "count": 0.31,
+        "id": 4309,
+        "size": 0.44,
+        "speed": 1.92
+      },
+      "name": "2",
+      "origin": "-357.60699 214.83080 0.00000",
+      "parent": 22,
+      "particle": "particles/workshop/3462439536/new_particle_system_copy1.json",
+      "scale": "0.55865 1.05263 1.00000"
+    },
+    {
+      "angles": "-0.00000 -0.00000 -0.23478",
+      "attachment": "Attachment",
+      "id": 2408,
+      "instanceoverride": {
+        "alpha": 0.63,
+        "count": 0.11,
+        "id": 110,
+        "lifetime": 1.46,
+        "rate": 1.05,
+        "size": 0.44,
+        "speed": 1.92
+      },
+      "name": "2",
+      "origin": "278.17297 343.98465 0.00000",
+      "parent": 22,
+      "particle": "particles/workshop/3462439536/new_particle_system_copy1.json",
+      "scale": "0.59932 1.98041 1.88139"
+    },
+    {
+      "angles": "0.00000 -0.00000 0.00000",
+      "castshadow": false,
+      "effects": [
+        {
+          "file": "effects/waterwaves/effect.json",
+          "id": 974,
+          "name": "",
+          "passes": [
+            {
+              "constantshadervalues": {
+                "direction": -2.2119267,
+                "exponent": 1,
+                "scale": 8.9799995,
+                "speed": 3.1500001,
+                "strength": 0.079999998
+              },
+              "id": 975,
+              "textures": [
+                null,
+                "masks/waterwaves_mask_efb415eb"
+              ]
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "id": 914,
+      "image": "models/线3.json",
+      "name": "线3",
+      "origin": "1549.45288 293.54825 0.00000",
+      "scale": "1.01000 1.01000 1.00000",
+      "size": "400.00000 290.00000"
+    },
+    {
+      "castshadow": false,
+      "effects": [
+        {
+          "file": "effects/waterwaves/effect.json",
+          "id": 940,
+          "name": "",
+          "passes": [
+            {
+              "constantshadervalues": {
+                "direction": -2.3301067,
+                "exponent": 1,
+                "scale": 4.4899998,
+                "speed": 3.8199999,
+                "strength": 0.1
+              },
+              "id": 941,
+              "textures": [
+                null,
+                "masks/waterwaves_mask_61fcf2ab"
+              ]
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "id": 938,
+      "image": "models/线2.json",
+      "name": "线2",
+      "origin": "1856.26575 505.93234 0.00000",
+      "scale": "1.01000 1.01000 1.00000",
+      "size": "200.00000 460.00000"
+    },
+    {
+      "castshadow": false,
+      "effects": [
+        {
+          "file": "effects/waterwaves/effect.json",
+          "id": 1067,
+          "name": "",
+          "passes": [
+            {
+              "constantshadervalues": {
+                "direction": -2.0545685,
+                "exponent": 1,
+                "scale": 8.9799995,
+                "speed": 5.1700001,
+                "strength": 0.079999998
+              },
+              "id": 1068,
+              "textures": [
+                null,
+                "masks/waterwaves_mask_68c893d9"
+              ]
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "id": 1065,
+      "image": "models/线.json",
+      "name": "线",
+      "origin": "1713.27173 212.90559 0.00000",
+      "scale": "1.01000 1.01000 1.00000",
+      "size": "453.00000 448.00000"
+    },
+    {
+      "castshadow": false,
+      "effects": [
+        {
+          "file": "effects/foliagesway/effect.json",
+          "id": 2786,
+          "name": "",
+          "passes": [
+            {
+              "constantshadervalues": {
+                "phase": 0.1,
+                "power": 1,
+                "ratio": 0.30000001,
+                "scale": 0.050000001,
+                "scrolldirection": -0.95604253,
+                "speeduv": 5,
+                "strength": 0.54000002
+              },
+              "id": 2787
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "id": 2763,
+      "image": "models/纸团.json",
+      "name": "纸团",
+      "origin": "1518.32495 239.36198 0.00000",
+      "scale": "1.01000 1.01000 1.00000",
+      "size": "45.00000 50.00000"
+    },
+    {
+      "animationlayers": [
+        {
+          "additive": false,
+          "animation": 728,
+          "blend": 1,
+          "blendin": false,
+          "blendout": false,
+          "blendtime": 0.5,
+          "id": 834,
+          "name": "动画 1",
+          "rate": 1,
+          "visible": true
+        }
+      ],
+      "castshadow": false,
+      "effects": [
+        {
+          "file": "effects/waterwaves/effect.json",
+          "id": 563,
+          "name": "",
+          "passes": [
+            {
+              "constantshadervalues": {
+                "direction": -1.7792866,
+                "exponent": 1,
+                "scale": 4.4899998,
+                "speed": 2.03,
+                "strength": 0.1
+              },
+              "id": 564,
+              "textures": [
+                null,
+                "masks/waterwaves_mask_520884d1"
+              ]
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "id": 488,
+      "image": "models/cat2.json",
+      "name": "cat2",
+      "origin": "1446.22705 346.37122 0.00000",
+      "scale": "1.25000 1.25000 1.00000",
+      "size": "109.00000 221.00000"
+    },
+    {
+      "castshadow": false,
+      "effects": [
+        {
+          "file": "effects/waterwaves/effect.json",
+          "id": 204,
+          "name": "",
+          "passes": [
+            {
+              "constantshadervalues": {
+                "direction": -2.4065003,
+                "exponent": 1,
+                "scale": 4.4899998,
+                "speed": 3.4000001,
+                "strength": 0.1
+              },
+              "id": 205,
+              "textures": [
+                null,
+                "masks/waterwaves_mask_dde89a62"
+              ]
+            }
+          ],
+          "visible": true
+        },
+        {
+          "file": "effects/waterwaves/effect.json",
+          "id": 342,
+          "name": "",
+          "passes": [
+            {
+              "constantshadervalues": {
+                "direction": -1.2123394,
+                "exponent": 1,
+                "scale": 0.0099999998,
+                "speed": 3.1500001,
+                "strength": 0.14
+              },
+              "id": 343,
+              "textures": [
+                null,
+                "masks/waterwaves_mask_9c6574bd"
+              ]
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "id": 1827,
+      "image": "models/cat1.json",
+      "name": "cat1",
+      "origin": "1724.52319 618.19934 0.00000",
+      "scale": "1.20000 1.20000 1.00000",
+      "size": "128.00000 123.00000"
+    },
+    {
+      "id": 145,
+      "instanceoverride": {
+        "alpha": 0.52999997,
+        "colorn": "0.75294 0.75294 0.75294",
+        "id": 106,
+        "rate": 0.88
+      },
+      "name": "sleep-arial-black",
+      "origin": "4.76507 -27.58717 0.00000",
+      "parent": 1827,
+      "particle": "particles/workshop/2761147720/sleep_arial-black.json",
+      "scale": "0.42105 0.42105 1.00000",
+      "visible": {
+        "user": "zzz",
+        "value": true
+      }
+    },
+    {
+      "angles": "0.00000 -0.00000 0.00000",
+      "id": 6413,
+      "name": "",
+      "origin": "557.70447 583.71979 0.00000"
+    },
+    {
+      "angles": "-0.00000 -0.00000 -0.08745",
+      "id": 906,
+      "instanceoverride": null,
+      "name": "雨景远景",
+      "origin": "674.45941 -78.35498 0.00000",
+      "parent": 6413,
+      "particle": "particles/presets/rainperspective.json",
+      "scale": "0.58911 1.00000 1.00000"
+    },
+    {
+      "angles": "-0.00000 -0.00000 -0.22187",
+      "id": 2426,
+      "instanceoverride": {
+        "alpha": 0.58999997,
+        "count": 0.43000001,
+        "id": 0,
+        "rate": 4.4400001,
+        "size": 0.38999999,
+        "speed": 3.1700001
+      },
+      "name": "Snow",
+      "origin": "462.79926 -92.04010 0.00000",
+      "parent": 6413,
+      "particle": "particles/workshop/3462439536/presets/snowperspective.json"
+    },
+    {
+      "angles": "-0.00000 -0.00000 -0.46007",
+      "id": 2432,
+      "instanceoverride": {
+        "count": 0.22,
+        "id": 0,
+        "lifetime": 1.59,
+        "speed": 0.81999999
+      },
+      "name": "Rain perspective",
+      "origin": "607.87714 -504.41248 0.00000",
+      "parallaxDepth": "-0.67000 -0.67000",
+      "parent": 6413,
+      "particle": "particles/workshop/3462439536/presets/rainperspective.json",
+      "scale": "3.14549 3.14548 3.14550"
+    },
+    {
+      "angles": "-0.00000 -0.00000 -0.33444",
+      "id": 2390,
+      "instanceoverride": {
+        "colorn": "1.00000 1.00000 1.00000",
+        "id": 4307
+      },
+      "name": "Rain1",
+      "origin": "856.67841 -120.28577 0.00000",
+      "parent": 6413,
+      "particle": "particles/workshop/3462439536/presets/rainrefractive.json",
+      "scale": "1.00000 1.00000 3.62577"
+    },
+    {
+      "angles": "-0.00000 -0.00000 -0.14500",
+      "id": 598,
+      "instanceoverride": {
+        "alpha": 0.41,
+        "id": 186,
+        "size": 0.5
+      },
+      "name": "Rain downpour",
+      "origin": "532.76416 153.52234 0.00000",
+      "parent": 6413,
+      "particle": "particles/workshop/2128373241/presets/raindownpour.json"
+    },
+    {
+      "angles": "0.00000 -0.00000 0.00000",
+      "cascadedistance0": 556.20001,
+      "cascadedistance1": 1112.4,
+      "cascadedistance2": 2039.4,
+      "castshadow": true,
+      "castvolumetrics": true,
+      "color": "0.16863 0.19216 0.30980",
+      "density": 0.74000001,
+      "exponent": 3.9200001,
+      "id": 1813,
+      "intensity": 25,
+      "light": "lpoint",
+      "name": "",
+      "origin": "1759.75684 678.50800 0.00000",
+      "parallaxDepth": "0.00000 0.00000",
+      "radius": 290.92001,
+      "volumetricsexponent": 2.4400001
+    },
+    {
+      "angles": "-0.00000 -0.00000 -0.07612",
+      "id": 518,
+      "instanceoverride": {
+        "alpha": 0.039999999,
+        "colorn": "0.75294 0.75294 0.75294",
+        "id": 520,
+        "lifetime": 1.5,
+        "rate": 2.5,
+        "size": 1.26
+      },
+      "name": "Long wind trail",
+      "origin": "1252.14343 321.42172 0.00000",
+      "particle": "particles/workshop/3181337767/wind-blur.json",
+      "scale": "-1.00000 2.10886 1.00000"
+    },
+    {
+      "angles": "0.00000 -0.00000 0.00000",
+      "cascadedistance0": 556.20001,
+      "cascadedistance1": 1112.4,
+      "cascadedistance2": 2039.4,
+      "castshadow": true,
+      "castvolumetrics": true,
+      "color": "0.29020 0.29412 0.62745",
+      "density": 0.94999999,
+      "exponent": 4,
+      "id": 2484,
+      "intensity": {
+        "animation": {
+          "c0": [
+            {
+              "back": {
+                "enabled": true,
+                "magic": true,
+                "x": -0.9285714,
+                "y": -0.63537073
+              },
+              "frame": 0,
+              "front": {
+                "enabled": true,
+                "magic": true,
+                "x": 1,
+                "y": 0.54460353
+              },
+              "lockangle": true,
+              "locklength": true,
+              "value": 0
+            },
+            {
+              "back": {
+                "enabled": true,
+                "magic": true,
+                "x": -0.91666669,
+                "y": 0
+              },
+              "frame": 12,
+              "front": {
+                "enabled": true,
+                "magic": true,
+                "x": 1,
+                "y": 0
+              },
+              "lockangle": true,
+              "locklength": true,
+              "value": 14.38
+            },
+            {
+              "back": {
+                "enabled": true,
+                "magic": true,
+                "x": -0.94999999,
+                "y": 1.438
+              },
+              "frame": 22,
+              "front": {
+                "enabled": true,
+                "magic": true,
+                "x": 1,
+                "y": -1.2941999
+              },
+              "lockangle": true,
+              "locklength": true,
+              "value": 0
+            },
+            {
+              "back": {
+                "enabled": true,
+                "x": -0.55555558,
+                "y": -2.5
+              },
+              "frame": 31,
+              "front": {
+                "enabled": true,
+                "x": 1,
+                "y": 0.27777779
+              },
+              "lockangle": true,
+              "locklength": true,
+              "value": 0
+            },
+            {
+              "back": {
+                "enabled": true,
+                "x": 0,
+                "y": -5.1626225
+              },
+              "frame": 32,
+              "front": {
+                "enabled": true,
+                "x": 0,
+                "y": 5.1626225
+              },
+              "lockangle": true,
+              "locklength": true,
+              "value": 25
+            },
+            {
+              "back": {
+                "enabled": true,
+                "x": -1,
+                "y": 0
+              },
+              "frame": 33,
+              "front": {
+                "enabled": true,
+                "x": 1,
+                "y": 0
+              },
+              "lockangle": true,
+              "locklength": true,
+              "value": 0
+            },
+            {
+              "back": {
+                "enabled": true,
+                "x": 0,
+                "y": -2.8961048
+              },
+              "frame": 34,
+              "front": {
+                "enabled": true,
+                "x": 0,
+                "y": 2.8961048
+              },
+              "lockangle": true,
+              "locklength": true,
+              "value": 25
+            },
+            {
+              "back": {
+                "enabled": true,
+                "x": -1,
+                "y": 0.15430643
+              },
+              "frame": 35,
+              "front": {
+                "enabled": true,
+                "x": 0.54545456,
+                "y": -1.6973708
+              },
+              "lockangle": true,
+              "locklength": true,
+              "value": 0
+            },
+            {
+              "back": {
+                "enabled": true,
+                "magic": true,
+                "x": -1,
+                "y": 0
+              },
+              "frame": 46,
+              "front": {
+                "enabled": true,
+                "magic": true,
+                "x": 0.89285713,
+                "y": 0
+              },
+              "lockangle": true,
+              "locklength": true,
+              "value": 8.0262928
+            }
+          ],
+          "options": {
+            "fps": 6,
+            "length": 60,
+            "mode": "loop",
+            "wraploop": true
+          }
+        },
+        "value": 8.8000002
+      },
+      "light": "lpoint",
+      "name": "雷",
+      "origin": "491.38770 1829.43262 250.00000",
+      "parallaxDepth": "0.00000 0.00000",
+      "radius": 1714.15,
+      "volumetricsexponent": 2.9300001
+    },
+    {
+      "angles": "-0.00000 -0.00000 -0.92791",
+      "id": 8635,
+      "instanceoverride": {
+        "alpha": 0.25,
+        "colorn": "0.29020 0.28235 0.47451",
+        "id": 8636
+      },
+      "name": "光束 1 (旧)",
+      "origin": "1462.94519 400.16235 0.00000",
+      "particle": "particles/presets/light_shafts_0.json",
+      "scale": "0.37736 0.50456 1.00000"
+    },
+    {
+      "id": 15264,
+      "name": "屏幕粒子",
+      "origin": "1498.46826 731.88733 0.00000"
+    },
+    {
+      "angles": "0.00000 -0.00000 0.00000",
+      "id": 15161,
+      "instanceoverride": {
+        "alpha": 0.64999998,
+        "id": 15163,
+        "size": 0.58999997
+      },
+      "name": "rain_on_the_glass1",
+      "origin": "-586.26886 -142.55090 0.00000",
+      "parent": 15264,
+      "particle": "particles/workshop/2446129945/rain_on_the_glass_copy1.json",
+      "visible": {
+        "user": "newproperty2",
+        "value": false
+      }
+    },
+    {
+      "angles": "0.00000 -0.00000 0.00000",
+      "id": 6776,
+      "instanceoverride": {
+        "id": 6777,
+        "size": 4.1700001
+      },
+      "name": "Rain_secondary",
+      "origin": "-540.98914 -203.66705 0.00000",
+      "parent": 15264,
+      "particle": "particles/yuzi.json",
+      "scale": "0.78656 0.56037 0.52708",
+      "visible": {
+        "user": "newproperty3",
+        "value": false
+      }
+    },
+    {
+      "id": 15265,
+      "name": "时间",
+      "origin": "1498.46826 731.88733 0.00000",
+      "visible": {
+        "user": {
+          "condition": "1",
+          "name": "newproperty12"
+        },
+        "value": true
+      }
+    },
+    {
+      "alpha": 0.63,
+      "anchor": "none",
+      "angles": "-0.00000 -0.00000 -0.16873",
+      "backgroundbrightness": 1,
+      "backgroundcolor": "0.00000 0.00000 0.00000",
+      "blockalign": false,
+      "castshadow": false,
+      "color": "0.00000 0.00000 0.00000",
+      "depthtest": "enabled",
+      "effects": [
+        {
+          "file": "effects/skew/effect.json",
+          "id": 2529,
+          "name": "",
+          "passes": [
+            {
+              "constantshadervalues": {
+                "bottom": -0.0099999998,
+                "left": 0,
+                "right": 0.029999999,
+                "top": 0.059999999
+              },
+              "id": 2531
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "font": "fonts/Atami-Regular.otf",
+      "horizontalalign": "left",
+      "id": 2626,
+      "limitrows": false,
+      "limituseellipsis": false,
+      "limitwidth": false,
+      "maxrows": 1,
+      "maxwidth": 500,
+      "name": "VHS Time and Date",
+      "opaquebackground": false,
+      "origin": "117.36609 117.60657 0.00000",
+      "padding": 128,
+      "parent": 15265,
+      "pointsize": 32,
+      "scale": "0.14000 0.14000 1.00000",
+      "size": "1073.00000 576.00000",
+      "text": {
+        "script": "'use strict';\n// Please note: Do not remove this line or asset references may break.\nexport let __workshopId = '2519054915';\n\nexport var scriptProperties = createScriptProperties()\n\t// Whether you want a 24h or 12h style format\n\t.addCheckbox({\n\t\tname: 'use24hFormat',\n\t\tlabel: 'ui_editor_properties_use_24h_format',\n\t\tvalue: true\n\t})\n\t// This will be used to separate each element\n\t.addText({\n\t\tname: 'delimiter',\n\t\tlabel: 'ui_editor_properties_delimiter',\n\t\tvalue: ':'\n\t})\n\t.finish();\n\n/**\n * @param {String} value (for property 'text')\n */\nexport function update(value) {\n\tlet space = \" \";\n\tlet ent = \"\\n\";\n\tlet time = new Date();\n\tlet months = [\n  'Jan.',\n  'Feb.',\n  'Mar.',\n  'Apr.',\n  'May.',\n  'Jun.',\n  'Jul.',\n  'Aug.',\n  'Sep.',\n  'Oct.',\n  'Nov.',\n  'Dec.'\n];\n\tvar hours = time.getHours();\n\tif (!scriptProperties.use24hFormat) {\n\tif (hours < 12) {\n\t\t\tvar meridiem = 'AM';\n\t\t}\n\tif (hours >= 12) {\n\t\t\tvar meridiem = 'PM';\n\t\t}\n\t\thours %= 12;\n\t\tif (hours == 0) {\n\t\t\thours = 12;\n\t\t}\n\t}\n\thours = (\"00\" + hours).slice(-2);\n\tlet minutes = (\"00\" + time.getMinutes()).slice(-2);\n\t//24 hour format off\n\tif (!scriptProperties.use24hFormat) {\n\tvar value = meridiem + space + hours + scriptProperties.delimiter + minutes + ent + months[time.getMonth()] + space + time.getDate() + space + time.getFullYear();\n\t}\n\t//24 hour format on\n\tif (scriptProperties.use24hFormat) {\n\tvar value = hours + scriptProperties.delimiter + minutes + ent + months[time.getMonth()] + space + time.getDate() + space + time.getFullYear();\n\t}\n\treturn value;\n}\n",
+        "scriptproperties": {
+          "delimiter": ":",
+          "use24hFormat": {
+            "user": "_24hourformat",
+            "value": false
+          }
+        },
+        "value": "PM O8:24\nApr. 14 2025"
+      },
+      "verticalalign": "center"
+    },
+    {
+      "alpha": {
+        "user": "newproperty18",
+        "value": 0.64999998
+      },
+      "anchor": "none",
+      "angles": "-0.00000 -0.00000 -0.16873",
+      "backgroundbrightness": 1,
+      "backgroundcolor": "0.00000 0.00000 0.00000",
+      "blockalign": false,
+      "castshadow": false,
+      "color": {
+        "user": "newproperty17",
+        "value": "1.00000 1.00000 1.00000"
+      },
+      "depthtest": "enabled",
+      "effects": [
+        {
+          "file": "effects/skew/effect.json",
+          "id": 2693,
+          "name": "",
+          "passes": [
+            {
+              "constantshadervalues": {
+                "bottom": -0.0099999998,
+                "left": 0,
+                "right": 0.029999999,
+                "top": 0.059999999
+              },
+              "id": 2694
+            }
+          ],
+          "visible": true
+        },
+        {
+          "file": "effects/pulse/effect.json",
+          "id": 34403,
+          "name": "",
+          "passes": [
+            {
+              "constantshadervalues": {
+                "amount": 1.27,
+                "bounds": "0 1",
+                "noiseamount": 0,
+                "noisespeed": 0.5,
+                "phase": 0,
+                "power": 1,
+                "speed": 1.52,
+                "tinthigh": "1 1 1",
+                "tintlow": "1 1 1"
+              },
+              "id": 34404
+            }
+          ],
+          "visible": {
+            "user": "newproperty16",
+            "value": true
+          }
+        }
+      ],
+      "font": "fonts/Atami-Regular.otf",
+      "horizontalalign": "left",
+      "id": 2692,
+      "limitrows": false,
+      "limituseellipsis": false,
+      "limitwidth": false,
+      "maxrows": 1,
+      "maxwidth": 500,
+      "name": "VHS Time and Date",
+      "opaquebackground": false,
+      "origin": "115.65771 118.17603 0.00000",
+      "padding": 128,
+      "parent": 15265,
+      "pointsize": 32,
+      "scale": "0.14000 0.14000 1.00000",
+      "size": "1073.00000 576.00000",
+      "text": {
+        "script": "'use strict';\n// Please note: Do not remove this line or asset references may break.\nexport let __workshopId = '2519054915';\n\nexport var scriptProperties = createScriptProperties()\n\t// Whether you want a 24h or 12h style format\n\t.addCheckbox({\n\t\tname: 'use24hFormat',\n\t\tlabel: 'ui_editor_properties_use_24h_format',\n\t\tvalue: true\n\t})\n\t// This will be used to separate each element\n\t.addText({\n\t\tname: 'delimiter',\n\t\tlabel: 'ui_editor_properties_delimiter',\n\t\tvalue: ':'\n\t})\n\t.finish();\n\n/**\n * @param {String} value (for property 'text')\n */\nexport function update(value) {\n\tlet space = \" \";\n\tlet ent = \"\\n\";\n\tlet time = new Date();\n\tlet months = [\n  'Jan.',\n  'Feb.',\n  'Mar.',\n  'Apr.',\n  'May.',\n  'Jun.',\n  'Jul.',\n  'Aug.',\n  'Sep.',\n  'Oct.',\n  'Nov.',\n  'Dec.'\n];\n\tvar hours = time.getHours();\n\tif (!scriptProperties.use24hFormat) {\n\tif (hours < 12) {\n\t\t\tvar meridiem = 'AM';\n\t\t}\n\tif (hours >= 12) {\n\t\t\tvar meridiem = 'PM';\n\t\t}\n\t\thours %= 12;\n\t\tif (hours == 0) {\n\t\t\thours = 12;\n\t\t}\n\t}\n\thours = (\"00\" + hours).slice(-2);\n\tlet minutes = (\"00\" + time.getMinutes()).slice(-2);\n\t//24 hour format off\n\tif (!scriptProperties.use24hFormat) {\n\tvar value = meridiem + space + hours + scriptProperties.delimiter + minutes + ent + months[time.getMonth()] + space + time.getDate() + space + time.getFullYear();\n\t}\n\t//24 hour format on\n\tif (scriptProperties.use24hFormat) {\n\tvar value = hours + scriptProperties.delimiter + minutes + ent + months[time.getMonth()] + space + time.getDate() + space + time.getFullYear();\n\t}\n\treturn value;\n}\n",
+        "scriptproperties": {
+          "delimiter": ":",
+          "use24hFormat": {
+            "user": "_24hourformat",
+            "value": false
+          }
+        },
+        "value": "PM O8:24\nApr. 14 2025"
+      },
+      "verticalalign": "center"
+    },
+    {
+      "id": 2711,
+      "name": "",
+      "origin": {
+        "script": "// 使用严格模式\n'use strict';\n\n// 创建脚本属性\nexport var scriptProperties = createScriptProperties ()\n  // 添加 X 坐标的滑块属性\n  .addSlider ( {\n    name: 'x', // 属性名称\n    label: 'X', // 属性标签\n    value: 0.5, // 属性默认值\n    min: 0, // 滑块最小值\n    max: 1, // 滑块最大值\n    integer: false // 是否使用整数\n  })\n  // 添加 Y 坐标的滑块属性\n  .addSlider ( {\n    name: 'y', // 属性名称\n    label: 'Y', // 属性标签\n    value: 0.5, // 属性默认值\n    min: 0, // 滑块最小值\n    max: 1, // 滑块最大值\n    integer: false // 是否使用整数\n  })\n  // 完成脚本属性的创建\n  .finish ();\n\n/**\n * 更新组件的坐标值\n * @param {Vec3} value - 组件的原始坐标值\n * @return {Vec3} - 更新后的坐标值\n */\nexport function update (value) {\n  // 将 X 坐标乘以画布的宽度\n  value.x = scriptProperties.x * engine.canvasSize.x;\n  // 将 Y 坐标乘以画布的高度\n  value.y = scriptProperties.y * engine.canvasSize.y;\n  // 返回更新后的坐标值\n  return value;\n}\n",
+        "scriptproperties": {
+          "x": {
+            "user": "x",
+            "value": 0.5
+          },
+          "y": {
+            "user": "y",
+            "value": 0.5
+          }
+        },
+        "value": "1362.54382 736.76819 0.00000"
+      },
+      "scale": {
+        "user": "newproperty14",
+        "value": "0.70000 0.70000 0.70000"
+      },
+      "visible": {
+        "user": {
+          "condition": "2",
+          "name": "newproperty12"
+        },
+        "value": false
+      }
+    },
+    {
+      "alpha": {
+        "user": "newproperty13",
+        "value": 1
+      },
+      "anchor": "none",
+      "angles": "0.00000 -0.00000 0.00000",
+      "backgroundbrightness": 1,
+      "backgroundcolor": "0.00000 0.00000 0.00000",
+      "blockalign": false,
+      "brightness": 2.3900001,
+      "castshadow": false,
+      "color": {
+        "user": "newproperty15",
+        "value": "1.00000 1.00000 1.00000"
+      },
+      "depthtest": "enabled",
+      "effects": [
+        {
+          "file": "effects/workshop/2981960200/blurprecise/effect.json",
+          "id": 17380,
+          "name": "",
+          "passes": [
+            {
+              "constantshadervalues": {
+                "scale": "1.28 1.28"
+              },
+              "id": 17381
+            },
+            {
+              "combos": {
+                "ENABLEMASK": 1,
+                "VERTICAL": 1
+              },
+              "constantshadervalues": {
+                "scale": "1.28 1.28"
+              },
+              "id": 17382
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "font": "fonts/workshop/2981960200/Quicksand-Bold.otf",
+      "horizontalalign": "center",
+      "id": 17379,
+      "limitrows": false,
+      "limituseellipsis": false,
+      "limitwidth": false,
+      "maxrows": 1,
+      "maxwidth": 500,
+      "name": "Clock",
+      "opaquebackground": false,
+      "padding": 32,
+      "parent": 2711,
+      "pointsize": 32,
+      "scale": "0.28038 0.28038 0.28038",
+      "size": "387.00000 219.00000",
+      "text": {
+        "script": "'use strict';\n// Please note: Do not remove this line or asset references may break.\nexport let __workshopId = '2981960200';\n// Please note: Do not remove this line or asset references may break.\n\nexport var scriptProperties = createScriptProperties()\n\t// Whether you want a 24h or 12h style format\n\t.addCheckbox({\n\t\tname: 'use24hFormat',\n\t\tlabel: 'ui_editor_properties_use_24h_format',\n\t\tvalue: true\n\t})\n\t// Whether you want to see the seconds or not\n\t.addCheckbox({\n\t\tname: 'showSeconds',\n\t\tlabel: 'ui_editor_properties_show_seconds',\n\t\tvalue: false\n\t})\n\t// This will be used to separate each element\n\t.addText({\n\t\tname: 'delimiter',\n\t\tlabel: 'ui_editor_properties_delimiter',\n\t\tvalue: ':'\n\t})\n\t.finish();\n\n/**\n * @param {String} value (for property 'text')\n */\nexport function update(value) {\n\tlet time = new Date();\n\tvar hours = time.getHours();\n\tif (!scriptProperties.use24hFormat) {\n\t\thours %= 12;\n\t\tif (hours == 0) {\n\t\t\thours = 12;\n\t\t}\n\t}\n\thours = (\"00\" + hours).slice(-2);\n\tlet minutes = (\"00\" + time.getMinutes()).slice(-2);\n\tvalue = \"-\" + hours + scriptProperties.delimiter + minutes+\"-\";\n\tif (scriptProperties.showSeconds) {\n\t\tlet seconds = (\"00\" + time.getSeconds()).slice(-2);\n\t\tvalue += scriptProperties.delimiter + seconds;\n\t}\n\treturn value;\n}\n",
+        "scriptproperties": {
+          "delimiter": ":",
+          "showSeconds": false,
+          "use24hFormat": false
+        },
+        "value": "12:34"
+      },
+      "verticalalign": "center"
+    },
+    {
+      "alpha": {
+        "user": "newproperty13",
+        "value": 1
+      },
+      "anchor": "none",
+      "angles": "0.00000 -0.00000 0.00000",
+      "backgroundbrightness": 1,
+      "backgroundcolor": "0.00000 0.00000 0.00000",
+      "blockalign": false,
+      "brightness": 1.98,
+      "castshadow": false,
+      "color": {
+        "user": "newproperty15",
+        "value": "1.00000 1.00000 1.00000"
+      },
+      "depthtest": "enabled",
+      "effects": [
+        {
+          "file": "effects/workshop/2981960200/blurprecise/effect.json",
+          "id": 17392,
+          "name": "",
+          "passes": [
+            {
+              "constantshadervalues": {
+                "scale": "1.33 1.33"
+              },
+              "id": 17393
+            },
+            {
+              "combos": {
+                "ENABLEMASK": 1,
+                "VERTICAL": 1
+              },
+              "constantshadervalues": {
+                "scale": "1.33 1.33"
+              },
+              "id": 17394
+            }
+          ],
+          "visible": true
+        }
+      ],
+      "font": "fonts/workshop/2981960200/Quicksand-Bold.otf",
+      "horizontalalign": "center",
+      "id": 17391,
+      "limitrows": false,
+      "limituseellipsis": false,
+      "limitwidth": false,
+      "maxrows": 1,
+      "maxwidth": 500,
+      "name": "Date",
+      "opaquebackground": false,
+      "origin": "-2.31067 47.07428 0.00000",
+      "padding": 32,
+      "parent": 2711,
+      "pointsize": 32,
+      "scale": "0.31731 0.30580 0.44841",
+      "size": "522.00000 219.00000",
+      "text": {
+        "script": "'use strict';\n// Please note: Do not remove this line or asset references may break.\nexport let __workshopId = '2981960200';\n// Please note: Do not remove this line or asset references may break.\n// Please note: Do not remove this line or asset references may break.\n\n\nexport var scriptProperties = createScriptProperties()\n\t.addCombo({\n\t\tname: 'monthFormat',\n\t\tlabel: 'Month Format',\n\t\toptions: [{\n\t\t\tlabel: 'Numeric',\n\t\t\tvalue: '1'\n\t\t}, {\n\t\t\tlabel: 'Abbreviated',\n\t\t\tvalue: '2'\n\t\t},{\n\t\t\tlabel: 'Full',\n\t\t\tvalue: '3'\n\t\t}]\n\t})\n\t.addCombo({\n\t\tname: 'dayFormat',\n\t\tlabel: 'Day Format',\n\t\toptions: [{\n\t\t\tlabel: 'Abbreviated',\n\t\t\tvalue: '1'\n\t\t}, {\n\t\t\tlabel: 'Full',\n\t\t\tvalue: '2'\n\t\t}]\n\t})\n\t.addCheckbox({\n\t\tname: 'showDay',\n\t\tlabel: 'Show Day',\n\t\tvalue: false\n\t})\n   .addCheckbox({\n\t\tname: 'alignVertical',\n\t\tlabel: 'Align Day Vertically',\n\t\tvalue: false\n\t})\n  .addCheckbox({\n\t\tname: 'useDelimiter',\n\t\tlabel: 'Use Delimiter',\n\t\tvalue: false\n\t})\n\t.addText({\n\t\tname: 'addDelimiter',\n\t\tlabel: 'Delimiter',\n\t\tvalue: '/'\n\t})\n\t.finish();\n\n\nlet months;\nlet day;\nvar delimiterValue;\nvar newLine;\n/**\n * @param {String} value (for property 'text')\n */\nexport function update(value){\n  if (scriptProperties.useDelimiter == true){\n  delimiterValue = scriptProperties.addDelimiter\n}\n  if (scriptProperties.useDelimiter == false){\n   delimiterValue = [\n  ' '\n]\n}\nif (scriptProperties.alignVertical == true){\n   newLine = [\n  '\\n'\n]\n}\nif (scriptProperties.alignVertical == false){\n   newLine = [\n  ''\n]\n}\n  if (scriptProperties.monthFormat == 1){\n  months = [\n  '1',\n  '2',\n  '3',\n  '4',\n  '5',\n  '6',\n  '7',\n  '8',\n  '9',\n  '10',\n  '11',\n  '12'\n]\n}\n if (scriptProperties.monthFormat == 2){\n months = [\n  ' JAN ',\n  ' FEB ',\n  ' MAR ',\n  ' APR ',\n  ' MAY ',\n  ' JUN ',\n  ' JUL ',\n  ' AUG ',\n  ' SEP ',\n  ' OCT ',\n  ' NOV ',\n  ' DEC '\n]\n}\nif (scriptProperties.monthFormat == 3){\n months = [\n  'January',\n  'February',\n  'March',\n  'April',\n  'May',\n  'June',\n  'July',\n  'August',\n  'September',\n  'October',\n  'November',\n  'December'\n]\n}\nif (scriptProperties.dayFormat == 1){\n  day = [\n  'Sun',\n  'Mon',\n  'Tue',\n  'Wed',\n  'Thu',\n  'Fri',\n  '\\nSat'\n]\n}\nif (scriptProperties.dayFormat == 2){\n day = [\n  'Sunday',\n  'Monday',\n  'Tuesday',\n  'Wednesday',\n  'Thursday',\n  'Friday',\n  '\\nSaturday'\n]\n}\n\tlet date = new Date();{\n    if (scriptProperties.showDay == true ){\n    return day[date.getDay()] + newLine + ' ' + date.getDate() + delimiterValue + months[date.getMonth()] + delimiterValue + date.getFullYear();\n    }\n    if (scriptProperties.showDay == false ){\n\treturn   date.getDate() + delimiterValue + months[date.getMonth()] + delimiterValue + date.getFullYear();\n}\n}\n}\n",
+        "scriptproperties": {
+          "addDelimiter": "",
+          "alignVertical": false,
+          "dayFormat": "2",
+          "monthFormat": "2",
+          "showDay": false,
+          "useDelimiter": true
+        },
+        "value": "<Date>"
+      },
+      "verticalalign": "center"
+    },
+    {
+      "castshadow": false,
+      "effects": [
+        {
+          "file": "effects/workshop/3168465326/color_grading__extension/effect.json",
+          "id": 128,
+          "name": "",
+          "passes": [
+            {
+              "constantshadervalues": {
+                "1opacity": 1,
+                "1redBalance": 0,
+                "2greenBalance": 0,
+                "3blueBalance": 0.1,
+                "3corrected": 2.1500001,
+                "4channels": "1 1 1"
+              },
+              "id": 270
+            }
+          ],
+          "visible": true
+        },
+        {
+          "file": "effects/filmgrain/effect.json",
+          "id": 1679,
+          "name": "",
+          "passes": [
+            {
+              "constantshadervalues": {
+                "exponent": 5,
+                "scale": 20,
+                "strength": 0.51999998
+              },
+              "id": 1680
+            }
+          ],
+          "visible": true
+        },
+        {
+          "file": "effects/workshop/2822917890/bloom/effect.json",
+          "id": 1714,
+          "name": "",
+          "passes": [
+            {
+              "constantshadervalues": {
+                "gamma": 3.05,
+                "opacity": 0.70999998,
+                "radius": 7.9400001,
+                "strength": 1.1,
+                "threshold": 0
+              },
+              "id": 1715
+            },
+            {
+              "constantshadervalues": {
+                "opacity": 0.70999998,
+                "radius": 7.9400001,
+                "strength": 1.1
+              },
+              "id": 1716
+            },
+            {
+              "combos": {
+                "VERTICAL": 1
+              },
+              "constantshadervalues": {
+                "opacity": 0.70999998,
+                "radius": 7.9400001,
+                "strength": 1.1
+              },
+              "id": 1717
+            },
+            {
+              "id": 1718
+            },
+            {
+              "constantshadervalues": {
+                "opacity": 0.70999998,
+                "radius": 7.9400001,
+                "strength": 1.1
+              },
+              "id": 1719
+            },
+            {
+              "combos": {
+                "VERTICAL": 1
+              },
+              "constantshadervalues": {
+                "opacity": 0.70999998,
+                "radius": 7.9400001,
+                "strength": 1.1
+              },
+              "id": 1720
+            },
+            {
+              "id": 1721
+            },
+            {
+              "constantshadervalues": {
+                "opacity": 0.70999998,
+                "radius": 7.9400001,
+                "strength": 1.1
+              },
+              "id": 1722
+            },
+            {
+              "combos": {
+                "VERTICAL": 1
+              },
+              "constantshadervalues": {
+                "opacity": 0.70999998,
+                "radius": 7.9400001,
+                "strength": 1.1
+              },
+              "id": 1723
+            },
+            {
+              "id": 1724
+            },
+            {
+              "constantshadervalues": {
+                "opacity": 0.70999998,
+                "radius": 7.9400001,
+                "strength": 1.1
+              },
+              "id": 1725
+            },
+            {
+              "combos": {
+                "VERTICAL": 1
+              },
+              "constantshadervalues": {
+                "opacity": 0.70999998,
+                "radius": 7.9400001,
+                "strength": 1.1
+              },
+              "id": 1726
+            },
+            {
+              "id": 1727
+            },
+            {
+              "id": 1728
+            },
+            {
+              "id": 1729
+            },
+            {
+              "constantshadervalues": {
+                "Tint": "0.10980392156862745 0.12156862745098039 0.22745098039215686",
+                "opacity": 0.70999998
+              },
+              "id": 1730
+            }
+          ],
+          "visible": true
+        },
+        {
+          "file": "effects/localcontrast/effect.json",
+          "id": 2411,
+          "name": "",
+          "passes": [
+            {
+              "id": 2412
+            },
+            {
+              "constantshadervalues": {
+                "scale": "0.14 0.14"
+              },
+              "id": 2413
+            },
+            {
+              "combos": {
+                "VERTICAL": 1
+              },
+              "constantshadervalues": {
+                "scale": "0.14 0.14"
+              },
+              "id": 2414
+            },
+            {
+              "constantshadervalues": {
+                "strength": 0.31
+              },
+              "id": 2415
+            }
+          ],
+          "visible": true
+        },
+        {
+          "file": "effects/workshop/2798319181/bokeh_blur/effect.json",
+          "id": 2655,
+          "name": "",
+          "passes": [
+            {
+              "id": 2656
+            },
+            {
+              "id": 2657
+            },
+            {
+              "combos": {
+                "PRECISE": 1
+              },
+              "constantshadervalues": {
+                "Aperture": 1
+              },
+              "id": 2658
+            },
+            {
+              "combos": {
+                "PRECISE": 1,
+                "VERTICAL": 1
+              },
+              "constantshadervalues": {
+                "Aperture": 1,
+                "Opacity": {
+                  "animation": {
+                    "c0": [
+                      {
+                        "back": {
+                          "enabled": true,
+                          "magic": true,
+                          "x": -1,
+                          "y": 0
+                        },
+                        "frame": 0,
+                        "front": {
+                          "enabled": true,
+                          "magic": true,
+                          "x": 0.50833333,
+                          "y": 0
+                        },
+                        "lockangle": true,
+                        "locklength": true,
+                        "value": 1
+                      },
+                      {
+                        "back": {
+                          "enabled": true,
+                          "magic": true,
+                          "x": -0.50833333,
+                          "y": 0
+                        },
+                        "frame": 60,
+                        "front": {
+                          "enabled": true,
+                          "magic": true,
+                          "x": 1,
+                          "y": 0
+                        },
+                        "lockangle": true,
+                        "locklength": true,
+                        "value": 0
+                      }
+                    ],
+                    "options": {
+                      "fps": 15,
+                      "length": 60,
+                      "mode": "single",
+                      "wraploop": null
+                    }
+                  },
+                  "value": 0.13
+                }
+              },
+              "id": 2659
+            },
+            {
+              "constantshadervalues": {
+                "Aperture": 1,
+                "Gamma": 1,
+                "Highlights": 1
+              },
+              "id": 2660
+            },
+            {
+              "constantshadervalues": {
+                "Aperture": 1
+              },
+              "id": 2661
+            },
+            {
+              "combos": {
+                "VERTICAL": 1
+              },
+              "constantshadervalues": {
+                "Aperture": 1,
+                "Opacity": {
+                  "animation": {
+                    "c0": [
+                      {
+                        "back": {
+                          "enabled": true,
+                          "magic": true,
+                          "x": -1,
+                          "y": 0
+                        },
+                        "frame": 0,
+                        "front": {
+                          "enabled": true,
+                          "magic": true,
+                          "x": 0.50833333,
+                          "y": 0
+                        },
+                        "lockangle": true,
+                        "locklength": true,
+                        "value": 1
+                      },
+                      {
+                        "back": {
+                          "enabled": true,
+                          "magic": true,
+                          "x": -0.50833333,
+                          "y": 0
+                        },
+                        "frame": 60,
+                        "front": {
+                          "enabled": true,
+                          "magic": true,
+                          "x": 1,
+                          "y": 0
+                        },
+                        "lockangle": true,
+                        "locklength": true,
+                        "value": 0
+                      }
+                    ],
+                    "options": {
+                      "fps": 15,
+                      "length": 60,
+                      "mode": "single",
+                      "wraploop": null
+                    }
+                  },
+                  "value": 0.13
+                }
+              },
+              "id": 2662
+            }
+          ],
+          "visible": {
+            "user": "_1",
+            "value": true
+          }
+        }
+      ],
+      "id": 125,
+      "image": "models/util/fullscreenlayer.json",
+      "name": "滤镜！",
+      "parallaxDepth": "0.00000 0.00000"
+    },
+    {
+      "id": 2491,
+      "name": "框框",
+      "origin": "629.95117 667.57532 0.00000"
+    },
+    {
+      "angles": "0.00000 -0.00000 0.00000",
+      "castshadow": false,
+      "color": "0.00000 0.00000 0.00000",
+      "id": 2492,
+      "image": "models/util/solidlayer.json",
+      "name": "纯色",
+      "origin": "327.21277 541.06116 0.00000",
+      "parent": 2491,
+      "scale": "7.85222 1.00000 1.00000",
+      "size": "256.00000 256.00000"
+    },
+    {
+      "angles": "0.00000 -0.00000 0.00000",
+      "castshadow": false,
+      "color": "0.00000 0.00000 0.00000",
+      "id": 2497,
+      "image": "models/util/solidlayer.json",
+      "name": "纯色",
+      "origin": "319.07208 -796.28162 0.00000",
+      "parent": 2491,
+      "scale": "7.93049 1.00000 1.00000",
+      "size": "256.00000 256.00000"
+    },
+    {
+      "angles": "0.00000 -0.00000 0.00000",
+      "id": 2558,
+      "name": "",
+      "origin": "960.00000 540.00000 0.00000"
+    },
+    {
+      "angles": "0.00000 -0.00000 0.00000",
+      "id": 2554,
+      "maxtime": 5,
+      "mintime": 1,
+      "muteineditor": true,
+      "name": "rain.mp3",
+      "origin": "-960.00000 -540.00000 0.00000",
+      "parent": 2558,
+      "playbackmode": "loop",
+      "sound": [
+        "sounds/rain.mp3"
+      ],
+      "startsilent": false,
+      "volume": {
+        "user": "newproperty28",
+        "value": 0.69999999
+      }
+    },
+    {
+      "angles": "0.00000 -0.00000 0.00000",
+      "id": 2557,
+      "maxtime": 5,
+      "mintime": 1,
+      "muteineditor": true,
+      "name": "Comfort - ward wills  Aso.mp3",
+      "origin": "-960.00000 -540.00000 0.00000",
+      "parent": 2558,
+      "playbackmode": "loop",
+      "sound": [
+        "sounds/Comfort - ward wills  Aso.mp3"
+      ],
+      "startsilent": false,
+      "volume": {
+        "user": "newproperty29",
+        "value": 0.80000001
+      }
+    }
+  ],
+  "version": 5
+}

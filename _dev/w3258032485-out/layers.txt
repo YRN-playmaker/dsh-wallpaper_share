@@ -1,0 +1,45 @@
+objects=1 general={"ambientcolor":"0.30000 0.30000 0.30000","bloom":false,"bloomhdrfeather":0.1,"bloomhdriterations":8,"bloomhdrscatter":1.619,"bloomhdrstrength":2,"bloomhdrthreshold":1,"bloomstrength":2,"bloomthreshold":0.64999998,"bloomtint":"1.00000 1.00000 1.00000","camerafade":true,"cameraparallax":false,"camera
+
+#0 id=16 "258横屏-1_upscayl_2x_realesrgan-x4plus_upscayl_3x_realesrgan-x4plus" image="models/258横屏-1_upscayl_2x_realesrgan-x4plus_upscayl_3x_realesrgan-x4plus.json" size="3840.00000 2160.00000" alpha=- parent=- visible=true
+    effects: |effects/shake/effect.json, |effects/shake/effect.json, |effects/shake/effect.json, |effects/shake/effect.json, |effects/shake/effect.json, |effects/shake/effect.json, |effects/shake/effect.json, |effects/shake/effect.json
+      file=effects/shake/effect.json visible=true
+      combos={}
+      csv={"bounds":"0 1","friction":"1 1","speed":1,"strength":0.1}
+      textures=[null,"masks/shake_mask_2cb641c2"]
+      file=effects/shake/effect.json visible=true
+      combos={}
+      csv={"bounds":"0 1","friction":"1 1","speed":1.35,"strength":0.066}
+      textures=[null,"masks/shake_mask_c12891e8"]
+      file=effects/shake/effect.json visible=true
+      combos={}
+      csv={"bounds":"0 1","friction":"1 1","speed":1,"strength":0.1}
+      textures=[null,"masks/shake_mask_5eac9746"]
+      file=effects/shake/effect.json visible=true
+      combos={}
+      csv={"bounds":"0 1","friction":"1 1","speed":1.5599999,"strength":0.1}
+      textures=[null,"masks/shake_mask_500578a2"]
+      file=effects/shake/effect.json visible=true
+      combos={}
+      csv={"bounds":"0 1","friction":"1 1","speed":1,"strength":0.1}
+      textures=[null,"masks/shake_mask_2146df8a"]
+      file=effects/shake/effect.json visible=true
+      combos={}
+      csv={"bounds":"0 1","friction":"1 1","speed":1,"strength":0.1}
+      textures=[null,"masks/shake_mask_03299939"]
+      file=effects/shake/effect.json visible=true
+      combos={}
+      csv={"bounds":"0 1","friction":"1 1","speed":1,"strength":0.1}
+      textures=[null,"masks/shake_mask_1e10c78b"]
+      file=effects/shake/effect.json visible=true
+      combos={}
+      csv={"bounds":"0 1","friction":"1 1","speed":1,"strength":0.1}
+      textures=[null,"masks/shake_mask_2b9a7c9a"]
+
+=== 效果文件引用计数 ===
+  8  effects/shake/effect.json
+
+=== pkg 内 effects/ shaders/ models/ ===
+      3071  shaders/effects/shake.frag
+       127  models/258横屏-1_upscayl_2x_realesrgan-x4plus_upscayl_3x_realesrgan-x4plus.json
+      3268  shaders/effects/shake.vert
+       418  effects/shake/effect.json

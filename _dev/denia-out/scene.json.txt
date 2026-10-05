@@ -1,0 +1,1646 @@
+"camera" : 
+	{
+		"center" : "254.24792 41.02934 -1.00000",
+		"eye" : "254.24792 41.02934 0.00000",
+		"up" : "0.00000 1.00000 0.00000"
+	},
+	"general" : 
+	{
+		"ambientcolor" : "0.30000 0.30000 0.30000",
+		"bloom" : false,
+		"bloomhdrfeather" : 0.1,
+		"bloomhdriterations" : 8,
+		"bloomhdrscatter" : 1.619,
+		"bloomhdrstrength" : 2.0,
+		"bloomhdrthreshold" : 1.0,
+		"bloomstrength" : 2.0,
+		"bloomthreshold" : 0.64999998,
+		"bloomtint" : "1.00000 1.00000 1.00000",
+		"camerafade" : true,
+		"cameraparallax" : true,
+		"cameraparallaxamount" : 0.0099999998,
+		"cameraparallaxdelay" : 0.1,
+		"cameraparallaxmouseinfluence" : 0.75,
+		"camerapreview" : true,
+		"camerashake" : false,
+		"camerashakeamplitude" : 0.5,
+		"camerashakeroughness" : 1.0,
+		"camerashakespeed" : 3.0,
+		"clearcolor" : "0.70000 0.70000 0.70000",
+		"clearenabled" : true,
+		"farz" : 10000.0,
+		"fov" : 50.0,
+		"gravitydirection" : "0.00000 -1.00000 0.00000",
+		"gravitystrength" : 1.0,
+		"hdr" : false,
+		"nearz" : 0.0099999998,
+		"orthogonalprojection" : 
+		{
+			"height" : 2160,
+			"width" : 3840
+		},
+		"perspectiveoverridefov" : 90.0,
+		"skylightcolor" : "0.30000 0.30000 0.30000",
+		"winddirection" : "0.70700 0.70700 0.00000",
+		"windenabled" : false,
+		"windstrength" : 1.0,
+		"zoom" : 1.0
+	},
+	"objects" : 
+	[
+		{
+			"disablepropagation" : false,
+			"id" : 17,
+			"image" : "models/背景.json",
+			"locktransforms" : true,
+			"name" : "背景",
+			"origin" : "1920.00000 1080.00000 0.00000",
+			"parallaxDepth" : "0.00000 0.00000",
+			"size" : "3840.00000 2160.00000",
+			"visible" : 
+			{
+				"script" : "'use strict';\n\nconst BGM = {\n\t'vocal':'Dasvidaniya',\n\t'instrumental':'Dasvidaniya (Instrumental)'\n}\n\n/**\n * @param {Object} changedUserProperties - only includes user properties that were recently changed!\n */\nexport function applyUserProperties(changedUserProperties) {\n\tif('bgm' in changedUserProperties){\n\t\tconst version = engine.userProperties.bgmbgmoptions;\n\t\tconst music = thisScene.getLayer(BGM[version]);\n\t\tif (changedUserProperties.bgm){\n\t\t\tmusic.play();\n\t\t}\n\t\telse{\n\t\t\tmusic.stop();\n\t\t}\n\t}\n\tif('bgmbgmoptions' in changedUserProperties){\n\t\tconst bgm = engine.userProperties.bgm;\n\t\tif(bgm){\n\t\t\tObject.keys(BGM).forEach(version => {\n\t\t\t\tconst music = thisScene.getLayer(BGM[version]);\n\t\t\t\tif (changedUserProperties.bgmbgmoptions === version){\n\t\t\t\t\tmusic.play()\n\t\t\t\t}\n\t\t\t\telse{\n\t\t\t\t\tmusic.stop();\n\t\t\t\t}\n\t\t\t})\n\t\t}\n\t}\n}",
+				"value" : true
+			}
+		},
+		{
+			"disablepropagation" : false,
+			"id" : 477,
+			"instanceoverride" : 
+			{
+				"colorn" : "0.23922 0.89020 0.89412",
+				"count" : 0.60000002,
+				"id" : 483,
+				"rate" : 
+				{
+					"script" : "'use strict';\n// Please note: Do not remove this line or asset references may break.\nexport let __workshopId = '2419741250';\n\n/**\n * Configure these to control smoothing and the frequency.\n */\nlet frequencyResolution = 16; // Must be 16, 32 or 64 per channel.\nlet sourceFrequency = 0; // Must be smaller than frequencyResolution. Lower values for bass, higher for treble.\nlet smoothingRate = 16;\nlet minimumValue = 0.1;\nlet maximumValue = 1.0;\n\n/**\n * This creates a permanent link to the audio response data.\n */\nlet audioBuffer = engine.registerAudioBuffers(frequencyResolution);\nvar smoothValue = 0;\nvar initialValue;\nconst valueDelta = maximumValue - minimumValue;\n\n/**\n */\nexport function update() {\n\tlet audioDelta = audioBuffer.average[sourceFrequency] - smoothValue;\n\t\n\tsmoothValue += audioDelta * engine.frametime * smoothingRate;\n\tsmoothValue = Math.min(1.0, smoothValue);\n\n\treturn initialValue * (smoothValue * valueDelta + minimumValue);\n}\n\n/**\n */\nexport function init(value) {\n\tinitialValue = value;\n}\n\n\n",
+					"value" : 0.34999999
+				},
+				"size" : 0.69999999
+			},
+			"locktransforms" : true,
+			"name" : "Ember",
+			"origin" : "1510.93616 713.80389 0.00000",
+			"parallaxDepth" : "0.00000 0.00000",
+			"particle" : "particles/workshop/2419741250/presets/ember.json",
+			"scale" : "3.00000 3.00000 3.00000",
+			"solid" : true,
+			"visible" : 
+			{
+				"user" : "ember",
+				"value" : true
+			}
+		},
+		{
+			"angles" : "0.00000 -0.00000 0.00000",
+			"disablepropagation" : false,
+			"id" : 472,
+			"instanceoverride" : 
+			{
+				"colorn" : "1.00000 0.24706 0.78824",
+				"count" : 0.60000002,
+				"id" : 482,
+				"rate" : 
+				{
+					"script" : "'use strict';\n// Please note: Do not remove this line or asset references may break.\nexport let __workshopId = '2419741250';\n\n/**\n * Configure these to control smoothing and the frequency.\n */\nlet frequencyResolution = 16; // Must be 16, 32 or 64 per channel.\nlet sourceFrequency = 0; // Must be smaller than frequencyResolution. Lower values for bass, higher for treble.\nlet smoothingRate = 16;\nlet minimumValue = 0.1;\nlet maximumValue = 1.0;\n\n/**\n * This creates a permanent link to the audio response data.\n */\nlet audioBuffer = engine.registerAudioBuffers(frequencyResolution);\nvar smoothValue = 0;\nvar initialValue;\nconst valueDelta = maximumValue - minimumValue;\n\n/**\n */\nexport function update() {\n\tlet audioDelta = audioBuffer.average[sourceFrequency] - smoothValue;\n\t\n\tsmoothValue += audioDelta * engine.frametime * smoothingRate;\n\tsmoothValue = Math.min(1.0, smoothValue);\n\n\treturn initialValue * (smoothValue * valueDelta + minimumValue);\n}\n\n/**\n */\nexport function init(value) {\n\tinitialValue = value;\n}\n\n\n",
+					"value" : 0.34999999
+				},
+				"size" : 0.69999999
+			},
+			"name" : "Ember",
+			"origin" : "135.94473 -16.12911 0.00000",
+			"parallaxDepth" : "0.00000 0.00000",
+			"parent" : 477,
+			"particle" : "particles/workshop/2419741250/presets/ember.json",
+			"solid" : true
+		},
+		{
+			"angles" : "-0.00000 -0.00000 -0.06207",
+			"config" : 
+			{
+				"passthrough" : true
+			},
+			"disablepropagation" : false,
+			"effects" : 
+			[
+				{
+					"file" : "effects/workshop/2779107487/workshop/2084198056/Simple_Audio_Bars/effect.json",
+					"id" : 566,
+					"name" : "",
+					"passes" : 
+					[
+						{
+							"combos" : 
+							{
+								"ANTIALIAS" : 1,
+								"BLENDMODE" : 31,
+								"TRANSPARENCY" : 4
+							},
+							"constantshadervalues" : 
+							{
+								"Anti-alias blurring" : "0.02 0.02",
+								"Bar Color" : "1 1 1",
+								"Bar Count" : 57.55,
+								"Bar Spacing" : 0.23,
+								"Lower/Upper Bar Bounds" : "0 0.1",
+								"ui_editor_properties_opacity" : 0.9
+							},
+							"id" : 0
+						}
+					],
+					"visible" : true
+				}
+			],
+			"id" : 564,
+			"image" : "models/util/composelayer.json",
+			"locktransforms" : true,
+			"name" : "Green",
+			"origin" : "3484.47778 929.70300 0.00000",
+			"parallaxDepth" : "0.00000 0.00000",
+			"scale" : "0.40085 0.72040 0.62471",
+			"size" : "1920.00000 1080.00000",
+			"visible" : 
+			{
+				"user" : "audioresponse",
+				"value" : true
+			}
+		},
+		{
+			"angles" : "0.00000 -0.00000 0.00000",
+			"color" : "0.98039 0.54118 0.60392",
+			"disablepropagation" : false,
+			"effects" : 
+			[
+				{
+					"file" : "effects/workshop/3732231168/blurprecise/effect.json",
+					"id" : 1230,
+					"name" : "",
+					"passes" : 
+					[
+						{
+							"combos" : 
+							{
+								"KERNEL" : 2
+							},
+							"constantshadervalues" : 
+							{
+								"scale" : "1.28 1.28"
+							},
+							"id" : 1231
+						},
+						{
+							"combos" : 
+							{
+								"ENABLEMASK" : 1,
+								"KERNEL" : 2,
+								"VERTICAL" : 1
+							},
+							"constantshadervalues" : 
+							{
+								"scale" : "1.28 1.28"
+							},
+							"id" : 1232
+						}
+					],
+					"visible" : true
+				}
+			],
+			"font" : "systemfont_comicsans",
+			"horizontalalign" : "left",
+			"id" : 1229,
+			"limitrows" : false,
+			"limituseellipsis" : false,
+			"limitwidth" : false,
+			"locktransforms" : true,
+			"maxrows" : 1,
+			"maxwidth" : 500.0,
+			"name" : "Clock",
+			"origin" : "3252.56177 175.51334 0.00000",
+			"padding" : "32.00000 32.00000",
+			"parallaxDepth" : "0.00000 0.00000",
+			"pointsize" : 20.0,
+			"scale" : "0.57000 0.57000 0.57000",
+			"size" : "527.00000 180.00000",
+			"spacing" : "0.00000 0.00000",
+			"text" : 
+			{
+				"script" : "'use strict';\n// Please note: Do not remove this line or asset references may break.\nexport let __workshopId = '3732231168';\n// Please note: Do not remove this line or asset references may break.\n// Please note: Do not remove this line or asset references may break.\n// Please note: Do not remove this line or asset references may break.\n// Please note: Do not remove this line or asset references may break.\n\nexport var scriptProperties = createScriptProperties()\n\t// Whether you want a 24h or 12h style format\n\t.addCheckbox({\n\t\tname: 'use24hFormat',\n\t\tlabel: 'ui_editor_properties_use_24h_format',\n\t\tvalue: true\n\t})\n\t// Whether you want to see the seconds or not\n\t.addCheckbox({\n\t\tname: 'showSeconds',\n\t\tlabel: 'ui_editor_properties_show_seconds',\n\t\tvalue: false\n\t})\n\t.addCheckbox({\n\t\tname:'displayDate',\n\t\tlabel:'Display Date',\n\t\tvalue: false\n\t})\n\t// This will be used to separate each element\n\t.addText({\n\t\tname: 'delimiter',\n\t\tlabel: 'ui_editor_properties_delimiter',\n\t\tvalue: ':'\n\t})\n\t.finish();\n\n/**\n * @param {String} value (for property 'text')\n */\nexport function update(value) {\n\tlet time = new Date();\n\tvar hours = time.getHours();\n\tvar timePeriod = \"AM\";\n\n\tif (!scriptProperties.use24hFormat) {\n\t\t\n\t\tif(hours >= 12) {\n\t\t\ttimePeriod = \"PM\";\n\t\t}\n\t\telse {\n\t\t\ttimePeriod = \"AM\";\n\t\t}\n\t\thours %= 12;\n\t\tif (hours == 0) {\n\t\t\thours = 12;\n\t\t}\n\t}\n\n\thours = (\"00\" + hours).slice(-2);\n\tlet minutes = (\"00\" + time.getMinutes()).slice(-2);\n\n\tif (scriptProperties.showSeconds) {\n\t\tlet seconds = (\"00\" + time.getSeconds()).slice(-2);\n\n\t\tif(!scriptProperties.use24hFormat){\n\t\t\tvalue = hours + scriptProperties.delimiter  + minutes + scriptProperties.delimiter + seconds + \" \" + timePeriod;\n\t\t}\n\t\telse {\n\t\t\tvalue = hours + scriptProperties.delimiter  + minutes + scriptProperties.delimiter + seconds\n\t\t}\n\t}\n\telse {\n\t\t\n\t\tif(!scriptProperties.use24hFormat){\n\t\t\tvalue = hours + scriptProperties.delimiter  + minutes + \" \" + timePeriod;\n\t\t}\n\t\telse {\n\t\t\tvalue = hours + scriptProperties.delimiter  + minutes\n\t\t}\n\t}\n\t\n\tlet today = \"\\n\"\n\ttoday += ('00' + (time.getMonth() + 1)).slice(-2) + '/' + ('00' + time.getDate()).slice(-2) + '/' + ('0000' + time.getFullYear()).slice(-4)\n\n\tif(scriptProperties.displayDate) {\n\t\tvalue += today\n\t}\n\telse {\n\t\treturn value;\n\t}\n\treturn value;\n}\n",
+				"scriptproperties" : 
+				{
+					"delimiter" : ":",
+					"displayDate" : false,
+					"showSeconds" : true,
+					"use24hFormat" : true
+				},
+				"value" : "12:34:56 am"
+			},
+			"verticalalign" : "center",
+			"visible" : 
+			{
+				"user" : "timedisplay",
+				"value" : true
+			}
+		},
+		{
+			"angles" : "0.00000 -0.00000 0.00000",
+			"brightness" : 1.98,
+			"color" : "0.98039 0.54118 0.60392",
+			"disablepropagation" : false,
+			"effects" : 
+			[
+				{
+					"file" : "effects/workshop/3732231168/blurprecise/effect.json",
+					"id" : 1224,
+					"name" : "",
+					"passes" : 
+					[
+						{
+							"combos" : 
+							{
+								"KERNEL" : 2
+							},
+							"constantshadervalues" : 
+							{
+								"scale" : "1.33 1.33"
+							},
+							"id" : 1225
+						},
+						{
+							"combos" : 
+							{
+								"ENABLEMASK" : 1,
+								"KERNEL" : 2,
+								"VERTICAL" : 1
+							},
+							"constantshadervalues" : 
+							{
+								"scale" : "1.33 1.33"
+							},
+							"id" : 1226
+						}
+					],
+					"visible" : true
+				}
+			],
+			"font" : "systemfont_comicsans",
+			"horizontalalign" : "left",
+			"id" : 1221,
+			"limitrows" : false,
+			"limituseellipsis" : false,
+			"limitwidth" : false,
+			"maxrows" : 1,
+			"maxwidth" : 500.0,
+			"name" : "Date",
+			"origin" : "4.41162 -84.07536 0.00000",
+			"padding" : "32.00000 32.00000",
+			"parallaxDepth" : "0.00000 0.00000",
+			"parent" : 1229,
+			"pointsize" : 20.0,
+			"scale" : "0.55000 0.55000 0.55000",
+			"size" : "311.00000 180.00000",
+			"spacing" : "0.00000 0.00000",
+			"text" : 
+			{
+				"script" : "'use strict';\n// Please note: Do not remove this line or asset references may break.\nexport let __workshopId = '3732231168';\n// Please note: Do not remove this line or asset references may break.\n// Please note: Do not remove this line or asset references may break.\n// Please note: Do not remove this line or asset references may break.\n// Please note: Do not remove this line or asset references may break.\n// Please note: Do not remove this line or asset references may break.\n// Please note: Do not remove this line or asset references may break.\n// Please note: Do not remove this line or asset references may break.\n// Please note: Do not remove this line or asset references may break.\n\n\nexport var scriptProperties = createScriptProperties()\n\t.addCombo({\n\t\tname: 'monthFormat',\n\t\tlabel: 'Month Format',\n\t\toptions: [{\n\t\t\tlabel: 'Numeric',\n\t\t\tvalue: '1'\n\t\t}, {\n\t\t\tlabel: 'Abbreviated',\n\t\t\tvalue: '2'\n\t\t},{\n\t\t\tlabel: 'Full',\n\t\t\tvalue: '3'\n\t\t}]\n\t})\n\t.addCombo({\n\t\tname: 'dayFormat',\n\t\tlabel: 'Day Format',\n\t\toptions: [{\n\t\t\tlabel: 'Abbreviated',\n\t\t\tvalue: '1'\n\t\t}, {\n\t\t\tlabel: 'Full',\n\t\t\tvalue: '2'\n\t\t}]\n\t})\n\t.addCheckbox({\n\t\tname: 'showDay',\n\t\tlabel: 'Show Day',\n\t\tvalue: false\n\t})\n   .addCheckbox({\n\t\tname: 'alignVertical',\n\t\tlabel: 'Align Day Vertically',\n\t\tvalue: false\n\t})\n  .addCheckbox({\n\t\tname: 'useDelimiter',\n\t\tlabel: 'Use Delimiter',\n\t\tvalue: false\n\t})\n\t.addText({\n\t\tname: 'addDelimiter',\n\t\tlabel: 'Delimiter',\n\t\tvalue: '/'\n\t})\n\t.finish();\n\n\nlet months;\nlet day;\nvar delimiterValue;\nvar newLine;\n/**\n * @param {String} value (for property 'text')\n */\nexport function update(value){\n  if (scriptProperties.useDelimiter == true){\n  delimiterValue = scriptProperties.addDelimiter\n}\n  if (scriptProperties.useDelimiter == false){\n   delimiterValue = [\n  ' '\n]\n}\nif (scriptProperties.alignVertical == true){\n   newLine = [\n  '\\n'\n]\n}\nif (scriptProperties.alignVertical == false){\n   newLine = [\n  ''\n]\n}\n  if (scriptProperties.monthFormat == 1){\n  months = [\n  '1',\n  '2',\n  '3',\n  '4',\n  '5',\n  '6',\n  '7',\n  '8',\n  '9',\n  '10',\n  '11',\n  '12'\n]\n}\n if (scriptProperties.monthFormat == 2){\n months = [\n  ' JANUARY ',\n  ' FEBRUARY ',\n  ' MARCH ',\n  ' APRIL ',\n  ' MAY ',\n  ' JUNE ',\n  ' JULY ',\n  ' AUGUST ',\n  ' SEPTEMBER ',\n  ' OCTOBER ',\n  ' NOVEMBER ',\n  ' DECEMBER '\n]\n}\nif (scriptProperties.monthFormat == 3){\n months = [\n  'January',\n  'February',\n  'March',\n  'April',\n  'May',\n  'June',\n  'July',\n  'August',\n  'September',\n  'October',\n  'November',\n  'December'\n]\n}\nif (scriptProperties.dayFormat == 1){\n  day = [\n  'Sun',\n  'Mon',\n  'Tue',\n  'Wed',\n  'Thu',\n  'Fri',\n  '\\nSat'\n]\n}\nif (scriptProperties.dayFormat == 2){\n day = [\n  'Sunday',\n  'Monday',\n  'Tuesday',\n  'Wednesday',\n  'Thursday',\n  'Friday',\n  '\\nSaturday'\n]\n}\n\tlet date = new Date();{\n    if (scriptProperties.showDay == true ){\n    return day[date.getDay()] + newLine + ' ' + date.getDate() + delimiterValue + months[date.getMonth()] + delimiterValue + date.getFullYear();\n    }\n    if (scriptProperties.showDay == false ){\n\treturn   date.getDate() + delimiterValue + months[date.getMonth()] + delimiterValue + date.getFullYear();\n}\n}\n}\n",
+				"scriptproperties" : 
+				{
+					"addDelimiter" : "",
+					"alignVertical" : false,
+					"dayFormat" : "1",
+					"monthFormat" : "3",
+					"showDay" : false,
+					"useDelimiter" : false
+				},
+				"value" : "<Date>"
+			},
+			"verticalalign" : "center"
+		},
+		{
+			"angles" : "0.00000 -0.00000 0.00000",
+			"brightness" : 1.4,
+			"color" : "0.98039 0.54118 0.60392",
+			"disablepropagation" : false,
+			"effects" : 
+			[
+				{
+					"file" : "effects/workshop/3732231168/blurprecise/effect.json",
+					"id" : 1215,
+					"name" : "",
+					"passes" : 
+					[
+						{
+							"combos" : 
+							{
+								"KERNEL" : 2
+							},
+							"constantshadervalues" : 
+							{
+								"scale" : "0.43 0.43"
+							},
+							"id" : 1216
+						},
+						{
+							"combos" : 
+							{
+								"ENABLEMASK" : 1,
+								"KERNEL" : 2,
+								"VERTICAL" : 1
+							},
+							"constantshadervalues" : 
+							{
+								"scale" : "0.43 0.43"
+							},
+							"id" : 1217
+						}
+					],
+					"visible" : true
+				}
+			],
+			"font" : "fonts/workshop/3732231168/Not the far east.otf",
+			"horizontalalign" : "right",
+			"id" : 1214,
+			"limitrows" : false,
+			"limituseellipsis" : false,
+			"limitwidth" : false,
+			"maxrows" : 1,
+			"maxwidth" : 500.0,
+			"name" : "DAY DATE TIME",
+			"origin" : "-64.92969 -22.00171 0.00000",
+			"padding" : "32.00000 32.00000",
+			"parallaxDepth" : "0.00000 0.00000",
+			"parent" : 1229,
+			"pointsize" : 20.0,
+			"scale" : "1.66667 1.66667 1.66667",
+			"size" : "302.00000 197.00000",
+			"spacing" : "0.00000 0.00000",
+			"text" : 
+			{
+				"script" : "'use strict';\n// Please note: Do not remove this line or asset references may break.\nexport let __workshopId = '3732231168';\n// Please note: Do not remove this line or asset references may break.\n// Please note: Do not remove this line or asset references may break.\n// Please note: Do not remove this line or asset references may break.\n// Please note: Do not remove this line or asset references may break.\n// Please note: Do not remove this line or asset references may break.\n// Please note: Do not remove this line or asset references may break.\n// Please note: Do not remove this line or asset references may break.\n// Please note: Do not remove this line or asset references may break.\n\n\nexport var scriptProperties = createScriptProperties()\n\t.addCombo({\n\t\tname: 'monthFormat',\n\t\tlabel: 'Month Format',\n\t\toptions: [{\n\t\t\tlabel: 'Numeric',\n\t\t\tvalue: '1'\n\t\t}, {\n\t\t\tlabel: 'Abbreviated',\n\t\t\tvalue: '2'\n\t\t},{\n\t\t\tlabel: 'Full',\n\t\t\tvalue: '3'\n\t\t}]\n\t})\n\t.addCombo({\n\t\tname: 'dayFormat',\n\t\tlabel: 'Day Format',\n\t\toptions: [{\n\t\t\tlabel: 'Abbreviated',\n\t\t\tvalue: '1'\n\t\t}, {\n\t\t\tlabel: 'Full',\n\t\t\tvalue: '2'\n\t\t}]\n\t})\n\t.addCheckbox({\n\t\tname: 'showDay',\n\t\tlabel: 'Show Day',\n\t\tvalue: true\n\t})\n   .addCheckbox({\n\t\tname: 'alignVertical',\n\t\tlabel: 'Align Day Vertically',\n\t\tvalue: false\n\t})\n  .addCheckbox({\n\t\tname: 'useDelimiter',\n\t\tlabel: 'Use Delimiter',\n\t\tvalue: false\n\t})\n\t.addText({\n\t\tname: 'addDelimiter',\n\t\tlabel: 'Delimiter',\n\t\tvalue: '/'\n\t})\n\t.finish();\n\n\nlet months;\nlet day;\nvar delimiterValue;\nvar newLine;\n/**\n * @param {String} value (for property 'text')\n */\nexport function update(value){\n  if (scriptProperties.useDelimiter == true){\n  delimiterValue = scriptProperties.addDelimiter\n}\n  if (scriptProperties.useDelimiter == false){\n   delimiterValue = [\n  ' '\n]\n}\nif (scriptProperties.alignVertical == true){\n   newLine = [\n  '\\n'\n]\n}\nif (scriptProperties.alignVertical == false){\n   newLine = [\n  ''\n]\n}\n  if (scriptProperties.monthFormat == 1){\n  months = [\n  '1',\n  '2',\n  '3',\n  '4',\n  '5',\n  '6',\n  '7',\n  '8',\n  '9',\n  '10',\n  '11',\n  '12'\n]\n}\n if (scriptProperties.monthFormat == 2){\n months = [\n  'JAN',\n  'FEB',\n  'MAR',\n  'APR',\n  'MAY',\n  'JUN',\n  'JUL',\n  'AUG',\n  'SEP',\n  'OCT',\n  'NOV',\n  'DEC'\n]\n}\nif (scriptProperties.monthFormat == 3){\n months = [\n  'January',\n  'February',\n  'March',\n  'April',\n  'May',\n  'June',\n  'July',\n  'August',\n  'September',\n  'October',\n  'November',\n  'December'\n]\n}\nif (scriptProperties.dayFormat == 1){\n  day = [\n  'SUN',\n  'MON',\n  'TUE',\n  'WED',\n  'THU',\n  'FRI',\n  'SAT'\n]\n}\nif (scriptProperties.dayFormat == 2){\n day = [\n  '| S U N D A Y |',\n  '| M O N D A Y |',\n  '| T U E S D A Y |',\n  '| W E D N E S D A Y |',\n  '| T H U R S D A Y |',\n  '| F R I D A Y |',\n  '| S A T U R D A Y |'\n]\n}\n\tlet date = new Date();{\n    if (scriptProperties.showDay == true ){\n    return day[date.getDay()]      }\n    if (scriptProperties.showDay == false ){\n\treturn   date.getDate() + delimiterValue + months[date.getMonth()] + delimiterValue + date.getFullYear();\n}\n}\n}\n",
+				"scriptproperties" : 
+				{
+					"addDelimiter" : "/",
+					"alignVertical" : false,
+					"dayFormat" : "1",
+					"monthFormat" : "1",
+					"showDay" : true,
+					"useDelimiter" : true
+				},
+				"value" : "DAY"
+			},
+			"verticalalign" : "center"
+		},
+		{
+			"angles" : "0.00000 -0.00000 0.00000",
+			"color" : "0.98039 0.54118 0.60392",
+			"disablepropagation" : false,
+			"id" : 526,
+			"image" : "models/util/solidlayer.json",
+			"name" : "Stick V",
+			"origin" : "-28.32715 -48.58948 0.00000",
+			"parallaxDepth" : "0.00000 0.00000",
+			"parent" : 1229,
+			"scale" : "1.37586 0.80096 1.64395",
+			"size" : "5.00000 200.00000"
+		},
+		{
+			"animationlayers" : 
+			[
+				{
+					"additive" : false,
+					"animation" : 152,
+					"blend" : 1.0,
+					"blendin" : false,
+					"blendout" : false,
+					"blendtime" : 0.5,
+					"id" : 157,
+					"name" : "动画 1",
+					"rate" : 1.0,
+					"visible" : true
+				}
+			],
+			"disablepropagation" : false,
+			"id" : 21,
+			"image" : "models/01腿-后.json",
+			"locktransforms" : true,
+			"name" : "01腿-后",
+			"origin" : "899.00000 1138.00000 0.00000",
+			"parallaxDepth" : "0.00000 0.00000",
+			"size" : "884.00000 384.00000"
+		},
+		{
+			"animationlayers" : 
+			[
+				{
+					"additive" : false,
+					"animation" : 579,
+					"blend" : 1.0,
+					"blendin" : false,
+					"blendout" : false,
+					"blendtime" : 0.5,
+					"id" : 583,
+					"name" : "动画 1",
+					"rate" : 1.0,
+					"visible" : true
+				}
+			],
+			"disablepropagation" : false,
+			"id" : 25,
+			"image" : "models/02腿-前.json",
+			"locktransforms" : true,
+			"name" : "02腿-前",
+			"origin" : "1145.00000 1146.00000 0.00000",
+			"parallaxDepth" : "0.00000 0.00000",
+			"size" : "962.00000 970.00000"
+		},
+		{
+			"disablepropagation" : false,
+			"effects" : 
+			[
+				{
+					"file" : "effects/waterwaves/effect.json",
+					"id" : 263,
+					"name" : "裙子",
+					"passes" : 
+					[
+						{
+							"constantshadervalues" : 
+							{
+								"direction" : 1.7453293,
+								"exponent" : 1.0,
+								"scale" : 20,
+								"speed" : 3,
+								"strength" : 0.07
+							},
+							"id" : 264,
+							"textures" : [ null, "masks/waterwaves_mask_ca9415d4" ]
+						}
+					],
+					"visible" : true
+				},
+				{
+					"file" : "effects/waterwaves/effect.json",
+					"id" : 299,
+					"name" : "头发",
+					"passes" : 
+					[
+						{
+							"constantshadervalues" : 
+							{
+								"direction" : 0.0,
+								"exponent" : 1.0,
+								"scale" : 20,
+								"speed" : 2.5,
+								"strength" : 0.06
+							},
+							"id" : 300,
+							"textures" : [ null, "masks/waterwaves_mask_edc185dd" ]
+						}
+					],
+					"visible" : true
+				},
+				{
+					"file" : "effects/foliagesway/effect.json",
+					"id" : 347,
+					"name" : "呼吸",
+					"passes" : 
+					[
+						{
+							"constantshadervalues" : 
+							{
+								"phase" : 0.06,
+								"power" : 1.0,
+								"ratio" : 0.3,
+								"scale" : 0.05,
+								"scrolldirection" : 2.2707407,
+								"speeduv" : 2,
+								"strength" : 0.45
+							},
+							"id" : 348,
+							"textures" : [ null, "masks/foliagesway_mask_387acbeb", null ]
+						}
+					],
+					"visible" : true
+				}
+			],
+			"id" : 28,
+			"image" : "models/03身-改.json",
+			"locktransforms" : true,
+			"name" : "03身-改",
+			"origin" : "1483.50000 764.50000 0.00000",
+			"parallaxDepth" : "0.00000 0.00000",
+			"size" : "2967.00000 1529.00000"
+		},
+		{
+			"animationlayers" : 
+			[
+				{
+					"additive" : false,
+					"animation" : 165,
+					"blend" : 1.0,
+					"blendin" : false,
+					"blendout" : false,
+					"blendtime" : 0.5,
+					"id" : 181,
+					"name" : "动画 1",
+					"rate" : 1.0,
+					"visible" : true
+				}
+			],
+			"disablepropagation" : false,
+			"effects" : 
+			[
+				{
+					"file" : "effects/waterwaves/effect.json",
+					"id" : 495,
+					"name" : "",
+					"passes" : 
+					[
+						{
+							"constantshadervalues" : 
+							{
+								"direction" : -1.7583922,
+								"exponent" : 1.0,
+								"scale" : 20,
+								"speed" : 3,
+								"strength" : 0.07
+							},
+							"id" : 496,
+							"textures" : [ null, "masks/waterwaves_mask_8239a1d5" ]
+						}
+					],
+					"visible" : true
+				}
+			],
+			"id" : 31,
+			"image" : "models/04手-下侧.json",
+			"locktransforms" : true,
+			"name" : "04手-下侧",
+			"origin" : "1961.00000 818.50000 0.00000",
+			"parallaxDepth" : "0.00000 0.00000",
+			"size" : "504.00000 569.00000"
+		},
+		{
+			"animationlayers" : 
+			[
+				{
+					"additive" : false,
+					"animation" : 176,
+					"blend" : 1.0,
+					"blendin" : false,
+					"blendout" : false,
+					"blendtime" : 0.5,
+					"id" : 179,
+					"name" : "动画 1",
+					"rate" : 1.0,
+					"visible" : true
+				}
+			],
+			"disablepropagation" : false,
+			"effects" : 
+			[
+				{
+					"file" : "effects/waterwaves/effect.json",
+					"id" : 543,
+					"name" : "毛绒",
+					"passes" : 
+					[
+						{
+							"constantshadervalues" : 
+							{
+								"direction" : 1.3036248,
+								"exponent" : 1.0,
+								"scale" : 20,
+								"speed" : 2,
+								"strength" : 0.07
+							},
+							"id" : 544,
+							"textures" : [ null, "masks/waterwaves_mask_de429e0f" ]
+						}
+					],
+					"visible" : true
+				},
+				{
+					"file" : "effects/waterwaves/effect.json",
+					"id" : 591,
+					"name" : "袖口",
+					"passes" : 
+					[
+						{
+							"constantshadervalues" : 
+							{
+								"direction" : 2.1090531,
+								"exponent" : 1.0,
+								"scale" : 20,
+								"speed" : 3,
+								"strength" : 0.07
+							},
+							"id" : 592,
+							"textures" : [ null, "masks/waterwaves_mask_a0890c16" ]
+						}
+					],
+					"visible" : true
+				}
+			],
+			"id" : 34,
+			"image" : "models/05手-上侧.json",
+			"locktransforms" : true,
+			"name" : "05手-上侧",
+			"origin" : "2552.00000 1140.00000 0.00000",
+			"parallaxDepth" : "0.00000 0.00000",
+			"size" : "614.00000 466.00000"
+		},
+		{
+			"disablepropagation" : false,
+			"id" : 37,
+			"image" : "models/06眉毛-头发下层.json",
+			"locktransforms" : true,
+			"name" : "06眉毛-头发下层",
+			"origin" : "2769.50000 805.00000 0.00000",
+			"parallaxDepth" : "0.00000 0.00000",
+			"size" : "125.00000 162.00000"
+		},
+		{
+			"disablepropagation" : false,
+			"effects" : 
+			[
+				{
+					"file" : "effects/waterwaves/effect.json",
+					"id" : 217,
+					"name" : "",
+					"passes" : 
+					[
+						{
+							"constantshadervalues" : 
+							{
+								"direction" : -1.5717703,
+								"exponent" : 1.0,
+								"scale" : 10,
+								"speed" : 2,
+								"strength" : 0.2
+							},
+							"id" : 218,
+							"textures" : [ null, "masks/waterwaves_mask_c1966e1e" ]
+						}
+					],
+					"visible" : true
+				}
+			],
+			"id" : 40,
+			"image" : "models/07头发-脸部下层.json",
+			"locktransforms" : true,
+			"name" : "07头发-脸部下层",
+			"origin" : "2546.50000 903.50000 0.00000",
+			"parallaxDepth" : "0.00000 0.00000",
+			"size" : "445.00000 277.00000"
+		},
+		{
+			"disablepropagation" : false,
+			"effects" : 
+			[
+				{
+					"file" : "effects/waterwaves/effect.json",
+					"id" : 105,
+					"name" : "前发",
+					"passes" : 
+					[
+						{
+							"constantshadervalues" : 
+							{
+								"direction" : 0.63469782,
+								"exponent" : 1.0,
+								"scale" : 10,
+								"speed" : 2.5,
+								"strength" : 0.11
+							},
+							"id" : 106,
+							"textures" : [ null, "masks/waterwaves_mask_dbc16048" ]
+						}
+					],
+					"visible" : true
+				},
+				{
+					"file" : "effects/waterwaves/effect.json",
+					"id" : 155,
+					"name" : "发尾",
+					"passes" : 
+					[
+						{
+							"constantshadervalues" : 
+							{
+								"direction" : -2.4896827,
+								"exponent" : 1.0,
+								"scale" : 15,
+								"speed" : 2,
+								"strength" : 0.06
+							},
+							"id" : 156,
+							"textures" : [ null, "masks/waterwaves_mask_76ebcbce" ]
+						}
+					],
+					"visible" : true
+				}
+			],
+			"id" : 43,
+			"image" : "models/08头发-脸部上层.json",
+			"locktransforms" : true,
+			"name" : "08头发-脸部上层",
+			"origin" : "2814.50000 600.50000 0.00000",
+			"parallaxDepth" : "0.00000 0.00000",
+			"size" : "949.00000 787.00000"
+		},
+		{
+			"disablepropagation" : false,
+			"effects" : 
+			[
+				{
+					"file" : "effects/shake/effect.json",
+					"id" : 430,
+					"name" : "眨眼",
+					"passes" : 
+					[
+						{
+							"combos" : 
+							{
+								"DIRECTION" : 1
+							},
+							"constantshadervalues" : 
+							{
+								"bounds" : "0.992 0.998",
+								"friction" : "1 1",
+								"speed" : 1,
+								"strength" : 0.4
+							},
+							"id" : 431,
+							"textures" : [ null, "masks/shake_mask_73999545", null, "masks/shake_mask_5bdd3707" ]
+						}
+					],
+					"visible" : true
+				}
+			],
+			"id" : 46,
+			"image" : "models/09眼睛.json",
+			"locktransforms" : true,
+			"name" : "09眼睛",
+			"origin" : "2706.50000 723.50000 0.00000",
+			"parallaxDepth" : "0.00000 0.00000",
+			"size" : "201.00000 355.00000"
+		},
+		{
+			"disablepropagation" : false,
+			"id" : 49,
+			"image" : "models/091眉毛-头发上层.json",
+			"locktransforms" : true,
+			"name" : "091眉毛-头发上层",
+			"origin" : "2728.50000 657.50000 0.00000",
+			"parallaxDepth" : "0.00000 0.00000",
+			"size" : "143.00000 187.00000"
+		},
+		{
+			"animationlayers" : 
+			[
+				{
+					"additive" : false,
+					"animation" : 187,
+					"blend" : 1.0,
+					"blendin" : false,
+					"blendout" : false,
+					"blendtime" : 0.5,
+					"id" : 190,
+					"name" : "动画 1",
+					"rate" : 1.0,
+					"visible" : true
+				}
+			],
+			"disablepropagation" : false,
+			"effects" : 
+			[
+				{
+					"file" : "effects/foliagesway/effect.json",
+					"id" : 474,
+					"name" : "",
+					"passes" : 
+					[
+						{
+							"constantshadervalues" : 
+							{
+								"phase" : 0.5,
+								"power" : 1.0,
+								"ratio" : 0.3,
+								"scale" : 0.05,
+								"scrolldirection" : 0.0,
+								"speeduv" : 5.0,
+								"strength" : 0.4
+							},
+							"id" : 475
+						}
+					],
+					"visible" : true
+				}
+			],
+			"id" : 52,
+			"image" : "models/101泡泡-左下【下】.json",
+			"locktransforms" : true,
+			"name" : "101泡泡-左下【下】",
+			"origin" : "3610.50000 807.00000 0.00000",
+			"parallaxDepth" : "0.20000 0.20000",
+			"size" : "285.00000 268.00000"
+		},
+		{
+			"animationlayers" : 
+			[
+				{
+					"additive" : false,
+					"animation" : 200,
+					"blend" : 1.0,
+					"blendin" : false,
+					"blendout" : false,
+					"blendtime" : 0.5,
+					"id" : 203,
+					"name" : "动画 1",
+					"rate" : 1.0,
+					"visible" : true
+				}
+			],
+			"disablepropagation" : false,
+			"effects" : 
+			[
+				{
+					"file" : "effects/foliagesway/effect.json",
+					"id" : 479,
+					"name" : "",
+					"passes" : 
+					[
+						{
+							"constantshadervalues" : 
+							{
+								"phase" : 0.5,
+								"power" : 1.0,
+								"ratio" : 0.3,
+								"scale" : 0.05,
+								"scrolldirection" : 0.0,
+								"speeduv" : 5.0,
+								"strength" : 0.4
+							},
+							"id" : 480
+						}
+					],
+					"visible" : true
+				}
+			],
+			"id" : 55,
+			"image" : "models/102泡泡-腿.json",
+			"locktransforms" : true,
+			"name" : "102泡泡-腿",
+			"origin" : "581.00000 574.00000 0.00000",
+			"parallaxDepth" : "0.20000 0.20000",
+			"size" : "1162.00000 1148.00000"
+		},
+		{
+			"animationlayers" : 
+			[
+				{
+					"additive" : false,
+					"animation" : 258,
+					"blend" : 1.0,
+					"blendin" : false,
+					"blendout" : false,
+					"blendtime" : 0.5,
+					"id" : 261,
+					"name" : "动画 1",
+					"rate" : 1.0,
+					"visible" : true
+				}
+			],
+			"disablepropagation" : false,
+			"effects" : 
+			[
+				{
+					"file" : "effects/foliagesway/effect.json",
+					"id" : 485,
+					"name" : "",
+					"passes" : 
+					[
+						{
+							"constantshadervalues" : 
+							{
+								"phase" : 0.5,
+								"power" : 1.0,
+								"ratio" : 0.3,
+								"scale" : 0.05,
+								"scrolldirection" : 0.0,
+								"speeduv" : 5,
+								"strength" : 0.3
+							},
+							"id" : 486
+						}
+					],
+					"visible" : true
+				}
+			],
+			"id" : 58,
+			"image" : "models/103泡泡-手.json",
+			"locktransforms" : true,
+			"name" : "103泡泡-手",
+			"origin" : "2315.50000 1398.50000 0.00000",
+			"parallaxDepth" : "0.20000 0.20000",
+			"size" : "443.00000 435.00000"
+		},
+		{
+			"animationlayers" : 
+			[
+				{
+					"additive" : false,
+					"animation" : 269,
+					"blend" : 1.0,
+					"blendin" : false,
+					"blendout" : false,
+					"blendtime" : 0.5,
+					"id" : 272,
+					"name" : "动画 1",
+					"rate" : 1.0,
+					"visible" : true
+				}
+			],
+			"disablepropagation" : false,
+			"effects" : 
+			[
+				{
+					"file" : "effects/foliagesway/effect.json",
+					"id" : 490,
+					"name" : "",
+					"passes" : 
+					[
+						{
+							"constantshadervalues" : 
+							{
+								"phase" : 0.5,
+								"power" : 1.0,
+								"ratio" : 0.3,
+								"scale" : 0.05,
+								"scrolldirection" : 0.0,
+								"speeduv" : 5.0,
+								"strength" : 0.4
+							},
+							"id" : 491
+						}
+					],
+					"visible" : true
+				}
+			],
+			"id" : 61,
+			"image" : "models/104泡泡-手内部泡.json",
+			"locktransforms" : true,
+			"name" : "104泡泡-手内部泡",
+			"origin" : "2256.00000 1341.00000 0.00000",
+			"parallaxDepth" : "0.20000 0.20000",
+			"size" : "220.00000 218.00000"
+		},
+		{
+			"animationlayers" : 
+			[
+				{
+					"additive" : false,
+					"animation" : 278,
+					"blend" : 1.0,
+					"blendin" : false,
+					"blendout" : false,
+					"blendtime" : 0.5,
+					"id" : 281,
+					"name" : "动画 1",
+					"rate" : 1.0,
+					"visible" : true
+				}
+			],
+			"disablepropagation" : false,
+			"effects" : 
+			[
+				{
+					"file" : "effects/foliagesway/effect.json",
+					"id" : 510,
+					"name" : "",
+					"passes" : 
+					[
+						{
+							"constantshadervalues" : 
+							{
+								"phase" : 0.5,
+								"power" : 1.0,
+								"ratio" : 0.3,
+								"scale" : 0.05,
+								"scrolldirection" : 0.0,
+								"speeduv" : 3,
+								"strength" : 0.4
+							},
+							"id" : 511
+						}
+					],
+					"visible" : true
+				}
+			],
+			"id" : 64,
+			"image" : "models/105泡泡-白纸人【下】.json",
+			"locktransforms" : true,
+			"name" : "105泡泡-白纸人【下】",
+			"origin" : "3260.50000 1126.00000 0.00000",
+			"parallaxDepth" : "0.20000 0.20000",
+			"size" : "513.00000 514.00000"
+		},
+		{
+			"animationlayers" : 
+			[
+				{
+					"additive" : false,
+					"animation" : 309,
+					"blend" : 1.0,
+					"blendin" : false,
+					"blendout" : false,
+					"blendtime" : 0.5,
+					"id" : 312,
+					"name" : "动画 1",
+					"rate" : 1.0,
+					"visible" : true
+				}
+			],
+			"disablepropagation" : false,
+			"effects" : 
+			[
+				{
+					"file" : "effects/foliagesway/effect.json",
+					"id" : 516,
+					"name" : "",
+					"passes" : 
+					[
+						{
+							"constantshadervalues" : 
+							{
+								"phase" : 0.5,
+								"power" : 1.0,
+								"ratio" : 0.3,
+								"scale" : 0.05,
+								"scrolldirection" : 0.0,
+								"speeduv" : 3,
+								"strength" : 0.4
+							},
+							"id" : 517
+						}
+					],
+					"visible" : true
+				}
+			],
+			"id" : 67,
+			"image" : "models/106泡泡-顶部【上】.json",
+			"locktransforms" : true,
+			"name" : "106泡泡-顶部【上】",
+			"origin" : "2840.00000 1735.00000 0.00000",
+			"parallaxDepth" : "0.20000 0.20000",
+			"size" : "886.00000 850.00000"
+		},
+		{
+			"animationlayers" : 
+			[
+				{
+					"additive" : false,
+					"animation" : 351,
+					"blend" : 1.0,
+					"blendin" : false,
+					"blendout" : false,
+					"blendtime" : 0.5,
+					"id" : 354,
+					"name" : "动画 1",
+					"rate" : 1.0,
+					"visible" : true
+				}
+			],
+			"disablepropagation" : false,
+			"id" : 70,
+			"image" : "models/107泡泡-中4.json",
+			"locktransforms" : true,
+			"name" : "107泡泡-中4",
+			"origin" : "2746.00000 1269.50000 0.00000",
+			"parallaxDepth" : "0.20000 0.20000",
+			"size" : "190.00000 185.00000"
+		},
+		{
+			"animationlayers" : 
+			[
+				{
+					"additive" : false,
+					"animation" : 387,
+					"blend" : 1.0,
+					"blendin" : false,
+					"blendout" : false,
+					"blendtime" : 0.5,
+					"id" : 390,
+					"name" : "动画 1",
+					"rate" : 1.0,
+					"visible" : true
+				}
+			],
+			"disablepropagation" : false,
+			"effects" : 
+			[
+				{
+					"file" : "effects/foliagesway/effect.json",
+					"id" : 208,
+					"name" : "",
+					"passes" : 
+					[
+						{
+							"constantshadervalues" : 
+							{
+								"phase" : 0.5,
+								"power" : 1.0,
+								"ratio" : 0.3,
+								"scale" : 0.05,
+								"scrolldirection" : 0.0,
+								"speeduv" : 5.0,
+								"strength" : 0.4
+							},
+							"id" : 209
+						}
+					],
+					"visible" : true
+				}
+			],
+			"id" : 73,
+			"image" : "models/108泡泡-中3.json",
+			"locktransforms" : true,
+			"name" : "108泡泡-中3",
+			"origin" : "1520.00000 1690.50000 0.00000",
+			"parallaxDepth" : "0.20000 0.20000",
+			"size" : "236.00000 235.00000"
+		},
+		{
+			"animationlayers" : 
+			[
+				{
+					"additive" : false,
+					"animation" : 397,
+					"blend" : 1.0,
+					"blendin" : false,
+					"blendout" : false,
+					"blendtime" : 0.5,
+					"id" : 400,
+					"name" : "动画 1",
+					"rate" : 1.0,
+					"visible" : true
+				}
+			],
+			"disablepropagation" : false,
+			"effects" : 
+			[
+				{
+					"file" : "effects/foliagesway/effect.json",
+					"id" : 213,
+					"name" : "",
+					"passes" : 
+					[
+						{
+							"constantshadervalues" : 
+							{
+								"phase" : 0.5,
+								"power" : 1.0,
+								"ratio" : 0.3,
+								"scale" : 0.05,
+								"scrolldirection" : 0.0,
+								"speeduv" : 5.0,
+								"strength" : 0.4
+							},
+							"id" : 214
+						}
+					],
+					"visible" : true
+				}
+			],
+			"id" : 76,
+			"image" : "models/109泡泡-中2.json",
+			"locktransforms" : true,
+			"name" : "109泡泡-中2",
+			"origin" : "1068.00000 1589.50000 0.00000",
+			"parallaxDepth" : "0.20000 0.20000",
+			"size" : "469.00000 473.00000"
+		},
+		{
+			"animationlayers" : 
+			[
+				{
+					"additive" : false,
+					"animation" : 406,
+					"blend" : 1.0,
+					"blendin" : false,
+					"blendout" : false,
+					"blendtime" : 0.5,
+					"id" : 409,
+					"name" : "动画 1",
+					"rate" : 1.0,
+					"visible" : true
+				}
+			],
+			"disablepropagation" : false,
+			"effects" : 
+			[
+				{
+					"file" : "effects/foliagesway/effect.json",
+					"id" : 220,
+					"name" : "",
+					"passes" : 
+					[
+						{
+							"constantshadervalues" : 
+							{
+								"phase" : 0.5,
+								"power" : 1.0,
+								"ratio" : 0.3,
+								"scale" : 0.05,
+								"scrolldirection" : 0.0,
+								"speeduv" : 5.0,
+								"strength" : 0.4
+							},
+							"id" : 221
+						}
+					],
+					"visible" : true
+				}
+			],
+			"id" : 79,
+			"image" : "models/110泡泡-中.json",
+			"locktransforms" : true,
+			"name" : "110泡泡-中",
+			"origin" : "1865.50000 1399.50000 0.00000",
+			"parallaxDepth" : "0.20000 0.20000",
+			"size" : "367.00000 363.00000"
+		},
+		{
+			"animationlayers" : 
+			[
+				{
+					"additive" : false,
+					"animation" : 418,
+					"blend" : 1.0,
+					"blendin" : false,
+					"blendout" : false,
+					"blendtime" : 0.5,
+					"id" : 421,
+					"name" : "动画 1",
+					"rate" : 1.0,
+					"visible" : true
+				}
+			],
+			"disablepropagation" : false,
+			"effects" : 
+			[
+				{
+					"file" : "effects/foliagesway/effect.json",
+					"id" : 225,
+					"name" : "",
+					"passes" : 
+					[
+						{
+							"constantshadervalues" : 
+							{
+								"phase" : 0.5,
+								"power" : 1.0,
+								"ratio" : 0.3,
+								"scale" : 0.05,
+								"scrolldirection" : 0.0,
+								"speeduv" : 5.0,
+								"strength" : 0.4
+							},
+							"id" : 226
+						}
+					],
+					"visible" : true
+				}
+			],
+			"id" : 82,
+			"image" : "models/111泡泡-中上.json",
+			"locktransforms" : true,
+			"name" : "111泡泡-中上",
+			"origin" : "2218.50000 1925.50000 0.00000",
+			"parallaxDepth" : "0.20000 0.20000",
+			"size" : "485.00000 469.00000"
+		},
+		{
+			"animationlayers" : 
+			[
+				{
+					"additive" : false,
+					"animation" : 369,
+					"blend" : 1.0,
+					"blendin" : false,
+					"blendout" : false,
+					"blendtime" : 0.5,
+					"id" : 372,
+					"name" : "动画 1",
+					"rate" : 1.0,
+					"visible" : true
+				}
+			],
+			"disablepropagation" : false,
+			"effects" : 
+			[
+				{
+					"file" : "effects/foliagesway/effect.json",
+					"id" : 230,
+					"name" : "",
+					"passes" : 
+					[
+						{
+							"constantshadervalues" : 
+							{
+								"phase" : 0.5,
+								"power" : 1.0,
+								"ratio" : 0.3,
+								"scale" : 0.05,
+								"scrolldirection" : 0.0,
+								"speeduv" : 5.0,
+								"strength" : 0.4
+							},
+							"id" : 231
+						}
+					],
+					"visible" : true
+				}
+			],
+			"id" : 85,
+			"image" : "models/112泡泡-顶部.json",
+			"locktransforms" : true,
+			"name" : "112泡泡-顶部",
+			"origin" : "1433.50000 1950.00000 0.00000",
+			"parallaxDepth" : "0.20000 0.20000",
+			"size" : "821.00000 420.00000"
+		},
+		{
+			"animationlayers" : 
+			[
+				{
+					"additive" : false,
+					"animation" : 427,
+					"blend" : 1.0,
+					"blendin" : false,
+					"blendout" : false,
+					"blendtime" : 0.5,
+					"id" : 432,
+					"name" : "动画 1",
+					"rate" : 1.0,
+					"visible" : true
+				}
+			],
+			"disablepropagation" : false,
+			"effects" : 
+			[
+				{
+					"file" : "effects/foliagesway/effect.json",
+					"id" : 235,
+					"name" : "",
+					"passes" : 
+					[
+						{
+							"constantshadervalues" : 
+							{
+								"phase" : 0.5,
+								"power" : 1.0,
+								"ratio" : 0.3,
+								"scale" : 0.05,
+								"scrolldirection" : 0.0,
+								"speeduv" : 5.0,
+								"strength" : 0.4
+							},
+							"id" : 240
+						}
+					],
+					"visible" : true
+				}
+			],
+			"id" : 88,
+			"image" : "models/113泡泡-右上【上】.json",
+			"locktransforms" : true,
+			"name" : "113泡泡-右上【上】",
+			"origin" : "3485.00000 2021.00000 0.00000",
+			"parallaxDepth" : "0.20000 0.20000",
+			"size" : "656.00000 278.00000"
+		},
+		{
+			"animationlayers" : 
+			[
+				{
+					"additive" : false,
+					"animation" : 438,
+					"blend" : 1.0,
+					"blendin" : false,
+					"blendout" : false,
+					"blendtime" : 0.5,
+					"id" : 441,
+					"name" : "动画 1",
+					"rate" : 1.0,
+					"visible" : true
+				}
+			],
+			"disablepropagation" : false,
+			"effects" : 
+			[
+				{
+					"file" : "effects/foliagesway/effect.json",
+					"id" : 468,
+					"name" : "",
+					"passes" : 
+					[
+						{
+							"constantshadervalues" : 
+							{
+								"phase" : 0.5,
+								"power" : 1.0,
+								"ratio" : 0.3,
+								"scale" : 0.05,
+								"scrolldirection" : 0.0,
+								"speeduv" : 5.0,
+								"strength" : 0.4
+							},
+							"id" : 469
+						}
+					],
+					"visible" : true
+				}
+			],
+			"id" : 91,
+			"image" : "models/114泡泡-左上.json",
+			"locktransforms" : true,
+			"name" : "114泡泡-左上",
+			"origin" : "378.00000 1926.50000 0.00000",
+			"parallaxDepth" : "0.20000 0.20000",
+			"size" : "756.00000 467.00000"
+		},
+		{
+			"animationlayers" : 
+			[
+				{
+					"additive" : false,
+					"animation" : 330,
+					"blend" : 1.0,
+					"blendin" : false,
+					"blendout" : false,
+					"blendtime" : 0.5,
+					"id" : 335,
+					"name" : "动画 1",
+					"rate" : 1.0,
+					"visible" : true
+				}
+			],
+			"disablepropagation" : false,
+			"id" : 97,
+			"image" : "models/21纸人3-大泡泡.json",
+			"locktransforms" : true,
+			"name" : "21纸人3-大泡泡",
+			"origin" : "2683.50000 1692.50000 0.00000",
+			"parallaxDepth" : "0.20000 0.20000",
+			"size" : "419.00000 431.00000"
+		},
+		{
+			"animationlayers" : 
+			[
+				{
+					"additive" : false,
+					"animation" : 287,
+					"blend" : 1.0,
+					"blendin" : false,
+					"blendout" : false,
+					"blendtime" : 0.5,
+					"id" : 290,
+					"name" : "动画 1",
+					"rate" : 1.0,
+					"visible" : true
+				}
+			],
+			"disablepropagation" : false,
+			"id" : 100,
+			"image" : "models/22纸人白2.json",
+			"locktransforms" : true,
+			"name" : "22纸人白2",
+			"origin" : "3216.50000 1106.00000 0.00000",
+			"parallaxDepth" : "0.20000 0.20000",
+			"size" : "225.00000 190.00000"
+		},
+		{
+			"animationlayers" : 
+			[
+				{
+					"additive" : false,
+					"animation" : 360,
+					"blend" : 1.0,
+					"blendin" : false,
+					"blendout" : false,
+					"blendtime" : 0.5,
+					"id" : 363,
+					"name" : "动画 1",
+					"rate" : 1.0,
+					"visible" : true
+				}
+			],
+			"disablepropagation" : false,
+			"id" : 103,
+			"image" : "models/23纸人1.json",
+			"locktransforms" : true,
+			"name" : "23纸人1",
+			"origin" : "2808.00000 1193.50000 0.00000",
+			"parallaxDepth" : "0.20000 0.20000",
+			"size" : "220.00000 189.00000"
+		},
+		{
+			"disablepropagation" : false,
+			"id" : 492,
+			"instanceoverride" : 
+			{
+				"colorn" : "1.00000 0.75294 0.77647",
+				"id" : 504,
+				"size" : 0.40000001
+			},
+			"locktransforms" : true,
+			"name" : "Bokeh Hex",
+			"origin" : "2042.39429 1352.16602 0.00000",
+			"parallaxDepth" : "0.00000 0.00000",
+			"particle" : "particles/workshop/2820123291/bokeh_Hex.json",
+			"scale" : "1.50000 1.50000 1.50000",
+			"solid" : true
+		},
+		{
+			"disablepropagation" : false,
+			"id" : 497,
+			"instanceoverride" : 
+			{
+				"id" : 501,
+				"size" : 0.40000001
+			},
+			"locktransforms" : true,
+			"name" : "Bokeh Cir",
+			"origin" : "1234.25464 1040.73145 0.00000",
+			"parallaxDepth" : "0.00000 0.00000",
+			"particle" : "particles/workshop/2820123291/Bokeh_Cir.json",
+			"scale" : "1.50000 1.50000 1.50000",
+			"solid" : true
+		},
+		{
+			"disablepropagation" : false,
+			"id" : 454,
+			"maxtime" : 5.0,
+			"mintime" : 1.0,
+			"muteineditor" : true,
+			"name" : "Dasvidaniya (Instrumental)",
+			"playbackmode" : "loop",
+			"solid" : true,
+			"sound" : [ "sounds/伴奏.mp3" ],
+			"startsilent" : false,
+			"volume" : 0.5
+		},
+		{
+			"disablepropagation" : false,
+			"id" : 307,
+			"maxtime" : 5.0,
+			"mintime" : 1.0,
+			"muteineditor" : true,
+			"name" : "Dasvidaniya",
+			"playbackmode" : "loop",
+			"solid" : true,
+			"sound" : [ "sounds/Dasvidaniya.mp3" ],
+			"startsilent" : false,
+			"volume" : 0.5
+		},
+		{
+			"disablepropagation" : false,
+			"id" : 439,
+			"instanceoverride" : 
+			{
+				"alpha" : 1.0,
+				"colorn" : "0.49804 0.00000 1.00000",
+				"id" : 442,
+				"size" : 1.0
+			},
+			"locktransforms" : true,
+			"name" : "MrDogTastic's Mouse Trail",
+			"origin" : "1904.73584 1199.25378 0.00000",
+			"particle" : "particles/workshop/2098048943/presets/trail_1.json",
+			"solid" : true,
+			"visible" : 
+			{
+				"user" : "mousetrails",
+				"value" : true
+			}
+		},
+		{
+			"disablepropagation" : false,
+			"id" : 462,
+			"image" : "models/底边.json",
+			"locktransforms" : true,
+			"name" : "底边",
+			"origin" : "1920.00000 65.00000 0.00000",
+			"parallaxDepth" : "0.00000 0.00000",
+			"size" : "3840.00000 159.00000",
+			"visible" : 
+			{
+				"user" : "taskbarborder",
+				"value" : true
+			}
+		}
+	],
+	"version" : 5
+}{
+	

@@ -1,0 +1,38 @@
+objects=10
+#0 id=17 "原图" image="models/原图.json" alpha=- effects=[]
+#1 id=47 "发束" image="models/发束.json" alpha=- effects=[(shake),(foliagesway)]
+    file=effects/shake/effect.json visible=true
+    combos={} csv={"bounds":"0 1","friction":"1 1","speed":1.53,"strength":0.214}
+    textures=[null,"masks/shake_mask_4a7ac84e"]
+    file=effects/foliagesway/effect.json visible=false
+    combos={} csv={"phase":0,"power":1.06,"ratio":7.13,"scale":0.33,"scrolldirection":1.3018903,"speeduv":5,"strength":0.4}
+    textures=[null,"masks/foliagesway_mask_b0e3b559",null]
+#2 id=25 "角色" image="models/角色.json" alpha=- effects=[(shake)]
+    file=effects/shake/effect.json visible=true
+    combos={} csv={"bounds":"0 1","friction":"1 1","speed":1.34,"strength":0.092}
+    textures=[null,"masks/shake_mask_135029a1"]
+#3 id=22 "车窗" image="models/车窗.json" alpha=- effects=[]
+#4 id=28 "手" image="models/手.json" alpha=- effects=[]
+#5 id=41 "头发 下 右" image="models/头发 下 右.json" alpha=- effects=[(shake),(waterwaves)]
+    file=effects/shake/effect.json visible=true
+    combos={} csv={"bounds":"0 1","friction":"1 1","speed":2.23,"strength":0.192}
+    textures=[null,"masks/shake_mask_9d0c9426"]
+    file=effects/waterwaves/effect.json visible=true
+    combos={} csv={"direction":2.3044973,"exponent":1.11,"scale":9,"speed":3.72,"strength":0.09}
+    textures=[null,"masks/waterwaves_mask_53d307fd"]
+#6 id=44 "头发 下 左" image="models/头发 下 左.json" alpha=- effects=[(shake),(waterwaves)]
+    file=effects/shake/effect.json visible=true
+    combos={} csv={"bounds":"0 1","friction":"1 1","speed":2.72,"strength":0.245}
+    textures=[null,"masks/shake_mask_73426e96"]
+    file=effects/waterwaves/effect.json visible=true
+    combos={} csv={"direction":-2.7294808,"exponent":0.86,"scale":4.96,"speed":4.96,"strength":0.12}
+    textures=[null,"masks/waterwaves_mask_f989a04a"]
+#7 id=31 "脸" image="models/脸.json" alpha=- effects=[]
+#8 id=34 "头发" image="models/头发.json" alpha=- effects=[(shake),(waterwaves)]
+    file=effects/shake/effect.json visible=true
+    combos={} csv={"bounds":"0 1","friction":"1 1","speed":2.48,"strength":0.134}
+    textures=[null,"masks/shake_mask_22b618d3","masks/shake_mask_5a0a6b32"]
+    file=effects/waterwaves/effect.json visible=true
+    combos={} csv={"direction":0,"exponent":0.99,"scale":19.81,"speed":5.21,"strength":0.04}
+    textures=[null,"masks/waterwaves_mask_335eda11"]
+#9 id=73 "漫画文字框" image="models/_.json" alpha=0.95999998 effects=[]

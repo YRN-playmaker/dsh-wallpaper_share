@@ -10,6 +10,7 @@
  */
 import { WS_HEADER_BYTES, parseCaptureScreen, type CaptureScreenRect } from '../scene/SceneProtocol.ts'
 import { captureDrawRect, estimateViewportInsets } from './capture-viewport.ts'
+import { sceneStreamUrl } from './scene-stream-url.ts'
 
 export interface SceneCanvasHandlers {
   /** 首帧到达 → true；连接彻底失败（重试耗尽）→ false，由调用方回退纹理 */
@@ -71,10 +72,7 @@ export class SceneCanvas {
     window.addEventListener('pointermove', this.onPointerMove, { passive: true })
     document.addEventListener('visibilitychange', this.onVisibility)
 
-    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const query = (monitor !== '' ? 'monitor=' + encodeURIComponent(monitor) : '') +
-      (monitor !== '' ? '&v=' : 'v=') + encodeURIComponent(String(version))
-    this.connect(proto + '//' + location.host + '/we-sync/scene/stream?' + query)
+    this.connect(sceneStreamUrl(monitor, version))
   }
 
   stop(): void {

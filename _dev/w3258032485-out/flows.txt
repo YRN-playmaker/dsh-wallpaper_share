@@ -1,0 +1,18 @@
+masks/shake_mask_2cb641c2  fmt=8 1920x1080
+   ch0: min=127 max=134 mean=128.2  ch1: min=127 max=134 mean=128.2  ch2: min=127 max=134 mean=128.2  ch3: min=105 max=127 mean=120.4
+masks/shake_mask_c12891e8  fmt=8 1920x1080
+   ch0: min=127 max=164 mean=127.7  ch1: min=127 max=164 mean=127.7  ch2: min=127 max=164 mean=127.7  ch3: min=96 max=127 mean=126.6
+masks/shake_mask_5eac9746  fmt=8 1920x1080
+   ch0: min=127 max=164 mean=127.3  ch1: min=127 max=164 mean=127.3  ch2: min=127 max=164 mean=127.3  ch3: min=127 max=143 mean=127.1
+masks/shake_mask_500578a2  fmt=8 1920x1080
+   ch0: min=120 max=146 mean=127.1  ch1: min=120 max=146 mean=127.1  ch2: min=120 max=146 mean=127.1  ch3: min=96 max=143 mean=126.9
+masks/shake_mask_2146df8a  fmt=8 1920x1080
+   ch0: min=127 max=137 mean=127.2  ch1: min=127 max=137 mean=127.2  ch2: min=127 max=137 mean=127.2  ch3: min=111 max=127 mean=126.9
+masks/shake_mask_03299939  fmt=8 1920x1080
+   ch0: min=106 max=164 mean=127.6  ch1: min=106 max=164 mean=127.6  ch2: min=106 max=164 mean=127.6  ch3: min=87 max=127 mean=125.7
+masks/shake_mask_1e10c78b  fmt=8 1920x1080
+   ch0: min=94 max=128 mean=126.9  ch1: min=94 max=128 mean=126.9  ch2: min=94 max=128 mean=126.9  ch3: min=99 max=158 mean=127.0
+masks/shake_mask_2b9a7c9a  fmt=8 1920x1080
+   ch0: min=127 max=127 mean=127.0  ch1: min=127 max=127 mean=127.0  ch2: min=127 max=127 mean=127.0  ch3: min=127 max=127 mean=127.0
+
+可视化文件：flow-vis-N.png（与 127 的偏差 ×6：红=R通道 绿=G通道 蓝=A通道）

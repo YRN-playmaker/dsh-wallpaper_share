@@ -1,0 +1,42 @@
+=== 模型条目 ===
+      72  models/头发 下 右.json
+      64  models/原图.json
+      64  models/发束.json
+      61  models/手.json
+      64  models/角色.json
+      64  models/车窗.json
+      72  models/头发 下 左.json
+      61  models/脸.json
+      64  models/头发.json
+      59  models/_.json
+
+=== 各模型 json ===
+--- models/头发 下 右.json ---
+"autosize" : true, "material" : "materials/头发 下 右.json" }{ 
+
+--- models/原图.json ---
+"autosize" : true, "material" : "materials/原图.json" }TEXV
+
+--- models/发束.json ---
+"autosize" : true, "material" : "materials/发束.json" }TEXV
+
+--- models/手.json ---
+"autosize" : true, "material" : "materials/手.json" } //
+
+--- models/角色.json ---
+"autosize" : true, "material" : "materials/角色.json" }TEXV
+
+--- models/车窗.json ---
+"autosize" : true, "material" : "materials/车窗.json" }TEXV
+
+--- models/头发 下 左.json ---
+"autosize" : true, "material" : "materials/头发 下 左.json" }{ 
+
+--- models/脸.json ---
+"autosize" : true, "material" : "materials/脸.json" }{ 
+
+--- models/头发.json ---
+"autosize" : true, "material" : "materials/头发.json" }TEXV
+
+--- models/_.json ---
+"autosize" : true, "material" : "materials/_.json" }

@@ -1,0 +1,12 @@
+=== audioresponse context ===
+mple_Audio_Bars/effect.json", "id" : 566, "name" : "", "passes" : [ { "combos" : { "ANTIALIAS" : 1, "BLENDMODE" : 31, "TRANSPARENCY" : 4 }, "constantshadervalues" : { "Anti-alias blurring" : "0.02 0.02", "Bar Color" : "1 1 1", "Bar Count" : 57.55, "Bar Spacing" : 0.23, "Lower/Upper Bar Bounds" : "0 0.1", "ui_editor_properties_opacity" : 0.9 }, "id" : 0 } ], "visible" : true } ], "id" : 564, "image" : "models/util/composelayer.json", "locktransforms" : true, "name" : "Green", "origin" : "3484.47778 929.70300 0.00000", "parallaxDepth" : "0.00000 0.00000", "scale" : "0.40085 0.72040 0.62471", "size" : "1920.00000 1080.00000", "visible" : { "user" : "audioresponse", "value" : true } }, { "angles" : "0.00000 -0.00000 0.00000", "color" : "0.98039 0.54118 0.60392", "disablepropagation" : false, "effects" : [ { "file" : "effects/workshop/3732231168/blurprecise/effect.json", "id" : 1230, "name" : "", "passes" : [ { "combos" : { "KERNEL" : 2 }, "constantshadervalues" : { "scale" : "1.28 1.28" }, 
+
+=== 所有 combos 出现处 ===
+"combos" : { "ANTIALIAS" : 1, "BLENDMODE" : 31, "TRANSPARENCY" : 4 }
+"combos" : { "KERNEL" : 2 }
+"combos" : { "ENABLEMASK" : 1, "KERNEL" : 2, "VERTICAL" : 1 }
+"combos" : { "KERNEL" : 2 }
+"combos" : { "ENABLEMASK" : 1, "KERNEL" : 2, "VERTICAL" : 1 }
+"combos" : { "KERNEL" : 2 }
+"combos" : { "ENABLEMASK" : 1, "KERNEL" : 2, "VERTICAL" : 1 }
+"combos" : { "DIRECTION" : 1 }

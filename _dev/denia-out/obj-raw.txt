@@ -1,0 +1,228 @@
+===== objects[16] =====
+{
+ "disablepropagation": false,
+ "effects": [
+  {
+   "file": "effects/shake/effect.json",
+   "id": 430,
+   "name": "眨眼",
+   "passes": [
+    {
+     "combos": {
+      "DIRECTION": 1
+     },
+     "constantshadervalues": {
+      "bounds": "0.992 0.998",
+      "friction": "1 1",
+      "speed": 1,
+      "strength": 0.4
+     },
+     "id": 431,
+     "textures": [
+      null,
+      "masks/shake_mask_73999545",
+      null,
+      "masks/shake_mask_5bdd3707"
+     ]
+    }
+   ],
+   "visible": true
+  }
+ ],
+ "id": 46,
+ "image": "models/09眼睛.json",
+ "locktransforms": true,
+ "name": "09眼睛",
+ "origin": "2706.50000 723.50000 0.00000",
+ "parallaxDepth": "0.00000 0.00000",
+ "size": "201.00000 355.00000"
+}
+
+===== objects[10] =====
+{
+ "disablepropagation": false,
+ "effects": [
+  {
+   "file": "effects/waterwaves/effect.json",
+   "id": 263,
+   "name": "裙子",
+   "passes": [
+    {
+     "constantshadervalues": {
+      "direction": 1.7453293,
+      "exponent": 1,
+      "scale": 20,
+      "speed": 3,
+      "strength": 0.07
+     },
+     "id": 264,
+     "textures": [
+      null,
+      "masks/waterwaves_mask_ca9415d4"
+     ]
+    }
+   ],
+   "visible": true
+  },
+  {
+   "file": "effects/waterwaves/effect.json",
+   "id": 299,
+   "name": "头发",
+   "passes": [
+    {
+     "constantshadervalues": {
+      "direction": 0,
+      "exponent": 1,
+      "scale": 20,
+      "speed": 2.5,
+      "strength": 0.06
+     },
+     "id": 300,
+     "textures": [
+      null,
+      "masks/waterwaves_mask_edc185dd"
+     ]
+    }
+   ],
+   "visible": true
+  },
+  {
+   "file": "effects/foliagesway/effect.json",
+   "id": 347,
+   "name": "呼吸",
+   "passes": [
+    {
+     "constantshadervalues": {
+      "phase": 0.06,
+      "power": 1,
+      "ratio": 0.3,
+      "scale": 0.05,
+      "scrolldirection": 2.2707407,
+      "speeduv": 2,
+      "strength": 0.45
+     },
+     "id": 348,
+     "textures": [
+      null,
+      "masks/foliagesway_mask_387acbeb",
+      null
+     ]
+    }
+   ],
+   "visible": true
+  }
+ ],
+ "id": 28,
+ "image": "models/03身-改.json",
+ "locktransforms": true,
+ "name": "03身-改",
+ "origin": "1483.50000 764.50000 0.00000",
+ "parallaxDepth": "0.00000 0.00000",
+ "size": "2967.00000 1529.00000"
+}
+
+===== objects[15] =====
+{
+ "disablepropagation": false,
+ "effects": [
+  {
+   "file": "effects/waterwaves/effect.json",
+   "id": 105,
+   "name": "前发",
+   "passes": [
+    {
+     "constantshadervalues": {
+      "direction": 0.63469782,
+      "exponent": 1,
+      "scale": 10,
+      "speed": 2.5,
+      "strength": 0.11
+     },
+     "id": 106,
+     "textures": [
+      null,
+      "masks/waterwaves_mask_dbc16048"
+     ]
+    }
+   ],
+   "visible": true
+  },
+  {
+   "file": "effects/waterwaves/effect.json",
+   "id": 155,
+   "name": "发尾",
+   "passes": [
+    {
+     "constantshadervalues": {
+      "direction": -2.4896827,
+      "exponent": 1,
+      "scale": 15,
+      "speed": 2,
+      "strength": 0.06
+     },
+     "id": 156,
+     "textures": [
+      null,
+      "masks/waterwaves_mask_76ebcbce"
+     ]
+    }
+   ],
+   "visible": true
+  }
+ ],
+ "id": 43,
+ "image": "models/08头发-脸部上层.json",
+ "locktransforms": true,
+ "name": "08头发-脸部上层",
+ "origin": "2814.50000 600.50000 0.00000",
+ "parallaxDepth": "0.00000 0.00000",
+ "size": "949.00000 787.00000"
+}
+
+===== objects[14] =====
+{
+ "disablepropagation": false,
+ "effects": [
+  {
+   "file": "effects/waterwaves/effect.json",
+   "id": 217,
+   "name": "",
+   "passes": [
+    {
+     "constantshadervalues": {
+      "direction": -1.5717703,
+      "exponent": 1,
+      "scale": 10,
+      "speed": 2,
+      "strength": 0.2
+     },
+     "id": 218,
+     "textures": [
+      null,
+      "masks/waterwaves_mask_c1966e1e"
+     ]
+    }
+   ],
+   "visible": true
+  }
+ ],
+ "id": 40,
+ "image": "models/07头发-脸部下层.json",
+ "locktransforms": true,
+ "name": "07头发-脸部下层",
+ "origin": "2546.50000 903.50000 0.00000",
+ "parallaxDepth": "0.00000 0.00000",
+ "size": "445.00000 277.00000"
+}
+
+===== objects[13] =====
+{
+ "disablepropagation": false,
+ "id": 37,
+ "image": "models/06眉毛-头发下层.json",
+ "locktransforms": true,
+ "name": "06眉毛-头发下层",
+ "origin": "2769.50000 805.00000 0.00000",
+ "parallaxDepth": "0.00000 0.00000",
+ "size": "125.00000 162.00000"
+}

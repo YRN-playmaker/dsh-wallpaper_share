@@ -18,6 +18,9 @@ tools/*.txt
 tools/*.png
 tools/*.svg
 _dev/*.txt
+# 调试转储（WE 参考帧 / 区域原始像素，单个可达 100MB 以上，超出 GitHub 单文件上限）
+_dev/denia-out/*.raw
+_dev/denia-out/*.bin
 # 本地打包产物（.dwp / tarball 等构建输出，不进版本库）
 _dist/
 .build-junc/

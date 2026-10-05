@@ -1,0 +1,221 @@
+"camera" : 
+	{
+		"center" : "175.39784 95.07546 -1.00000",
+		"eye" : "175.39784 95.07546 0.00000",
+		"up" : "0.00000 1.00000 0.00000"
+	},
+	"general" : 
+	{
+		"ambientcolor" : "0.30000 0.30000 0.30000",
+		"bloom" : false,
+		"bloomhdrfeather" : 0.1,
+		"bloomhdriterations" : 8,
+		"bloomhdrscatter" : 1.619,
+		"bloomhdrstrength" : 2.0,
+		"bloomhdrthreshold" : 1.0,
+		"bloomstrength" : 2.0,
+		"bloomthreshold" : 0.64999998,
+		"bloomtint" : "1.00000 1.00000 1.00000",
+		"camerafade" : true,
+		"cameraparallax" : false,
+		"cameraparallaxamount" : 0.5,
+		"cameraparallaxdelay" : 0.1,
+		"cameraparallaxmouseinfluence" : 0.5,
+		"camerapreview" : true,
+		"camerashake" : false,
+		"camerashakeamplitude" : 0.5,
+		"camerashakeroughness" : 1.0,
+		"camerashakespeed" : 3.0,
+		"clearcolor" : "0.70000 0.70000 0.70000",
+		"clearenabled" : true,
+		"farz" : 10000.0,
+		"fov" : 50.0,
+		"hdr" : false,
+		"nearz" : 0.0099999998,
+		"orthogonalprojection" : 
+		{
+			"height" : 2160,
+			"width" : 3840
+		},
+		"perspectiveoverridefov" : 30.0,
+		"skylightcolor" : "0.30000 0.30000 0.30000",
+		"zoom" : 1.0
+	},
+	"objects" : 
+	[
+		{
+			"castshadow" : false,
+			"effects" : 
+			[
+				{
+					"file" : "effects/shake/effect.json",
+					"id" : 27,
+					"name" : "",
+					"passes" : 
+					[
+						{
+							"constantshadervalues" : 
+							{
+								"bounds" : "0 1",
+								"friction" : "1 1",
+								"speed" : 1.0,
+								"strength" : 0.1
+							},
+							"id" : 28,
+							"textures" : [ null, "masks/shake_mask_2cb641c2" ]
+						}
+					],
+					"visible" : true
+				},
+				{
+					"file" : "effects/shake/effect.json",
+					"id" : 52,
+					"name" : "",
+					"passes" : 
+					[
+						{
+							"constantshadervalues" : 
+							{
+								"bounds" : "0 1",
+								"friction" : "1 1",
+								"speed" : 1.35,
+								"strength" : 0.066
+							},
+							"id" : 53,
+							"textures" : [ null, "masks/shake_mask_c12891e8" ]
+						}
+					],
+					"visible" : true
+				},
+				{
+					"file" : "effects/shake/effect.json",
+					"id" : 78,
+					"name" : "",
+					"passes" : 
+					[
+						{
+							"constantshadervalues" : 
+							{
+								"bounds" : "0 1",
+								"friction" : "1 1",
+								"speed" : 1.0,
+								"strength" : 0.1
+							},
+							"id" : 79,
+							"textures" : [ null, "masks/shake_mask_5eac9746" ]
+						}
+					],
+					"visible" : true
+				},
+				{
+					"file" : "effects/shake/effect.json",
+					"id" : 105,
+					"name" : "",
+					"passes" : 
+					[
+						{
+							"constantshadervalues" : 
+							{
+								"bounds" : "0 1",
+								"friction" : "1 1",
+								"speed" : 1.5599999,
+								"strength" : 0.1
+							},
+							"id" : 106,
+							"textures" : [ null, "masks/shake_mask_500578a2" ]
+						}
+					],
+					"visible" : true
+				},
+				{
+					"file" : "effects/shake/effect.json",
+					"id" : 133,
+					"name" : "",
+					"passes" : 
+					[
+						{
+							"constantshadervalues" : 
+							{
+								"bounds" : "0 1",
+								"friction" : "1 1",
+								"speed" : 1.0,
+								"strength" : 0.1
+							},
+							"id" : 134,
+							"textures" : [ null, "masks/shake_mask_2146df8a" ]
+						}
+					],
+					"visible" : true
+				},
+				{
+					"file" : "effects/shake/effect.json",
+					"id" : 160,
+					"name" : "",
+					"passes" : 
+					[
+						{
+							"constantshadervalues" : 
+							{
+								"bounds" : "0 1",
+								"friction" : "1 1",
+								"speed" : 1.0,
+								"strength" : 0.1
+							},
+							"id" : 161,
+							"textures" : [ null, "masks/shake_mask_03299939" ]
+						}
+					],
+					"visible" : true
+				},
+				{
+					"file" : "effects/shake/effect.json",
+					"id" : 187,
+					"name" : "",
+					"passes" : 
+					[
+						{
+							"constantshadervalues" : 
+							{
+								"bounds" : "0 1",
+								"friction" : "1 1",
+								"speed" : 1.0,
+								"strength" : 0.1
+							},
+							"id" : 188,
+							"textures" : [ null, "masks/shake_mask_1e10c78b" ]
+						}
+					],
+					"visible" : true
+				},
+				{
+					"file" : "effects/shake/effect.json",
+					"id" : 37,
+					"name" : "",
+					"passes" : 
+					[
+						{
+							"constantshadervalues" : 
+							{
+								"bounds" : "0 1",
+								"friction" : "1 1",
+								"speed" : 1.0,
+								"strength" : 0.1
+							},
+							"id" : 38,
+							"textures" : [ null, "masks/shake_mask_2b9a7c9a" ]
+						}
+					],
+					"visible" : true
+				}
+			],
+			"id" : 16,
+			"image" : "models/258横屏-1_upscayl_2x_realesrgan-x4plus_upscayl_3x_realesrgan-x4plus.json",
+			"locktransforms" : true,
+			"name" : "258横屏-1_upscayl_2x_realesrgan-x4plus_upscayl_3x_realesrgan-x4plus",
+			"origin" : "1920.00000 1080.00000 0.00000",
+			"size" : "3840.00000 2160.00000"
+		}
+	],
+	"version" : 4
+}{
+	

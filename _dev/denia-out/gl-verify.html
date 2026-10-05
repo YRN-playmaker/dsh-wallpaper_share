@@ -1,0 +1,147 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>shake gl verify</title></head>
+<body><pre id="out">running…</pre>
+<script>
+const VERT_SRC = "\nattribute vec2 a_Pos;\nvarying vec2 v_UV;\nvoid main() {\n  gl_Position = vec4(a_Pos, 0.0, 1.0);\n  v_UV = a_Pos * 0.5 + 0.5;\n}\n";
+const FRAG_SRC = "\nprecision mediump float;\n// 独立实现的 shake（UV 位移 + 不透明度 mask 混合），行为参考官方效果（黑盒观察）。\nuniform sampler2D u_Src;\nuniform sampler2D u_Flow;\nuniform sampler2D u_Mask;\nuniform float u_UseMask;\nuniform float u_FlowYFromAlpha;   // 方向场 y 分量取自 A 通道（RG88 解码语义）\nuniform float u_MaskFromAlpha;    // mask 值取自 A 通道（R8 解码语义）\nuniform float u_Offset;\nuniform float u_Amp;\n// 各纹理内容区域比例（image 尺寸 / 画布尺寸）：图层 UV → 纹理 UV\nuniform vec2 u_SrcRect;\nuniform vec2 u_FlowRect;\nuniform vec2 u_MaskRect;\nvarying vec2 v_UV;\n\n// 图层 UV（内容区 0..1）→ 纹理 UV（纹理已 FLIP_Y 上传：内容区在 v 的高位）\nvec2 rectUv(vec2 uv, vec2 rect) {\n  return vec2(uv.x * rect.x, 1.0 - rect.y + uv.y * rect.y);\n}\n\nvoid main() {\n  vec2 uv = v_UV;\n  vec4 f = texture2D(u_Flow, rectUv(uv, u_FlowRect));\n  float fy = u_FlowYFromAlpha > 0.5 ? f.a : f.g;\n  vec2 flowMask = (vec2(f.r, fy) - vec2(0.498)) * 2.0;\n  vec2 texOffset = u_Offset * u_Amp * u_Amp * flowMask;\n  // 纹理已按 FLIP_Y 上传：y 取反以还原图像空间（WE UV，y 向下）的位移方向\n  vec2 suv = uv + vec2(texOffset.x, -texOffset.y);\n  vec4 base = texture2D(u_Src, rectUv(uv, u_SrcRect));\n  vec4 shaken = texture2D(u_Src, rectUv(suv, u_SrcRect));\n  if (u_UseMask > 0.5) {\n    vec4 m = texture2D(u_Mask, rectUv(suv, u_MaskRect));\n    float mv = u_MaskFromAlpha > 0.5 ? m.a : m.r;\n    gl_FragColor = mix(base, shaken, mv);\n  } else {\n    gl_FragColor = shaken;\n  }\n}\n";
+const META = {"eyes.png":{"imgW":201,"imgH":355,"texW":256,"texH":384,"format":4},"flow.png":{"imgW":201,"imgH":355,"texW":201,"texH":355,"format":8},"mask.png":{"imgW":201,"imgH":355,"texW":201,"texH":355,"format":9}};
+const STRENGTH = 0.4;                 // 达妮娅「眨眼」strength
+const OFFSETS = [0, 0.25, 0.5, 0.75, 1];
+const CHY = 3;                        // RG88 解码：方向场第二通道在 A
+const CHM = 3;                        // R8 解码：mask 值在 A
+
+function loadImg(src) { return new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('load ' + src)); i.src = src; }); }
+
+function bilinearRGBA(data, w, h, u, v, out) {
+  const x = Math.min(w - 1.001, Math.max(0, u * w - 0.5));
+  const y = Math.min(h - 1.001, Math.max(0, v * h - 0.5));
+  const x0 = Math.floor(x), y0 = Math.floor(y), fx = x - x0, fy = y - y0;
+  const x1 = Math.min(w - 1, x0 + 1), y1 = Math.min(h - 1, y0 + 1);
+  for (let c = 0; c < 4; c++) {
+    const a = data[(y0 * w + x0) * 4 + c] * (1 - fx) + data[(y0 * w + x1) * 4 + c] * fx;
+    const b = data[(y1 * w + x0) * 4 + c] * (1 - fx) + data[(y1 * w + x1) * 4 + c] * fx;
+    out[c] = a * (1 - fy) + b * fy;
+  }
+}
+
+// 官方公式的独立 JS 参考（图像空间，y 向下；srcPx 为已裁剪到内容区的图层像素）
+function referenceFrame(srcPx, flowPx, maskPx, W, H, fw, fh, mw, mh, offset) {
+  const out = new Uint8ClampedArray(W * H * 4);
+  const s = new Float32Array(4), k = new Float32Array(4), m = new Float32Array(4);
+  const amp = STRENGTH * STRENGTH;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const u = (x + 0.5) / W, v = (y + 0.5) / H;
+    bilinearRGBA(flowPx, fw, fh, u, v, k);
+    const fmx = (k[0] / 255 - 0.498) * 2;
+    const fmy = (k[CHY] / 255 - 0.498) * 2;
+    const tox = offset * amp * fmx, toy = offset * amp * fmy;
+    bilinearRGBA(srcPx, W, H, u, v, s);
+    bilinearRGBA(srcPx, W, H, u + tox, v + toy, m);
+    bilinearRGBA(maskPx, mw, mh, u + tox, v + toy, k);
+    const mv = k[CHM] / 255;
+    const i = (y * W + x) * 4;
+    for (let c = 0; c < 4; c++) out[i + c] = s[c] * (1 - mv) + m[c] * mv;
+  }
+  return out;
+}
+
+function pixels(img, sx, sy, sw, sh, dw, dh) {
+  const c = document.createElement('canvas'); c.width = dw; c.height = dh;
+  const g = c.getContext('2d', { willReadFrequently: true });
+  g.drawImage(img, sx, sy, sw, sh, 0, 0, dw, dh);
+  return g.getImageData(0, 0, dw, dh).data;
+}
+
+function compile(gl, type, src) {
+  const sh = gl.createShader(type); gl.shaderSource(sh, src); gl.compileShader(sh);
+  if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) throw new Error('compile: ' + gl.getShaderInfoLog(sh));
+  return sh;
+}
+
+(async () => {
+  const [eyesImg, flowImg, maskImg] = await Promise.all([
+    loadImg('gl-images/eyes.png'), loadImg('gl-images/flow.png'), loadImg('gl-images/mask.png'),
+  ]);
+  // 图层内容区（与客户端一致：image 尺寸 = 200x355）
+  const W = META['eyes.png'].imgW, H = META['eyes.png'].imgH;
+  const fw = META['flow.png'].imgW, fh = META['flow.png'].imgH;
+  const mw = META['mask.png'].imgW, mh = META['mask.png'].imgH;
+  const srcPx = pixels(eyesImg, 0, 0, W, H, W, H);
+  const flowPx = pixels(flowImg, 0, 0, fw, fh, fw, fh);
+  const maskPx = pixels(maskImg, 0, 0, mw, mh, mw, mh);
+
+  const canvas = document.createElement('canvas');
+  canvas.width = W; canvas.height = H;
+  const gl = canvas.getContext('webgl', { premultipliedAlpha: false, preserveDrawingBuffer: true });
+  if (!gl) { document.getElementById('out').textContent = 'NO_WEBGL'; return; }
+  const prog = gl.createProgram();
+  gl.attachShader(prog, compile(gl, gl.VERTEX_SHADER, VERT_SRC));
+  gl.attachShader(prog, compile(gl, gl.FRAGMENT_SHADER, FRAG_SRC));
+  gl.linkProgram(prog);
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error('link fail');
+  gl.useProgram(prog);
+  const buf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+  const aPos = gl.getAttribLocation(prog, 'a_Pos');
+  gl.enableVertexAttribArray(aPos);
+  gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+
+  function upload(img) {
+    const t = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 1);
+    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, 0);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    return t;
+  }
+  const tSrc = upload(eyesImg), tFlow = upload(flowImg), tMask = upload(maskImg);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tSrc); gl.uniform1i(gl.getUniformLocation(prog, 'u_Src'), 0);
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, tFlow); gl.uniform1i(gl.getUniformLocation(prog, 'u_Flow'), 1);
+  gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, tMask); gl.uniform1i(gl.getUniformLocation(prog, 'u_Mask'), 2);
+  gl.uniform1f(gl.getUniformLocation(prog, 'u_UseMask'), 1);
+  gl.uniform1f(gl.getUniformLocation(prog, 'u_FlowYFromAlpha'), 1);
+  gl.uniform1f(gl.getUniformLocation(prog, 'u_MaskFromAlpha'), 1);
+  gl.uniform1f(gl.getUniformLocation(prog, 'u_Amp'), STRENGTH);
+  gl.uniform2f(gl.getUniformLocation(prog, 'u_SrcRect'), W / META['eyes.png'].texW, H / META['eyes.png'].texH);
+  gl.uniform2f(gl.getUniformLocation(prog, 'u_FlowRect'), fw / META['flow.png'].texW, fh / META['flow.png'].texH);
+  gl.uniform2f(gl.getUniformLocation(prog, 'u_MaskRect'), mw / META['mask.png'].texW, mh / META['mask.png'].texH);
+  gl.viewport(0, 0, W, H);
+
+  const lines = ['W=' + W + ' H=' + H + ' srcCanvas=' + META['eyes.png'].texW + 'x' + META['eyes.png'].texH];
+  // 图层最终是叠在场景（不透明）上的：按 alpha 合成到皮肤底色再比较，
+  // 避免「全透明像素的 RGB 在 canvas 预乘往返中丢失」污染判定。
+  const BG = [240, 211, 189];
+  const comp = (px, i) => {
+    const a = px[i + 3] / 255;
+    return [px[i] * a + BG[0] * (1 - a), px[i + 1] * a + BG[1] * (1 - a), px[i + 2] * a + BG[2] * (1 - a)];
+  };
+  for (const off of OFFSETS) {
+    gl.uniform1f(gl.getUniformLocation(prog, 'u_Offset'), off);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    const glPx = new Uint8Array(W * H * 4);
+    gl.readPixels(0, 0, W, H, gl.RGBA, gl.UNSIGNED_BYTE, glPx);
+    const ref = referenceFrame(srcPx, flowPx, maskPx, W, H, fw, fh, mw, mh, off);
+    let maxD = 0, sum = 0, n = 0, big = 0;
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        const i = (y * W + x) * 4;
+        const j = ((H - 1 - y) * W + x) * 4;   // readPixels 自下而上，翻转对齐
+        const a = comp(glPx, i), b = comp(ref, j);
+        for (let c = 0; c < 3; c++) {
+          const d = Math.abs(a[c] - b[c]);
+          if (d > maxD) maxD = d;
+          sum += d; n++;
+          if (d > 8) big++;
+        }
+      }
+    }
+    lines.push('offset=' + off + ' maxDiff=' + maxD.toFixed(0) + ' meanDiff=' + (sum / n).toFixed(3) + ' px_over8=' + big);
+  }
+  document.getElementById('out').textContent = lines.join('\n');
+})().catch((e) => { document.getElementById('out').textContent = 'ERROR ' + e.message; });
+</script></body></html>
