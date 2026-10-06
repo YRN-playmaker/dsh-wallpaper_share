@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
  * 重建随包发布的原生产物，并把结果拷进 bin/：
- *   cargo build --release --bins                （在 native/we-capture 下）
- *   target/release/{we-capture,we-floater}.exe  → bin/
+ *   cargo build --release --bins              （在 native/we-capture 下）
+ *   target/release/we-capture.exe             → bin/
  * 结束后用 check-package 的同一套校验确认「版本 + 源码指纹」都对得上，不同步即非零退出。
  *
  * 为什么要有这个脚本：bin/ 里的 exe 是提交进仓库、由发布 CI 直接打包的（CI 不重编原生程序），

@@ -47,7 +47,7 @@ test('finds embedded build markers in binary bytes', () => {
   ]);
   assert.equal(binaryVersionTag(bin, 'we-capture'), 'we-capture-0.3.0');
   assert.equal(binaryBuildFingerprint(bin, 'we-capture'), '0123456789abcdef');
-  assert.equal(binaryBuildFingerprint(bin, 'we-floater'), null);
+  assert.equal(binaryBuildFingerprint(bin, 'we-other'), null);
 });
 
 test('native fingerprint survives Windows and Linux checkout line endings but detects source edits', () => {
@@ -78,11 +78,10 @@ test('repository native binaries are in sync with the native source', () => {
 test('rejects a stale native binary (version and source fingerprint mismatch)', () => {
   const dir = mkdtempSync(join(tmpdir(), 'wesync-check-'));
   try {
-    mkdirSync(join(dir, 'native', 'we-capture', 'src', 'bin'), { recursive: true });
+    mkdirSync(join(dir, 'native', 'we-capture', 'src'), { recursive: true });
     mkdirSync(join(dir, 'bin'), { recursive: true });
     writeFileSync(join(dir, 'native', 'we-capture', 'Cargo.toml'), '[package]\nname = "we-capture"\nversion = "0.4.1"\n');
     writeFileSync(join(dir, 'native', 'we-capture', 'src', 'main.rs'), 'const VERSION: &str = "we-capture-0.4.1";\n');
-    writeFileSync(join(dir, 'native', 'we-capture', 'src', 'bin', 'we-floater.rs'), 'const VERSION: &str = "we-floater-0.4.1";\n');
     // 伪造「源码已 0.4.1、bin/ 里还是 0.3.0」的过期产物（正是本次 issue 的真实形态）
     const stale = Buffer.concat([
       Buffer.from([0x4d, 0x5a]),
@@ -90,7 +89,6 @@ test('rejects a stale native binary (version and source fingerprint mismatch)', 
       Buffer.from('we-capture-0.3.0 we-capture-build src=0000000000000000'),
     ]);
     writeFileSync(join(dir, 'bin', 'we-capture.exe'), stale);
-    writeFileSync(join(dir, 'bin', 'we-floater.exe'), stale);
     assert.throws(() => checkNativeArtifacts(dir), /不一致/);
   } finally {
     rmSync(dir, { recursive: true, force: true });

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **删除侧边栏 / 右上角状态圆点**：它只表示状态、又不能点击，价值为零；连带状态色推导、审批面板 DOM 观察器与 `approvalPending` 字段一并撤掉（专注模式「任务进行中」的浓度仍由 sessions 快照驱动）。
+- **删除「桌面悬浮球」全链路**：面板开关与文案、client 上报器 `src/client/floater-report.ts`、node 半 `src/floater/`（状态机 / 子进程管理 / `/we-sync/floater` 路由）、位置存档 `~/.dsh/storages/we-sync-floater-pos.json` 与 `settings.floater` 全部移除；原生侧删除 `native/we-capture/src/bin/we-floater.rs` 与随包 `bin/we-floater.exe`，并重编 `bin/we-capture.exe`（源码指纹随源码变更更新），`tools/check-package.mjs` 的原生产物清单只剩捕获器。
+- **沉浸模式与专注模式改为可自定义快捷键**：面板新增「快捷键设置」卡片（位于「视觉效果」与「壁纸读取位置」之间），每行一个功能加当前键位，点右侧按钮后按下新按键即替换（录制中 `Esc` 取消，录制期间全局快捷键让位给录制器）。默认沉浸 `F11`、专注 `F10`，键位随其余偏好一起持久化。新增纯模块 `src/client/hotkeys.ts`（规格归一化 / 匹配 / 存档校验，含单测）：修饰键按固定顺序、要求完全一致地匹配，焦点在输入框（含 `contenteditable`）内时不触发；沉浸模式仍可再按一次、按 `Esc` 或点侧边栏任意按钮退出。
+- **修复高 DPI 缩放下捕获背景与真实壁纸错位**：捕获器上报的 `captureScreen` 一直是 Win32 **物理**像素（125% 缩放时整屏报成 1920×1080、`pixelRatio=1`），而协议与浏览器半都按**逻辑**像素（DIP，与页面 CSS px 同尺度）使用——页面把物理坐标当逻辑坐标，偏差随窗口离屏幕左侧的距离线性增大（实测 125% + 1920×1080：窗口左边偏 ~31px，移到右半边可达 300+px），所以「窗口越靠右越明显」。we-capture **0.4.3** 起显式声明 per-monitor DPI 感知，并用 `GetDpiForWindow` 把几何换算成逻辑像素再上报（`pixelRatio` 因此是「帧像素 / 逻辑像素」）；前端映射公式不变，同屏 `zoom` 归 1。`SceneAdapter` 增加 0.4.3 版本提示，旧二进制在高 DPI 上会直接说明原因。
 - 修复 Harness 桌面端 Capture 无法连接：帧流使用宿主提供的 `__DSH_TRANSPORT__.streamBaseUrl`，避免将 `dsh-app://app` 错拼成 `ws://app`；网页端继续使用页面地址。新增桌面连接地址与浏览器帧流回归验证。
 
 ## 26.10.3 - 2026-10-04

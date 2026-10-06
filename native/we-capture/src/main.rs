@@ -44,6 +44,9 @@ use windows::Win32::System::WinRT::Graphics::Capture::IGraphicsCaptureItemIntero
 use windows::Win32::Graphics::Gdi::{
     ClientToScreen, EnumDisplayMonitors, GetMonitorInfoW, HDC, HMONITOR, MONITORINFO,
 };
+use windows::Win32::UI::HiDpi::{
+    GetDpiForWindow, SetProcessDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
+};
 use windows::Win32::UI::WindowsAndMessaging::{
     EnumChildWindows, FindWindowExW, GetAncestor, GetClassNameW, GetClientRect, GetWindowRect,
     IsWindowVisible, GA_ROOT,
@@ -52,7 +55,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 /// 版本自报行（SceneAdapter 读取 [VERSION]）。
 /// 必须与 Cargo.toml 的 package.version 一致：`npm run check:package` 会拿它和
 /// `bin/we-capture.exe` 内嵌的版本比对。
-const VERSION: &str = "we-capture-0.4.2";
+const VERSION: &str = "we-capture-0.4.3";
 /// 源码指纹 + 自描述标记（build.rs 构建期注入）。`npm run check:package` 直接在 .exe 里搜这一段，
 /// 与现算的 native 源码指纹比对，从而发现「改了源码但忘了重建 / 忘了把产物拷到 bin/」的过期二进制。
 /// 26.9.12 起的发布包正是踩了这个坑：源码已是 0.4.0（事件驱动出帧），
@@ -61,6 +64,22 @@ const VERSION: &str = "we-capture-0.4.2";
 const BUILD_TAG: &str = concat!("we-capture-build src=", env!("WE_CAPTURE_SRC_HASH"));
 /// 帧格式：0 = JPEG
 const FMT_JPEG: u8 = 0;
+
+/// 显式声明 per-monitor DPI 感知：这样 Win32 窗口坐标才是**物理像素**，
+/// 我们才能用显示器缩放把它换算成浏览器同尺度的逻辑像素（DIP）后再上报。
+/// 不声明的话进程的感知级别随宿主/系统设置漂移，同一台机器上算出来的几何会不一致。
+fn ensure_dpi_awareness() {
+    unsafe {
+        // Err = 已被 manifest 或前一次调用设定，忽略即可
+        let _ = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+    }
+}
+
+/// 窗口所在显示器的缩放（1.0 = 96 DPI，1.25 = 125%）。取不到时按 1.0 处理，绝不让几何异常影响出帧。
+fn monitor_scale(hwnd: HWND) -> f64 {
+    let dpi = unsafe { GetDpiForWindow(hwnd) };
+    if dpi == 0 { 1.0 } else { f64::from(dpi) / 96.0 }
+}
 
 /// 编码流水线深度：捕获线程最多领先编码线程这么多帧，超出即丢帧（防内存堆积）
 const PIPE_DEPTH: usize = 3;
@@ -109,6 +128,8 @@ struct LoadCmd {
 }
 
 fn main() {
+    // 先定下 DPI 感知，后面所有 GetWindowRect / ClientToScreen 的坐标含义才确定。
+    ensure_dpi_awareness();
     // 诊断模式：--selftest <秒> <输出文件> [hwnd] —— 抓 N 秒帧写到文件后退出（绕开 stdin/stdout 管道）
     {
         let args: Vec<String> = std::env::args().collect();
@@ -165,6 +186,7 @@ fn main() {
 
 /// 诊断模式：抓 secs 秒帧写入 out 文件（协议帧格式），然后退出。hwnd 给定则强制捕获该窗口。
 fn selftest(secs: u64, out: &str, hwnd: Option<isize>, out_w: u32, out_h: u32) {
+    ensure_dpi_awareness();
     unsafe {
         let _ = CoIncrementMTAUsage();
     }
@@ -347,14 +369,22 @@ fn run_capture(
     eprintln!(
         "[we-capture] 裁剪区域 x={crop_x} y={crop_y} w={crop_w} h={crop_h}（多显示器仅输出目标屏）"
     );
-    // 浏览器用这一区域将整屏帧对齐到页面的桌面位置。坐标沿用上面的 Win32
-    // 逻辑坐标；pixelRatio 来自降采样前的 WGC 尺寸，不能用 JPEG 的输出分辨率。
+    // 浏览器用这一区域将整屏帧对齐到页面的桌面位置。契约是**逻辑像素**（DIP，与页面
+    // CSS px 同尺度），而上面的 Win32 坐标在本进程里是物理像素 —— 这里按目标窗口所在
+    // 显示器的缩放换算，pixelRatio 因此是「帧像素 / 逻辑像素」（与 JPEG 降采样无关）。
+    // 漏掉这次换算时：125% 缩放的机器上页面会把物理坐标当逻辑坐标用，偏差随窗口离屏幕
+    // 左侧的距离线性增大（窗口在右半边能差 300+px），画面同时被整体放大约 1/scale。
     if let Some(rc) = found.rect {
-        let logical_w = (rc.right - rc.left).max(1);
-        let logical_h = (rc.bottom - rc.top).max(1);
+        let scale = monitor_scale(hwnd);
+        let logical_w = (f64::from(rc.right - rc.left) / scale).max(1.0);
+        let logical_h = (f64::from(rc.bottom - rc.top) / scale).max(1.0);
         eprintln!(
-            "[STATUS]{{\"captureScreen\":{{\"left\":{},\"top\":{},\"width\":{},\"height\":{},\"pixelRatio\":{:.6}}}}}",
-            rc.left, rc.top, logical_w, logical_h, crop_w as f64 / logical_w as f64
+            "[STATUS]{{\"captureScreen\":{{\"left\":{:.4},\"top\":{:.4},\"width\":{:.4},\"height\":{:.4},\"pixelRatio\":{:.6}}}}}",
+            f64::from(rc.left) / scale,
+            f64::from(rc.top) / scale,
+            logical_w,
+            logical_h,
+            crop_w as f64 / logical_w
         );
     }
 

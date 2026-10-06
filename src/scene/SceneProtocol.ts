@@ -36,13 +36,15 @@ export const WS_HEADER_BYTES = 9
 /** renderer stdout 帧头之外的 payload 布局：1B format + 4B width + 4B height = 9 字节 */
 export const STDOUT_PAYLOAD_HEADER_BYTES = 9
 
-/** 捕获图像对应的桌面区域（Windows 逻辑屏幕坐标，不含任务栏裁切）。 */
+/** 捕获图像对应的桌面区域（Windows **逻辑**屏幕坐标 = DIP，与页面 CSS px 同尺度；不含任务栏裁切）。
+ *  高 DPI 显示器上必须换算后再上报：浏览器只懂逻辑像素，直接用 Win32 物理坐标会让偏差随
+ *  窗口离屏幕左侧的距离线性增大（见 native/we-capture/src/main.rs 的 [STATUS] 上报处）。 */
 export interface CaptureScreenRect {
   left: number
   top: number
   width: number
   height: number
-  /** 原始捕获像素 / 逻辑屏幕像素；不受 JPEG 降采样影响。 */
+  /** 帧像素 / 逻辑屏幕像素；不受 JPEG 降采样影响（高 DPI 下 = 显示器缩放）。 */
   pixelRatio: number
 }
 

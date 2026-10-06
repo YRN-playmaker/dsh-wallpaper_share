@@ -9,13 +9,13 @@ import { WallpaperSharePanel } from './WallpaperSharePanel.tsx'
 import { PANEL_CSS } from './panelStyle.ts'
 import { SceneCanvas } from './SceneCanvas.ts'
 import { SceneModelRenderer } from './SceneModelRenderer.ts'
-import { getGaze, startGaze, isGazeRunning } from './GazeLens.ts'
+import { getGaze, startGaze, stopGaze, isGazeRunning } from './GazeLens.ts'
 import { createPersistentSettings } from './settings.ts'
 import { DwpBackgroundLayer } from './dwp-background.ts'
 import { applyDwp, unapplyDwp, fetchApplied } from './market-api.ts'
 import { pulseVars, PULSE_DWP_ID, type PulseChange } from './pulse-vars.ts'
 import { clockSig, clockVars } from './clock-vars.ts'
-import { startFloaterReporter, type FloaterReporter } from './floater-report.ts'
+import { matchesBinding, isTypingBinding } from './hotkeys.ts'
 
 export const inject = ['slots', 'theme']
 
@@ -77,13 +77,12 @@ export interface WeSyncSettings {
   gazeEnabled: boolean
   /** 文字行锁定：眼动时把注视点 Y 锁到最近文字行中心（X 跟随），消除上下抖动 */
   gazeSnapText: boolean
-  /** 桌面悬浮球（仅 Windows + we-floater.exe 可用时生效）：本页被切到后台 / 浏览器最小化时，
-   *  桌面出现一个与侧边栏球同款的环形按钮（颜色随状态），单击切回本页 */
-  floater: boolean
+  /** 沉浸模式快捷键（规格见 hotkeys.ts：'F11' / 'Ctrl+Shift+K'；面板「快捷键设置」可改） */
+  immerseKey: string
+  /** 专注模式快捷键（同上，默认 F10） */
+  focusKey: string
   /** 沉浸模式：隐藏对话 chrome（上边栏 + 输入框），并把 web 壁纸 iframe 置顶解锁鼠标交互 */
   immersive: boolean
-  /** 是否有待用户授权的请求（黄色状态信号） */
-  approvalPending: boolean
   /** 当前挂载为 DSH 背景的 DWP id；null = 未挂载（走 WE 同步）。派生态，不落盘（服务端 applied.json 为事实源）。 */
   dwpMounted: string | null
 }
@@ -102,7 +101,7 @@ export function effectiveVisuals(): { panelAlpha: number; blur: number; shadow: 
 }
 
 /** 出厂默认值：无存档、存档损坏或字段越界时的回退基线。 */
-export const DEFAULT_SETTINGS: WeSyncSettings = { enabled: true, panelAlpha: 72, blur: 6, shadow: 30, monitor: '', focus: false, taskActive: false, renderMode: 'perf', gazeEnabled: false, gazeSnapText: true, floater: false, immersive: false, approvalPending: false, dwpMounted: null }
+export const DEFAULT_SETTINGS: WeSyncSettings = { enabled: true, panelAlpha: 72, blur: 6, shadow: 30, monitor: '', focus: false, taskActive: false, renderMode: 'perf', gazeEnabled: false, gazeSnapText: true, immerseKey: 'F11', focusKey: 'F10', immersive: false, dwpMounted: null }
 
 /** 包内单例 store：apply 循环更新，面板组件订阅渲染。 */
 export const store = {
@@ -111,26 +110,27 @@ export const store = {
    *  模块级持久：conversation.view 是 session 作用域插槽，切会话/轨迹会重挂载面板，
    *  重挂载时直接读这里而不是重新探测，语言才不会"弹回英语"。 */
   locale: null as 'zh' | 'en' | null,
-  /** 用户偏好（同步开关 / 渲染模式 / 显示器锁 / 透明度·模糊·阴影 / 专注·眼动）经 localStorage 持久化：
-   *  写即存，刷新或重启 DSH 后自动恢复。实现见 settings.ts —— 包一层 Proxy，所有
-   *  `store.settings.x = v` 的既有赋值点无需改动即自动落盘；派生态（taskActive /
-   *  approvalPending）与临时视图态（immersive）不在落盘白名单内。
-   *  跨页签改动（storage 事件）就地同步并回调：notify 刷面板，syncFloater 让本页面立刻
-   *  上报新的 enabled 值——不然旧页签的内存态会把别人挂起的球误拆。 */
+  /** 用户偏好（同步开关 / 渲染模式 / 显示器锁 / 透明度·模糊·阴影 / 专注·眼动 / 快捷键）经 localStorage
+   *  持久化：写即存，刷新或重启 DSH 后自动恢复。实现见 settings.ts —— 包一层 Proxy，所有
+   *  `store.settings.x = v` 的既有赋值点无需改动即自动落盘；派生态（taskActive）与临时视图态
+   *  （immersive）不在落盘白名单内。跨页签改动（storage 事件）就地同步并 notify 刷面板。 */
   settings: createPersistentSettings(DEFAULT_SETTINGS, () => {
     store.notify()
-    store.actions.syncFloater()
   }),
+  /** 面板正在录制快捷键（'immersive' | 'focus'；null = 未录制）：录制期间全局快捷键让位给录制器 */
+  hotkeyCapture: null as 'immersive' | 'focus' | null,
   listeners: new Set<() => void>(),
   actions: {
     applyTheme: (): void => {},
     applyBackground: (): void => {},
     applyImmersive: (): void => {},
+    /** 沉浸模式开关（快捷键 → 真实现在下方 apply 内覆盖；含"先切到新会话"） */
+    toggleImmersive: (): void => {},
+    /** 专注模式开关（面板按钮与快捷键共用；含"关专注一并关眼动"） */
+    toggleFocus: (): void => {},
     repoll: (): void => {},
     mountDwp: async (_id: string): Promise<boolean> => false,
     unmountDwp: async (): Promise<void> => {},
-    /** 悬浮球开关变更后立即重发 sync（真实现在下方 ctx.effect 里覆盖） */
-    syncFloater: (): void => {},
   },
   subscribe(fn: () => void): () => void {
     store.listeners.add(fn)
@@ -294,67 +294,31 @@ export function apply(ctx: CordisCtx): void {
   immersiveStyleTag.dataset.plugin = 'dsh-wallpaper_share'
   document.head.appendChild(immersiveStyleTag)
 
-  // 球形状态按钮：侧边栏收起时出现在左缘（搜索下方），点击切换沉浸模式，颜色随状态变化
-  const orbBtn = document.createElement('button')
-  orbBtn.type = 'button'
-  orbBtn.title = ''
-  orbBtn.style.cssText = 'position:fixed;left:11px;top:232px;width:34px;height:34px;border-radius:50%;border:3px solid rgba(255,255,255,0.4);cursor:pointer;z-index:2147483001;opacity:0;visibility:hidden;background:rgba(15,16,20,0.4);box-shadow:0 2px 8px rgba(0,0,0,0.45);outline:none;transition:opacity 0.25s ease, visibility 0.25s ease, border-color 0.25s ease;'
-  document.body.appendChild(orbBtn)
-
-  const STATUS_COLORS = { approval: '#eab308', running: '#3b82f6', idle: '#22c55e' }
-
-  // 页签身份：sessionStorage 存一份，刷新不变 —— 服务端按页记账（多页签互不踩踏），
-  // 刷新后新 reporter 用同一个 id 覆盖旧记录而不是留下要等 TTL 才过期的孤儿。
-  const floaterPageId = (): string => {
-    try {
-      let id = sessionStorage.getItem('we-sync.floater-page')
-      if (id === null) {
-        id = Math.random().toString(36).slice(2) + Date.now().toString(36)
-        sessionStorage.setItem('we-sync.floater-page', id)
-      }
-      return id
-    } catch { return 'legacy' /* 隐私模式等拿不到存储：退回旧版共享桶 */ }
+  // —— 快捷键：沉浸模式（默认 F11）/ 专注模式（默认 F10），规格与匹配见 hotkeys.ts。
+  //  焦点在输入框里时只让位给「打字键」（单字符 / 编辑键）：F11 这类功能键在输入框里照常触发，
+  //  否则在输入框内按 F11 会没反应。面板录制期间整体让位给录制器。
+  const isEditableTarget = (target: EventTarget | null): boolean => {
+    if (!(target instanceof HTMLElement)) return false
+    if (target.isContentEditable) return true
+    const tag = target.tagName
+    return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'
   }
-
-  // —— 桌面悬浮球上报器：可见性/标题/状态色 → node 半（纯实现与测试见 floater-report.ts）。
-  //   enabled 关闭时上报器只发轻量 sync（node 半收到即 teardown），零桌面痕迹。
-  let floaterReporter: FloaterReporter | null = null
-  try {
-    floaterReporter = startFloaterReporter({
-      visibilityState: () => (document.visibilityState === 'hidden' ? 'hidden' : 'visible'),
-      title: () => document.title,
-      pageId: floaterPageId,
-      onFocus: (fn) => { window.addEventListener('focus', fn); return () => window.removeEventListener('focus', fn) },
-      onBlur: (fn) => { window.addEventListener('blur', fn); return () => window.removeEventListener('blur', fn) },
-      onVisibilityChange: (fn) => { document.addEventListener('visibilitychange', fn); return () => document.removeEventListener('visibilitychange', fn) },
-      onPageHide: (fn) => { window.addEventListener('pagehide', fn); return () => window.removeEventListener('pagehide', fn) },
-      setInterval: (fn, ms) => window.setInterval(fn, ms),
-      clearInterval: (handle) => window.clearInterval(handle),
-      setTimeout: (fn, ms) => window.setTimeout(fn, ms),
-      clearTimeout: (handle) => window.clearTimeout(handle),
-      send: (url, body, keepalive) => {
-        void fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, keepalive }).catch(() => {})
-      },
-    }, () => store.settings.floater)
-    store.actions.syncFloater = () => floaterReporter?.syncNow()
-  } catch { /* 无 DOM（测试环境）等情况不影响页面其余部分 */ }
-
-  function syncStatus(): void {
-    // 优先级：待授权(黄) > 任务进行中(蓝) > 空闲(绿)
-    const approval = document.querySelector('[data-approval-key]') !== null
-    if (approval !== store.settings.approvalPending) {
-      store.settings.approvalPending = approval
-      store.notify()
+  function onHotkey(ev: KeyboardEvent): void {
+    if (ev.repeat || store.hotkeyCapture !== null) return
+    const editable = isEditableTarget(ev.target)
+    if (matchesBinding(store.settings.immerseKey, ev)) {
+      if (editable && isTypingBinding(store.settings.immerseKey)) return
+      ev.preventDefault()
+      toggleImmersive()
+      return
     }
-    const color = approval ? STATUS_COLORS.approval : (store.settings.taskActive ? STATUS_COLORS.running : STATUS_COLORS.idle)
-    orbBtn.style.borderColor = color
-    floaterReporter?.pingColor(color.slice(1)) // 悬浮球环色与侧边球同步（hex 无 #）
-    orbBtn.title = approval ? '等待授权' : (store.settings.taskActive ? '任务进行中' : '空闲')
-    // 仅在侧边栏收起时显示球形按钮（opacity/visibility 过渡动画）
-    const sidebarCollapsed = document.querySelector('[data-sidebar-collapsed]') !== null
-    orbBtn.style.opacity = sidebarCollapsed ? '1' : '0'
-    orbBtn.style.visibility = sidebarCollapsed ? 'visible' : 'hidden'
+    if (matchesBinding(store.settings.focusKey, ev)) {
+      if (editable && isTypingBinding(store.settings.focusKey)) return
+      ev.preventDefault()
+      toggleFocus()
+    }
   }
+  document.addEventListener('keydown', onHotkey)
 
   function applyImmersive(): void {
     const on = store.settings.immersive
@@ -370,7 +334,7 @@ export function apply(ctx: CordisCtx): void {
       ].join(', ') + ' { opacity: 0 !important; pointer-events: none !important; transition: opacity 0.3s ease !important; }'
       : ''
     if (mediaEl instanceof HTMLIFrameElement) {
-      // 沉浸时置顶，但不遮住侧边栏（左缘 56px rail），保留侧边栏与球形按钮可点
+      // 沉浸时置顶，但不遮住侧边栏（左缘 56px rail）——侧边栏仍可点，点其中任意按钮即退出沉浸
       mediaEl.style.zIndex = on ? '2147483000' : '-2'
       mediaEl.style.pointerEvents = on ? 'auto' : 'none'
       mediaEl.style.left = on ? '56px' : '0'
@@ -521,9 +485,10 @@ export function apply(ctx: CordisCtx): void {
     focusLens.style.background = 'transparent'
   }
 
-  orbBtn.addEventListener('click', () => {
+  /** 沉浸模式开关：快捷键（默认 F11，可在面板「快捷键设置」改）触发。
+   *  进入前若当前不是新会话页面，先切到新会话——沉浸会藏起正文与输入框，留一个干净壁纸面。 */
+  function toggleImmersive(): void {
     if (!store.settings.immersive) {
-      // 进入沉浸前：若当前不是新会话页面，先切到新会话
       const snap = sessionsNow()?.list.getSnapshot()
       const id = snap?.current
       const isBlank = id === undefined || (snap != null && snap.byId[id]?.blank === true)
@@ -535,7 +500,24 @@ export function apply(ctx: CordisCtx): void {
     store.settings.immersive = !store.settings.immersive
     applyImmersive()
     store.notify()
-  })
+  }
+  store.actions.toggleImmersive = toggleImmersive
+
+  /** 专注模式开关：面板按钮与快捷键（默认 F10）共用。专注是透镜总开关，
+   *  关闭时一并关掉眼动（释放摄像头）——眼动只是专注的子模式。 */
+  function toggleFocus(): void {
+    const next = !store.settings.focus
+    store.settings.focus = next
+    if (!next && store.settings.gazeEnabled) {
+      store.settings.gazeEnabled = false
+      stopGaze()
+    }
+    applyTheme()
+    applyBackground()
+    store.notify()
+  }
+  store.actions.toggleFocus = toggleFocus
+
   // 侧边栏收起时，点击其中任意按钮都退出沉浸
   function onDocClick(ev: MouseEvent): void {
     if (!store.settings.immersive) return
@@ -559,15 +541,8 @@ export function apply(ctx: CordisCtx): void {
   }
   document.addEventListener('keydown', onImmersiveKey)
 
-  // 状态同步：观察审批面板出现/消失 + 侧边栏收起状态，更新球形按钮颜色与显隐
-  syncStatus()
-  let statusRaf: number | null = null
-  const scheduleSync = (): void => {
-    if (statusRaf !== null) return
-    statusRaf = requestAnimationFrame(() => { statusRaf = null; syncStatus() })
-  }
-  const statusObserver = new MutationObserver(() => { scheduleSync() })
-  statusObserver.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-sidebar-collapsed'] })
+  // 状态色（待授权 / 任务进行中 / 空闲）随状态圆点与悬浮球一并移除：这里不再需要 DOM 观察器，
+  // 「任务进行中」只由下方 sessions 订阅驱动专注模式的浓度（见 ctx.inject(['sessions'])）。
 
   /** 渲染模式 → DWP 纹理档位：「增强/完整」用高档纹理，其余（预览/捕获）用低档。 */
   function qualityOf(mode: 'eco' | 'perf' | 'enhanced'): 'sd' | 'hd' {
@@ -807,12 +782,8 @@ export function apply(ctx: CordisCtx): void {
     styleTag.remove()
     panelStyleTag.remove()
     immersiveStyleTag.remove()
-    orbBtn.remove()
-    floaterReporter?.dispose()
-    floaterReporter = null
-    store.actions.syncFloater = () => {}
     destroyFocusLens()
-    statusObserver.disconnect()
+    document.removeEventListener('keydown', onHotkey)
     document.removeEventListener('keydown', onImmersiveKey)
     document.removeEventListener('click', onDocClick, true)
     stopSceneLayers()
@@ -829,7 +800,7 @@ export function apply(ctx: CordisCtx): void {
 
   // 任务状态检测：订阅 sessions 列表快照，任意会话（跨工作区）running = 任务进行中。
   // 必须走 ctx.inject：'sessions' 由宿主在插件 apply 之后才提供，直接 ctx.get 会拿到
-  // undefined，导致 orb 一直显示空闲绿、专注模式的"任务中"浓淡也不切换。
+  // undefined，导致专注模式的"任务中"浓淡永远停在空闲档。
   ctx.inject(['sessions'], (scope) => {
     const sessions = scope.get('sessions') as unknown as SessionsService | undefined
     if (sessions === undefined) return
@@ -839,7 +810,6 @@ export function apply(ctx: CordisCtx): void {
       if (active !== store.settings.taskActive) {
         store.settings.taskActive = active
         if (store.settings.focus) { applyTheme(); applyBackground() }
-        syncStatus()
         store.notify()
       }
     }

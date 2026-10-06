@@ -45,6 +45,14 @@ const HEALTH_INTERVAL_MS = 1000
  */
 const MIN_CAPTURE_VERSION = '0.4.0'
 
+/**
+ * 几何上报口径修正的最低版本：0.4.3 起捕获器把 Win32 **物理**像素按显示器缩放换算成
+ * **逻辑**像素（DIP）再上报。低于它的二进制在 125% / 150% 这类高 DPI 缩放上，页面会把
+ * 物理坐标当逻辑坐标用 —— 背景与真实壁纸错位，且偏差随窗口越靠屏幕右侧越大。
+ * 100% 缩放（逻辑 = 物理）时旧版看不出问题，所以这里只在版本过旧时提示、不做阻断。
+ */
+const MIN_CAPTURE_GEOMETRY_VERSION = '0.4.3'
+
 /** 语义化版本比较（只比较前 3 段数字）：a < b */
 function versionLess(a: string, b: string): boolean {
   const pa = a.split('.').map((s) => Number.parseInt(s, 10))
@@ -244,11 +252,20 @@ export class SceneAdapter {
     const version = this.capabilities?.version ?? ''
     if (!version.startsWith('we-capture-')) return
     const semver = version.slice('we-capture-'.length)
-    if (!versionLess(semver, MIN_CAPTURE_VERSION)) return
-    this.log(
-      '[SceneRenderer] ⚠ 捕获器 ' + version + ' 过旧（低于 ' + MIN_CAPTURE_VERSION + '）：出帧被 100ms 轮询封顶在 ~8fps，' +
-      '与分辨率 / 画质 / 窗口是否可见都无关。请更新到自带 we-capture ≥ ' + MIN_CAPTURE_VERSION + ' 的插件版本。',
-    )
+    if (versionLess(semver, MIN_CAPTURE_VERSION)) {
+      this.log(
+        '[SceneRenderer] ⚠ 捕获器 ' + version + ' 过旧（低于 ' + MIN_CAPTURE_VERSION + '）：出帧被 100ms 轮询封顶在 ~8fps，' +
+        '与分辨率 / 画质 / 窗口是否可见都无关。请更新到自带 we-capture ≥ ' + MIN_CAPTURE_VERSION + ' 的插件版本。',
+      )
+      return
+    }
+    if (versionLess(semver, MIN_CAPTURE_GEOMETRY_VERSION)) {
+      this.log(
+        '[SceneRenderer] ⚠ 捕获器 ' + version + ' 的几何是 Win32 物理像素（低于 ' + MIN_CAPTURE_GEOMETRY_VERSION + '）：' +
+        '在 125% / 150% 等高 DPI 缩放下背景会与真实壁纸错位，且窗口越靠屏幕右侧偏差越大。' +
+        '请更新到自带 we-capture ≥ ' + MIN_CAPTURE_GEOMETRY_VERSION + ' 的插件版本。',
+      )
+    }
   }
 
   private onStatus(s: Record<string, unknown>): void {

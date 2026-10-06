@@ -3,7 +3,7 @@
 <div align="center">
   <a href="https://www.npmjs.com/package/dsh-wallpaper_share"><img alt="npm version" src="https://img.shields.io/npm/v/dsh-wallpaper_share" /></a>
   <a href="LICENSE"><img alt="GPL-3.0 license" src="https://img.shields.io/badge/License-GPL--3.0-blue.svg" /></a>
-  <a href="https://github.com/YRN-playmaker/dsh-wallpaper_share"><img alt="GitHub version 26.10.3" src="https://img.shields.io/badge/GitHub-26.10.3-4d6bfe" /></a>
+  <a href="https://github.com/YRN-playmaker/dsh-wallpaper_share"><img alt="GitHub version 26.10.6-D" src="https://img.shields.io/badge/GitHub-26.10.6--D-4d6bfe" /></a>
 </div>
 
 [English](README.md#english) · [双语 README](README.md)
@@ -36,7 +36,7 @@
 - **Rainy Day 雨滴优化**：修复俄文素材名加载、雨滴与法线图集错位、拖尾方向、旋转折射和透明度；跳过隐藏雨层，并减少无用轨迹记录与背景纹理分配。
 - **捕获器与发布检查**：随包原生产物已重建；清单编码、入口文件与原生源码指纹在打包前检查，避免发出过期程序。
 
-完整记录见 [CHANGELOG.md](CHANGELOG.md)。本仓库版本为 **26.10.3**；npm 的实际可用版本以页面徽章和注册表为准。
+完整记录见 [CHANGELOG.md](CHANGELOG.md)。本仓库版本为 **26.10.6-D**；npm 的实际可用版本以页面徽章和注册表为准。
 
 <a id="zh-install"></a>
 ### 安装与升级
@@ -56,7 +56,7 @@ dsh plugin --profile web add github:YRN-playmaker/dsh-wallpaper_share
 dsh plugin --profile web add dsh-wallpaper_share
 
 # 自行打包的本地安装包
-dsh plugin --profile web add ./dsh-wallpaper_share-26.10.3.tgz
+dsh plugin --profile web add ./dsh-wallpaper_share-26.10.6-D.tgz
 ```
 
 安装或升级后，**重启 DSH Web profile 并刷新浏览器页面**。默认地址为 `http://127.0.0.1:3080`，实际端口以启动日志为准。仅刷新页面不会更新已加载的后端程序。
@@ -92,8 +92,8 @@ dsh plugin --profile web add ./dsh-wallpaper_share-26.10.3.tgz
 - **视觉效果**：调整面板透明度、壁纸模糊和阴影；同步开关与渲染偏好会保存到本地。
 - **专注透镜**：圆心清晰、圆外模糊，默认跟随鼠标；开启专注后，视觉浓度随任务状态调整。
 - **眼动追踪**：可选摄像头推断视线，提供 9 点校准、文字吸附与抗抖动；首次使用需要联网加载模型并授予摄像头权限。关闭眼动或专注时释放摄像头。
-- **沉浸模式**：收起侧边栏后，点击左缘圆形状态灯隐藏会话界面；再次点击、按 `Esc` 或点击侧边栏按钮退出。灯色表示空闲、任务进行中或等待授权。
-- **桌面悬浮球**：Windows 专属，默认关闭。页面离开前台时显示状态球，点击可切回页面；支持拖动记忆位置，右键或双击临时收起。
+- **沉浸模式**：快捷键切换（默认 `F11`，可在面板「快捷键设置」里改成任意按键）。开启时先切到新会话并隐藏会话界面、只留壁纸；再按一次、按 `Esc`，或点侧边栏任意按钮退出。
+- **专注模式快捷键**：同样可自定义（默认 `F10`），与面板里的「专注模式」按钮等效。
 - **壁纸库**：管理本地 DWP、WE 应用与启动器应用；市场支持搜索、筛选、安装与更新。管理模式支持多选卸载 DWP 和启动器应用，Steam 工坊内容不参与批量删除。
 - **应用启动器**：支持 HTTP(S) 直链及 139 分享链接，导入 `.zip`、`.7z` 或 `.exe`；智能粘贴可从分享文本识别链接、提取码、解压密码和启动文件。应用在「本地 → 应用」启动，列表显示名称、位置与下载时间。
 - **DWP 背景**：挂载自定义壁纸包后由 WebGL2 渲染，低配时回退 Canvas2D；挂载期间暂停 WE 同步。内置工作区脉搏可展示近期文件变化，支持昼夜变量与纹理档位。
@@ -143,7 +143,7 @@ dsh plugin --profile web add ./dsh-wallpaper_share-26.10.3.tgz
 <a id="zh-troubleshooting"></a>
 ### 限制与排查
 
-- 原生捕获和桌面悬浮球仅支持 Windows；捕获取的是桌面壁纸层，可能包含桌面图标。
+- 原生捕获仅支持 Windows；捕获取的是桌面壁纸层，可能包含桌面图标。
 - WE 暂停渲染时，捕获动画也暂停；窗口移动仍可重绘最后一帧。实际帧率受 WE 自身帧率、输出分辨率和编码耗时影响。
 - 浏览器「完整」模式对复杂 shader、SceneScript 或特定效果的支持仍有限；需要匹配 WE 原始效果时优先选择捕获。
 - DWP 挂载期间会暂停 WE 背景同步；眼动追踪依赖摄像头及浏览器安全上下文（localhost 或 HTTPS）。
@@ -185,7 +185,7 @@ node tools/test-capture-browser.mjs --native
 
 - `src/scene/`：场景协议、捕获中继、素材解析与骨骼模型。
 - `src/client/`：面板、背景层、图层效果、粒子与窗口裁切。
-- `native/we-capture/`：Windows 捕获器与悬浮球源码；`bin/` 是随包程序。
+- `native/we-capture/`：Windows 捕获器源码；`bin/` 是随包程序。
 - `vendor/dwp/`：DWP 运行时快照；`src/market/`、`src/launcher/` 管理壁纸库与应用。
 - `docs/`：格式与实现记录，包括 [scene-fallback.md](docs/scene-fallback.md) 和 [effect-shake.md](docs/effect-shake.md)。
 

@@ -11,6 +11,7 @@ import { fetchCatalog, fetchInstalled, buildCards, searchCards, collectTags, ins
 import { fetchInstalled as fetchLauncherInstalled, installApp, uninstallApp, launchApp, isValidHttpUrl, get139Auth, set139Auth, getLauncherRoot, setLauncherRoot, type InstalledApp } from './launcher-api.ts'
 import { appsForSub, formatInstalledAt, launcherAppDir, matchLauncherRecord, partitionApps, type AppSub } from './library-model.ts'
 import { CONFIDENCE_AUTO, CONFIDENCE_LOW, parseInstallShareText } from './share-parser.ts'
+import { bindingFromEvent } from './hotkeys.ts'
 
 /* =========================================================================
  * 1. 国际化字典 (i18n Dictionary)
@@ -48,10 +49,15 @@ const DICT = {
     focusIntro: '随任务自适应调节背景效果',
     flashFocusOn: '专注模式已开启：注视点透镜跟随鼠标（圆心清晰）；可再开「眼动追踪」改为跟随视线',
     flashFocusOff: '专注模式已关闭，恢复手动滑块',
-    floaterMode: '桌面悬浮球',
-    flashFloaterOn: '桌面悬浮球已开启：本页切到后台 / 浏览器最小化时，桌面出现环形悬浮球，单击切回本页',
-    flashFloaterOff: '桌面悬浮球已关闭',
-    floaterUnsupported: '桌面悬浮球需要 Windows 宿主且随包携带 we-floater.exe（当前不可用）',
+    immersiveMode: '沉浸模式',
+    flashImmersiveOn: '已进入沉浸模式：对话与输入框已隐藏，按 Esc 退出',
+    flashImmersiveOff: '已退出沉浸模式',
+
+    // 快捷键设置（沉浸模式 / 专注模式，键位在面板里录制替换）
+    hotkeysTitle: '快捷键设置',
+    hotkeyPress: '请按新按键…',
+    hotkeysHint: '点右侧按钮后按下新按键即替换，录制中按 Esc 取消；单键快捷键（不带修饰键）在输入框里让位给打字，功能键与组合键照常触发。',
+    flashHotkeySaved: '快捷键已更新：',
 
     // 渲染模式（三档：预览 / 捕获 / 完整）
     renderModeTitle: '渲染模式',
@@ -272,10 +278,15 @@ const DICT = {
     focusIntro: 'Background adjusts adaptively to your task',
     flashFocusOn: 'Focus mode on: lens follows mouse (clear center); enable Eye Tracking to follow gaze instead',
     flashFocusOff: 'Focus mode off, manual sliders restored',
-    floaterMode: 'Desktop Orb',
-    flashFloaterOn: 'Desktop orb on: when this tab goes to the background or the browser minimizes, a ring button appears on your desktop; click it to return here',
-    flashFloaterOff: 'Desktop orb off',
-    floaterUnsupported: 'Desktop orb needs a Windows host with we-floater.exe bundled (unavailable here)',
+    immersiveMode: 'Immersive Mode',
+    flashImmersiveOn: 'Immersive mode on: chat chrome hidden, press Esc to exit',
+    flashImmersiveOff: 'Immersive mode off',
+
+    // Hotkeys (immersive / focus mode, rebound by recording in the panel)
+    hotkeysTitle: 'Keyboard Shortcuts',
+    hotkeyPress: 'Press a key…',
+    hotkeysHint: 'Click the button, then press the new key to replace it; press Esc to cancel. Bare single-key shortcuts defer to typing inside text fields, while function keys and modifier combos keep firing.',
+    flashHotkeySaved: 'Shortcut updated: ',
 
     // Render mode (Preview / Capture / Full)
     renderModeTitle: 'Render Mode',
@@ -512,9 +523,11 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
   const [gazeError, setGazeError] = useState('')
   const [gazeSnapText, setGazeSnapText] = useState(store.settings.gazeSnapText)
   const [needsCalib, setNeedsCalib] = useState(false)
-  const [floater, setFloater] = useState(store.settings.floater)
-  /** 能力探测结果（GET /we-sync/floater）：false = 非 Windows 或 we-floater.exe 缺失，开关置灰 */
-  const [floaterSupported, setFloaterSupported] = useState(true)
+  /** 快捷键（规格见 hotkeys.ts）：默认 F11 / F10，点按钮录制替换 */
+  const [immerseKey, setImmerseKey] = useState(store.settings.immerseKey)
+  const [focusKey, setFocusKey] = useState(store.settings.focusKey)
+  /** 正在录制哪一个（null = 不在录制） */
+  const [capturing, setCapturing] = useState<'immersive' | 'focus' | null>(null)
   useEffect(() => onGazeStatus((s, err) => { setGazeStatus(s); setGazeError(err) }), [])
   // —— 三页虚拟滚动：一套滚轮全接管（设置 ⇄ 壁纸库 ⇄ dwp创作）——
   const CHARGE_THRESHOLD = 600 // deltaY 累积阻力阈值（常规轻滑不翻页）
@@ -539,6 +552,8 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
   const progDwpRef = useRef<HTMLSpanElement | null>(null)
   const progRefs = [progSetRef, progLibRef, progDwpRef]
   const libLoadedRef = useRef(false)
+  /** 上一次看到的沉浸模式状态：快捷键切换后据此 flash（面板被藏起来时看不到提示） */
+  const immersiveRef = useRef(store.settings.immersive)
   const capRef = useRef<(() => void) | null>(null) // 引擎测出的可用高度重算入口（页切换时调用）
   const pageRef = useRef<PanelPage>('settings')
   pageRef.current = page
@@ -924,27 +939,43 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
     setRenderMode(store.settings.renderMode)
     setGazeEnabled(store.settings.gazeEnabled)
     setGazeSnapText(store.settings.gazeSnapText)
-    setFloater(store.settings.floater)
+    setImmerseKey(store.settings.immerseKey)
+    setFocusKey(store.settings.focusKey)
+    // 沉浸模式由快捷键切换（不落盘）：面板被藏起来时看不到提示，退出那一下正好补上——在面板
+    // 重新可见时才读得到「已退出沉浸模式」，所以这里按变化 flash，而不是在按键处理里 flash。
+    if (store.settings.immersive !== immersiveRef.current) {
+      immersiveRef.current = store.settings.immersive
+      flash(store.settings.immersive ? t.flashImmersiveOn : t.flashImmersiveOff)
+    }
     force((x) => x + 1)
   }), [])
 
   // 挂载时加载自定义壁纸目录列表
   useEffect(() => { void loadDirs() }, [])
 
-  // 悬浮球能力探测：node 半不在 Windows / 没带 we-floater.exe 时置灰开关；
-  // 探测失败（服务端未就绪）保持可用态不干扰——真正的 sync 上报自带容错。
+  // —— 快捷键录制：捕获阶段拦截按键，录制期间全局快捷键让位（store.hotkeyCapture）——
+  // Esc 取消；只按修饰键不产生规格（bindingFromEvent 返回 null，继续等下一个键）。
   useEffect(() => {
-    let dead = false
-    void fetch('/we-sync/floater', { cache: 'no-store' })
-      .then((r) => r.json() as Promise<{ supported?: boolean }>)
-      .then((s) => {
-        if (dead || s.supported !== false) return
-        setFloaterSupported(false)
-        if (store.settings.floater) { store.settings.floater = false; store.notify() }
-      })
-      .catch(() => { /* 未就绪：保持原状 */ })
-    return () => { dead = true }
-  }, [])
+    if (capturing === null) return
+    store.hotkeyCapture = capturing
+    const onRecord = (ev: KeyboardEvent): void => {
+      ev.preventDefault()
+      ev.stopPropagation()
+      if (ev.key === 'Escape') { setCapturing(null); return }
+      const binding = bindingFromEvent(ev)
+      if (binding === null) return
+      if (capturing === 'immersive') store.settings.immerseKey = binding
+      else store.settings.focusKey = binding
+      store.notify()
+      setCapturing(null)
+      flash(t.flashHotkeySaved + (capturing === 'immersive' ? t.immersiveMode : t.focusMode) + ' → ' + binding)
+    }
+    window.addEventListener('keydown', onRecord, true)
+    return () => {
+      window.removeEventListener('keydown', onRecord, true)
+      store.hotkeyCapture = null
+    }
+  }, [capturing])
 
   const flash = (text: string): void => {
     setStatus(text)
@@ -983,30 +1014,12 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
     store.actions.repoll()
   }
 
+  // 专注模式开关：真实现在 index.ts（toggleFocus），面板按钮与 F10 走同一条路径
+  // （关专注一并关眼动、释放摄像头）。这里只负责按钮文案反馈。
   const onFocus = (): void => {
     const next = !store.settings.focus
-    store.settings.focus = next
-    setFocus(next)
-    // 专注是透镜总开关：关闭专注时一并关掉眼动（释放摄像头）——眼动只是专注的子模式
-    if (!next && store.settings.gazeEnabled) {
-      store.settings.gazeEnabled = false
-      setGazeEnabled(false)
-      stopGaze()
-    }
-    store.actions.applyTheme()
-    store.actions.applyBackground()
+    store.actions.toggleFocus()
     flash(next ? t.flashFocusOn : t.flashFocusOff)
-  }
-
-  // —— 桌面悬浮球：开关只改本地偏好并立刻重发 sync（node 半据此起停 we-floater.exe）。
-  // 能力不支持（非 Windows / 缺 exe）时拒绝开启并提示——绝不让面板显示假的"已开启"。
-  const onFloater = (): void => {
-    if (!floaterSupported) { flash(t.floaterUnsupported); return }
-    const next = !store.settings.floater
-    store.settings.floater = next
-    setFloater(next)
-    store.actions.syncFloater()
-    flash(next ? t.flashFloaterOn : t.flashFloaterOff)
   }
 
   const onRenderMode = (mode: 'eco' | 'perf' | 'enhanced'): void => {
@@ -1626,14 +1639,6 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
           })}
         </div>
         <div className="wesync-actions">
-          <button
-            className={['wesync-btn', floater ? 'wesync-focusOn' : 'wesync-focusOff'].join(' ')}
-            onClick={onFloater}
-            disabled={!floaterSupported}
-            title={floaterSupported ? '' : t.floaterUnsupported}
-          >
-            {t.floaterMode}
-          </button>
           <div className="wesync-focuswrap" onMouseEnter={() => setFocusHover(true)} onMouseLeave={() => setFocusHover(false)}>
             <button className={['wesync-btn', focus ? 'wesync-focusOn' : 'wesync-focusOff'].join(' ')} onClick={onFocus}>
               {t.focusMode}
@@ -1680,6 +1685,25 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
                 <Slider label={t.shadow} min={0} max={100} value={shadow} unit="%" onChange={onShadow} />
               </>
             )}
+      </div>
+      <div className="wesync-card">
+        <div className="wesync-sub">{t.hotkeysTitle}</div>
+        <div className="wesync-keys">
+          {([['immersive', t.immersiveMode, immerseKey], ['focus', t.focusMode, focusKey]] as const).map(([which, name, key]) => (
+            <div className="wesync-key-row" key={which}>
+              <span className="wesync-key-name">{name}</span>
+              <span className="wesync-key-dash" aria-hidden="true">────</span>
+              <button
+                type="button"
+                className={['wesync-btn', capturing === which ? 'wesync-focusOn' : 'wesync-focusOff'].join(' ')}
+                onClick={() => setCapturing(capturing === which ? null : which)}
+              >
+                {capturing === which ? t.hotkeyPress : key}
+              </button>
+            </div>
+          ))}
+        </div>
+        <div className="wesync-key-hint">{t.hotkeysHint}</div>
       </div>
       <div className="wesync-card">
         <div className="wesync-dirs">

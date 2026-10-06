@@ -1,6 +1,6 @@
 [package]
 name = "we-capture"
-version = "0.4.2"
+version = "0.4.3"
 edition = "2021"
 description = "Wallpaper Engine 实时画面捕获器：用 Windows Graphics Capture 抓 WE 壁纸窗口，按 SceneAdapter 协议输出 JPEG 帧流"
 license = "MIT"
@@ -24,11 +24,9 @@ windows = { version = "0.58", features = [
   "Win32_System_Threading",
   "Win32_Graphics_Gdi",
   "Win32_UI_WindowsAndMessaging",
-  # we-floater（桌面悬浮球）：UIA 切浏览器页签 + 进程 DPI 感知 + 捕获拖拽 + 单实例互斥
-  "Win32_UI_Accessibility",
+  # 几何上报：显式 DPI 感知 + GetDpiForWindow（把 Win32 物理坐标换算成浏览器同尺度的逻辑像素）
   "Win32_UI_HiDpi",
-  "Win32_UI_Input_KeyboardAndMouse",
-  "Win32_Security",
+  # WinRT 互操作（Graphics Capture 帧池）：捕获路径所需，与 Windows 运行时类型同源
   "Graphics_DirectX",
   "Graphics_DirectX_Direct3D11",
   "Graphics_Capture",

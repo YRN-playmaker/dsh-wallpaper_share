@@ -31,7 +31,6 @@ export function validatePackageBytes(bytes) {
 /** 随包发布的原生产物：exe 名 → 版本常量所在源码 / 标记前缀 */
 export const NATIVE_BINARIES = [
   { exe: 'we-capture.exe', rs: 'src/main.rs', prefix: 'we-capture' },
-  { exe: 'we-floater.exe', rs: 'src/bin/we-floater.rs', prefix: 'we-floater' },
 ];
 
 const FNV_OFFSET = 0xcbf29ce484222325n;

@@ -4,14 +4,15 @@
  * 做法：把 store.settings 包一层 Proxy —— 任何 `store.settings.x = v` 写入都自动落盘，
  * 现有十几处直接赋值的调用点一行都不用改，也不会出现「加了新设置项却忘了存」的情况。
  *
- * 只持久化「用户偏好」。以下三类刻意不落盘：
- *   - taskActive / approvalPending：运行时从 sessions 快照与 DOM 派生，存下来只会读到过期脏值；
+ * 只持久化「用户偏好」。以下两类刻意不落盘：
+ *   - taskActive：运行时从 sessions 快照派生，存下来只会读到过期脏值；
  *   - immersive：临时视图态，刷新后把聊天标题栏 + 输入框藏起来是惊吓不是恢复。
  *
  * 读取时逐字段校验并夹取范围：手改过的、旧版本残留的、损坏的 JSON 一律回退默认值，
  * 绝不让一份坏存档把面板搞崩。存储不可用（隐私模式 / 配额满）时静默降级为「不持久化」。
  */
 import type { WeSyncSettings } from './index.ts'
+import { isValidBinding } from './hotkeys.ts'
 
 /** localStorage 键（沿用插件内部 id 前缀 we-sync） */
 export const SETTINGS_STORAGE_KEY = 'we-sync.settings'
@@ -19,7 +20,7 @@ export const SETTINGS_STORAGE_KEY = 'we-sync.settings'
 /** 落盘字段白名单；不在表内的字段（派生态 / 临时态）写入不触发保存，也不会被存下 */
 const PERSISTED_KEYS: readonly (keyof WeSyncSettings)[] = [
   'enabled', 'panelAlpha', 'blur', 'shadow', 'monitor', 'focus',
-  'renderMode', 'gazeEnabled', 'gazeSnapText', 'floater',
+  'renderMode', 'gazeEnabled', 'gazeSnapText', 'immerseKey', 'focusKey',
 ]
 
 const asNumber = (v: unknown, fallback: number, min: number, max: number): number =>
@@ -45,10 +46,11 @@ export function sanitizeSettings(raw: unknown, d: WeSyncSettings): WeSyncSetting
     // 眼动是专注的子模式：专注没开就不可能存在眼动
     gazeEnabled: focus && asBoolean(o.gazeEnabled, d.gazeEnabled),
     gazeSnapText: asBoolean(o.gazeSnapText, d.gazeSnapText),
-    floater: asBoolean(o.floater, d.floater),
+    // 快捷键：只接受 hotkeys.ts 认定的规范规格，手改的垃圾值回退默认（F11 / F10）
+    immerseKey: isValidBinding(o.immerseKey) ? o.immerseKey : d.immerseKey,
+    focusKey: isValidBinding(o.focusKey) ? o.focusKey : d.focusKey,
     // 派生态 / 临时态：永远从默认值起，不接受存档
     taskActive: d.taskActive,
-    approvalPending: d.approvalPending,
     immersive: d.immersive,
   }
 }
@@ -69,8 +71,8 @@ export function readStoredSettings(defaults: WeSyncSettings): WeSyncSettings {
  * 滑块拖动会高频触发写入，故合并成 250ms 的尾随写；页面隐藏 / 关闭前强制补一次，避免丢最后一次改动。
  *
  * onRemoteChange：跨页签同步 —— 另一个页签改了设置（storage 事件只在其他页签触发）时，
- * 把新值就地写进本页面 target（绕开 Proxy 避免回写震荡）并回调，让面板镜像与悬浮球上报跟上
- * （否则旧页签内存里 floater=false 会一直上报错误开关值，把别人挂起的球误拆——实测过的坑）。
+ * 把新值就地写进本页面 target（绕开 Proxy 避免回写震荡）并回调，让面板镜像与本页快捷键跟上
+ * （否则旧页签内存里的旧快捷键会继续按老键触发）。
  */
 export function createPersistentSettings(defaults: WeSyncSettings, onRemoteChange?: () => void): WeSyncSettings {
   const target = readStoredSettings(defaults)

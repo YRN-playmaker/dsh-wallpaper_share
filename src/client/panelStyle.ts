@@ -793,6 +793,48 @@ body[data-ds-dark-theme] .wesync-gaze-status.is-error { color: #fdba74; }
   color: var(--dsw-alias-label-secondary);
 }
 
+/* 快捷键设置：一行一项（名称 ──── 键位按钮），点按钮进入录制态 */
+.wesync-keys {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.wesync-key-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wesync-key-name {
+  flex: 0 0 auto;
+  font-size: 12px;
+  color: var(--dsw-alias-label-primary);
+}
+
+.wesync-key-dash {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--dsw-alias-label-secondary);
+  opacity: 0.45;
+}
+
+.wesync-key-row .wesync-btn {
+  flex: 0 0 auto;
+  min-width: 96px;
+  text-align: center;
+}
+
+.wesync-key-hint {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--dsw-alias-label-secondary);
+  opacity: 0.85;
+}
+
 /* ── 应用启动器 · Smart Paste（整段分享文本 → 自动解析进下面四个字段）──────
    不是替代品：原文留在文本框里可继续编辑，解析结果仍可在输入框微调。 */
 .wesync-paste {
