@@ -1,7 +1,7 @@
 # dsh-wallpaper_share
 
 <div align="center">
-  <b>Wallpaper Engine → DeepSeek Harness Web</b><br /><br />
+  <b>Wallpaper Engine → DeepSeek Harness Web / Desktop</b><br /><br />
   <a href="https://github.com/YRN-playmaker/dsh-wallpaper_share"><img alt="GitHub version 26.10.6-D" src="https://img.shields.io/badge/GitHub-26.10.6--D-4d6bfe" /></a>
   <a href="https://www.npmjs.com/package/dsh-wallpaper_share"><img alt="npm version" src="https://img.shields.io/npm/v/dsh-wallpaper_share" /></a>
   <a href="https://www.npmjs.com/package/dsh-wallpaper_share"><img alt="npm downloads" src="https://img.shields.io/npm/dm/dsh-wallpaper_share" /></a>
@@ -18,11 +18,11 @@
 <a id="中文"></a>
 ## 中文
 
-把 Wallpaper Engine（WE）当前壁纸同步为 DeepSeek Harness（DSH）Web 界面的背景，在 `wallpaper_share` 标签页调整渲染模式、透明度、模糊、阴影、专注透镜与壁纸库。已适配 harness `0.1.5`。
+把 Wallpaper Engine（WE）当前壁纸同步为 DeepSeek Harness（DSH）Web / 桌面端界面的背景，在 `wallpaper_share` 标签页调整渲染模式、透明度、模糊、阴影、专注透镜与壁纸库。已适配 harness `0.1.5`。
 
 同步功能读取 WE 状态，不更改桌面壁纸。安装目录会自动检测；眼动追踪在本机推理，摄像头画面不上传。
 
-- [26.10.3 更新](#zh-update)
+- [26.10.6-D 更新](#zh-update)
 - [安装与升级](#zh-install)
 - [渲染模式与窗口跟随](#zh-render)
 - [功能与操作](#zh-features)
@@ -31,14 +31,15 @@
 - [开发与验证](#zh-development)
 
 <a id="zh-update"></a>
-### 26.10.3 更新
+### 26.10.6-D 更新
 
-- **捕获模式跟随窗口位置**：小窗口显示其在所选显示器上对应的壁纸区域，移动或调整大小时保持桌面比例；WE 暂停出帧时仍能查看最后一帧的对应区域。处理标题栏偏移、网页缩放与模糊留边。
-- **完整模式人物形变修复**：修正 Ayanami Rei-凌波丽『night』等壁纸的方向场解码与多次 shake 效果串联，恢复局部毛发摆动，解决人物异常平移、动画停滞及部分画面翻转。
-- **Rainy Day 雨滴优化**：修复俄文素材名加载、雨滴与法线图集错位、拖尾方向、旋转折射和透明度；跳过隐藏雨层，并减少无用轨迹记录与背景纹理分配。
-- **捕获器与发布检查**：随包原生产物已重建；清单编码、入口文件与原生源码指纹在打包前检查，避免发出过期程序。
+- **桌面端捕获连接修复**：Capture 使用 Harness 桌面端提供的帧流地址，解决桌面端无法连接的问题；Web 端继续使用页面地址连接。
+- **高 DPI 窗口跟随修复**：随包捕获器升级为 **we-capture 0.4.3**，正确处理 Windows 显示缩放，修复 125% 等缩放下背景与真实壁纸错位、窗口越靠右偏差越大的问题。
+- **自定义快捷键**：新增「快捷键设置」卡片，沉浸模式默认 `F11`、专注模式默认 `F10`；支持录制新按键或组合键，设置会保存并在重启后恢复。
+- **移除状态圆点**：删除侧边栏和右上角状态圆点，避免桌面端显示异常。专注模式仍会根据会话任务状态调整视觉浓度。
+- **移除桌面悬浮球**：不再提供悬浮球开关、状态显示和点击返回窗口功能，随包也不再包含悬浮球程序。沉浸模式通过快捷键进入。
 
-完整记录见 [CHANGELOG.md](CHANGELOG.md)。本仓库版本为 **26.10.3**；npm 的实际可用版本以页面徽章和注册表为准。
+完整记录见 [CHANGELOG.md](CHANGELOG.md) 的 `Unreleased` 段落。本 README 对应仓库版本 **26.10.6-D**；npm `web` 标签仍对应 **26.10.3**，不包含上述桌面端更新。
 
 <a id="zh-install"></a>
 ### 安装与升级
@@ -91,7 +92,7 @@ dsh plugin --profile web add ./dsh-wallpaper_share-26.10.6-D.tgz
 
 **窗口跟随仅用于原生 scene 捕获**，在运行 WE 的同一台电脑上生效。小窗口位于屏幕左侧就显示左侧区域，移到右侧就显示右侧区域。鼠标移入页面后自动校准标题栏偏移；全屏时显示整屏。跟随范围由「背景显示器」决定，跨屏使用时请选择对应显示器，窗口超出所选屏幕的部分不会拉伸补齐。
 
-需要新版本捕获器和前后端同时更新。旧捕获器、静态预览及浏览器回退仍居中铺满。原生捕获失败时，场景背景依次回退为浏览器渲染、提取纹理、预览图；当前通路显示在面板副标题。
+**高 DPI 显示缩放需要 we-capture 0.4.3 或更新版本**，并同步更新前后端。捕获器会按显示器缩放转换屏幕坐标，使背景与窗口所在区域对齐；旧捕获器会提示升级。不提供屏幕坐标的旧捕获器、静态预览及浏览器回退仍居中铺满。原生捕获失败时，场景背景依次回退为浏览器渲染、提取纹理、预览图；当前通路显示在面板副标题。
 
 <a id="zh-features"></a>
 ### 功能与操作
@@ -99,11 +100,17 @@ dsh plugin --profile web add ./dsh-wallpaper_share-26.10.6-D.tgz
 - **视觉效果**：调整面板透明度、壁纸模糊和阴影；同步开关与渲染偏好会保存到本地。
 - **专注透镜**：圆心清晰、圆外模糊，默认跟随鼠标；开启专注后，视觉浓度随任务状态调整。
 - **眼动追踪**：可选摄像头推断视线，提供 9 点校准、文字吸附与抗抖动；首次使用需要联网加载模型并授予摄像头权限。关闭眼动或专注时释放摄像头。
-- **沉浸模式**：快捷键切换（默认 `F11`，可在面板「快捷键设置」里改成任意按键）。开启时先切到新会话并隐藏会话界面、只留壁纸；再按一次、按 `Esc`，或点侧边栏任意按钮退出。
+- **沉浸模式**：快捷键切换（默认 `F11`，可在面板「快捷键设置」里修改）。开启时先切到新会话并隐藏会话界面、只留壁纸；再按一次、按 `Esc`，或点侧边栏任意按钮退出。
 - **专注模式快捷键**：同样可自定义（默认 `F10`），与面板里的「专注模式」按钮等效。
 - **壁纸库**：管理本地 DWP、WE 应用与启动器应用；市场支持搜索、筛选、安装与更新。管理模式支持多选卸载 DWP 和启动器应用，Steam 工坊内容不参与批量删除。
 - **应用启动器**：支持 HTTP(S) 直链及 139 分享链接，导入 `.zip`、`.7z` 或 `.exe`；智能粘贴可从分享文本识别链接、提取码、解压密码和启动文件。应用在「本地 → 应用」启动，列表显示名称、位置与下载时间。
 - **DWP 背景**：挂载自定义壁纸包后由 WebGL2 渲染，低配时回退 Canvas2D；挂载期间暂停 WE 同步。内置工作区脉搏可展示近期文件变化，支持昼夜变量与纹理档位。
+
+**快捷键设置**
+
+在「视觉效果」与「壁纸读取位置」之间找到「快捷键设置」，点击对应功能右侧的键位按钮，再按下新按键或组合键即可替换；录制中按 `Esc` 取消。录制期间不会触发沉浸或专注切换，设置会自动保存。组合键需要完整匹配，例如绑定 `Ctrl+K` 后单按 `K` 不会触发。在输入框或可编辑文本区域内，普通字符及编辑键让位于输入；`F10`、`F11` 和组合键仍可触发。
+
+当前版本已移除侧边栏 / 右上角状态圆点及桌面悬浮球；专注模式的任务状态响应保留。
 
 **壁纸同步界面**
 
@@ -121,7 +128,7 @@ dsh plugin --profile web add ./dsh-wallpaper_share-26.10.6-D.tgz
 
 ![设置面板](https://github.com/user-attachments/assets/7d652c07-8344-4de3-abbd-75620375c0b6)
 
-截图用于介绍界面，具体布局以当前版本为准。
+截图用于介绍界面，可能来自旧版本；其中若有状态圆点或桌面悬浮球，已不适用于 26.10.6-D。具体布局以当前版本为准。
 
 <a id="zh-config"></a>
 ### 配置
@@ -161,7 +168,8 @@ dsh plugin --profile web add ./dsh-wallpaper_share-26.10.6-D.tgz
 1. 安装或升级后重启 DSH，并刷新页面。
 2. 确认 `wallpaper_share` 标签页出现，检查浏览器控制台有无插件加载错误。
 3. 查看 `/we-sync/diag` 的显示器、捕获器版本和当前渲染状态；捕获模式下确认 WE 已运行。
-4. 安装目录检测失败时配置 `wallpaperEngineDir`；反馈问题时附上插件版本、harness 版本和错误信息。
+4. Windows 显示缩放下背景错位时，确认捕获器为 **0.4.3** 或更新版本；桌面端 Capture 无法连接时，确认已安装包含桌面连接修复的 **26.10.6-D**，并重启宿主以加载新版本。
+5. 安装目录检测失败时配置 `wallpaperEngineDir`；反馈问题时附上插件版本、harness 版本和错误信息。
 
 <a id="zh-development"></a>
 ### 开发与验证
@@ -204,11 +212,11 @@ node tools/test-capture-browser.mjs --native
 <a id="english"></a>
 ## English
 
-Sync the active Wallpaper Engine (WE) wallpaper into the DeepSeek Harness (DSH) Web UI. Use the `wallpaper_share` tab to adjust rendering, transparency, blur, shadows, the focus lens and the wallpaper library. Adapted for harness `0.1.5`.
+Sync the active Wallpaper Engine (WE) wallpaper into the DeepSeek Harness (DSH) Web / Desktop UI. Use the `wallpaper_share` tab to adjust rendering, transparency, blur, shadows, the focus lens and the wallpaper library. Adapted for harness `0.1.5`.
 
 Wallpaper sync reads WE state without changing your desktop wallpaper. The installation directory is detected automatically. Eye tracking runs locally; camera frames are not uploaded.
 
-- [What's new in 26.10.3](#en-update)
+- [What's new in 26.10.6-D](#en-update)
 - [Install and upgrade](#en-install)
 - [Render modes and window following](#en-render)
 - [Features and controls](#en-features)
@@ -217,14 +225,15 @@ Wallpaper sync reads WE state without changing your desktop wallpaper. The insta
 - [Development and validation](#en-development)
 
 <a id="en-update"></a>
-### What's new in 26.10.3
+### What's new in 26.10.6-D
 
-- **Capture follows the window:** a smaller window shows the wallpaper region underneath it on the selected display. Moving or resizing preserves the desktop scale, including when WE stops sending new frames. Browser chrome, page zoom and blur padding are handled.
-- **Character deformation in Full mode:** corrected direction-map decoding and chained shake effects for wallpapers such as Ayanami Rei-凌波丽『night』. Local hair movement is restored, with fixes for unwanted character translation, frozen animation and flipped output.
-- **Rainy Day rain effects:** corrected Cyrillic asset loading, separate color and normal atlases, trail direction, rotated refraction and opacity. Hidden rain layers are skipped; unnecessary path histories and background texture allocations are reduced.
-- **Capture binaries and package checks:** the shipped native programs have been rebuilt. Checks reject invalid manifest encoding, missing entry files and native binaries that do not match the source fingerprint.
+- **Desktop Capture connection:** Capture now uses the stream address supplied by Harness Desktop, fixing failed desktop connections. The Web UI continues to connect through its page address.
+- **High-DPI window following:** the bundled **we-capture 0.4.3** handles Windows display scaling correctly, fixing wallpaper misalignment at scaling levels such as 125% and offsets that grew as the window moved right.
+- **Custom keyboard shortcuts:** the new Keyboard Shortcuts card lets you record keys or key combinations for immersive mode (default `F11`) and focus mode (default `F10`). Bindings are saved and restored after restarting.
+- **Status dots removed:** sidebar and top-right status dots have been removed to avoid desktop display issues. Focus intensity still adapts to session task activity.
+- **Desktop floater removed:** its switch, status display, return-to-window action and bundled program are no longer available. Use the keyboard shortcut to enter immersive mode.
 
-See [CHANGELOG.md](CHANGELOG.md) for details. The repository version is **26.10.6-D**; the npm badge and registry show the version actually available on npm.
+See the `Unreleased` section of [CHANGELOG.md](CHANGELOG.md) for details. This README describes repository version **26.10.6-D**. The npm `web` tag still selects **26.10.3**, which does not include these desktop updates.
 
 <a id="en-install"></a>
 ### Install and upgrade
@@ -277,7 +286,7 @@ Full is the mode's name; the browser renderer remains a subset of the WE engine.
 
 **Window following applies to native scene capture only**, on the computer running WE. A window on the left shows the left desktop region; moving it right shows the right region. Moving the pointer into the page calibrates the browser chrome offset. Fullscreen shows the whole display. **Background monitor** sets the capture boundary: select the corresponding monitor when moving between displays. Areas beyond the selected display are not filled by stretching its edges.
 
-This requires updating the capture program, frontend and backend together. Older capture programs, static previews and browser fallback still use a centered cover layout. When native capture fails, the scene background falls back through browser rendering, extracted textures and the preview image. The panel subtitle identifies the active path.
+High-DPI display scaling requires **we-capture 0.4.3 or newer**, with both frontend and backend updated. The capture program converts screen coordinates using the display scale to align the background with the window; older versions show an upgrade hint. Older capture programs without screen geometry, static previews and browser fallback still use a centered cover layout. When native capture fails, the scene background falls back through browser rendering, extracted textures and the preview image. The panel subtitle identifies the active path.
 
 <a id="en-features"></a>
 ### Features and controls
@@ -290,6 +299,12 @@ This requires updating the capture program, frontend and backend together. Older
 - **Wallpaper library:** manage local DWP packages, WE apps and launcher apps. The market supports search, filters, installation and updates. Management mode allows bulk uninstall of DWP and launcher apps; Steam workshop content is excluded from bulk deletion.
 - **App launcher:** import `.zip`, `.7z` or `.exe` files using HTTP(S) direct links or 139 share links. Smart Paste detects the link, share passcode, archive password and launch file from a share post. Launch apps from **Local → Apps**; the list shows name, location and download time.
 - **DWP backgrounds:** custom wallpaper packages render through WebGL2 with a Canvas2D fallback. WE background sync pauses while a DWP is mounted. The built-in Workspace Pulse displays recent file changes; day/night variables and texture tiers are supported.
+
+**Keyboard Shortcuts**
+
+Find Keyboard Shortcuts between Visual Effects and Wallpaper Read Locations. Click the binding button beside a function, then press a new key or key combination; press `Esc` to cancel recording. Immersive and focus shortcuts are suspended during recording, and new bindings are saved automatically. Modifiers must match exactly: `K` alone does not trigger a `Ctrl+K` binding. In input fields and editable text, plain character and editing keys are reserved for typing; `F10`, `F11` and key combinations still work.
+
+Sidebar / top-right status dots and the desktop floater have been removed. Focus mode still responds to task activity.
 
 **Wallpaper sync**
 
@@ -307,7 +322,7 @@ This requires updating the capture program, frontend and backend together. Older
 
 ![Settings panel](https://github.com/user-attachments/assets/7d652c07-8344-4de3-abbd-75620375c0b6)
 
-These screenshots illustrate the interface; the current layout may differ.
+These screenshots may show older versions. Any status dots or desktop floater shown are no longer available in 26.10.6-D; refer to the current interface for the layout.
 
 <a id="en-config"></a>
 ### Configuration
@@ -347,7 +362,8 @@ If the background is blank, the version looks old or the tab is missing:
 1. Restart DSH after installing or upgrading, then refresh the page.
 2. Check that `wallpaper_share` appears and inspect the browser console for plugin-loading errors.
 3. Check `/we-sync/diag` for monitors, capture version and render status. Make sure WE is running when using Capture.
-4. Set `wallpaperEngineDir` if detection fails. Include the plugin version, harness version and error text when reporting a problem.
+4. For wallpaper misalignment with Windows display scaling, check that the capture program is **0.4.3** or newer. For failed desktop Capture connections, install **26.10.6-D** with the desktop connection fix and restart the host.
+5. Set `wallpaperEngineDir` if detection fails. Include the plugin version, harness version and error text when reporting a problem.
 
 <a id="en-development"></a>
 ### Development and validation
