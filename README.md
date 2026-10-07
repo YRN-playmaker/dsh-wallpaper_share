@@ -53,8 +53,13 @@ dsh plugin --profile web add github:YRN-playmaker/dsh-wallpaper_share
 
 其他来源：
 
+Web 端可通过 npm 的 `web` 标签获取：下方命令中的 `--profile web` 指定 DSH Web profile，`@web` 指定插件的 Web 版本。`web` 标签当前指向 `26.10.3`；如需固定该版本，可将 `@web` 替换为 `@26.10.3`。
+
 ```bash
-# npm 当前版本
+# Web 端版本（npm web 标签）
+dsh plugin --profile web add dsh-wallpaper_share@web
+
+# npm 当前默认版本（latest 标签）
 dsh plugin --profile web add dsh-wallpaper_share
 
 # 自行打包的本地安装包
@@ -234,8 +239,13 @@ dsh plugin --profile web add github:YRN-playmaker/dsh-wallpaper_share
 
 Other sources:
 
+To get the Web version, use the npm `web` tag: `--profile web` selects the DSH Web profile, while `@web` selects the plugin's Web version. The `web` tag currently points to `26.10.3`; replace `@web` with `@26.10.3` to pin that version.
+
 ```bash
-# Current npm version
+# Web version (npm web tag)
+dsh plugin --profile web add dsh-wallpaper_share@web
+
+# Current default npm version (latest tag)
 dsh plugin --profile web add dsh-wallpaper_share
 
 # A locally packed installation archive
