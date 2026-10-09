@@ -139,8 +139,7 @@ dsh plugin --profile web add ./dsh-wallpaper_share-26.10.9-D.tgz
 ![壁纸库界面](https://github.com/user-attachments/assets/7567c226-7ea4-4fcb-a3b7-11190ee681ff)
 
 **设置面板**
-
-![设置面板](https://github.com/user-attachments/assets/7d652c07-8344-4de3-abbd-75620375c0b6)
+<img width="1050" height="703" alt="image" src="https://github.com/user-attachments/assets/272420f1-3730-40b1-b683-c8c7654db0f3" />
 
 截图用于介绍界面，可能来自旧版本；其中若有状态圆点或桌面悬浮球，已不适用于 26.10.6-D。具体布局以当前版本为准。
 
@@ -352,7 +351,8 @@ Sidebar / top-right status dots and the desktop floater have been removed. Focus
 
 **Settings panel**
 
-![Settings panel](https://github.com/user-attachments/assets/7d652c07-8344-4de3-abbd-75620375c0b6)
+<img width="1050" height="703" alt="image" src="https://github.com/user-attachments/assets/19cb21fe-441a-4e18-bb29-ef61c173b8f5" />
+
 
 These screenshots may show older versions. Any status dots or desktop floater shown are no longer available in 26.10.6-D; refer to the current interface for the layout.
 
