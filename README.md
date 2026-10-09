@@ -35,7 +35,7 @@
 <a id="zh-update"></a>
 ### 26.10.9-D 更新
 
-- **DeepSeek 日夜侧边栏**：普通悬停变蓝，选中项显示两层深色游鱼剪影，剪影缩小 10%；DeepSeek 品牌按钮除外。支持展开、收起、刷新恢复和减少动态效果偏好。
+- **DeepSeek 日夜 壁纸适配**：普通悬停变蓝，选中项显示两层深色游鱼剪影，剪影缩小 10%；DeepSeek 品牌按钮除外。支持展开、收起、刷新恢复和减少动态效果偏好。
 - **配套 DWP 1.2.0**：日夜壁纸包附带新版插件使用说明，保留昼夜切换和两档纹理。
 
 #### 26.10.6-D 更新
@@ -225,7 +225,7 @@ node tools/test-capture-browser.mjs --native
 
 我是 [YRN-playmaker](https://github.com/YRN-playmaker)，这个插件的开发者。感谢你使用、反馈问题和分享这个项目。
 
-如果这个插件对你有帮助，欢迎通过 [Ko-fi 支持我](https://ko-fi.com/yrnplaymaker)，为后续维护、兼容适配与新功能开发提供支持。赞助完全自愿，插件功能免费使用。
+如果这个插件对你有帮助，欢迎通过 [Ko-fi 支持我](https://ko-fi.com/yrnplaymaker)请我喝杯咖啡，以加速维护、兼容适配与新功能开发提供支持。
 
 
 ---
@@ -437,8 +437,7 @@ Follow [AGENTS.md](AGENTS.md) and the [encoding and release rules](docs/encoding
 
 I’m [YRN-playmaker](https://github.com/YRN-playmaker), the developer of this plugin. Thank you for using it, reporting issues and sharing the project.
 
-If you find this plugin useful, you can [support me on Ko-fi](https://ko-fi.com/yrnplaymaker) to help with maintenance, compatibility updates and new features. Sponsorship is entirely optional; the plugin remains free to use.
-
+If this plugin is helpful to you, please consider supporting me by [contributing to me on Ko-fi](https://ko-fi.com/yrnplaymaker) to help me get a cup of coffee. This will also facilitate maintenance, compatibility adaptation, and the development of new features.
 
 ---
 
