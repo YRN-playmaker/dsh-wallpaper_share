@@ -11,7 +11,7 @@ on:
         required: true
         type: string
       tag:
-        description: 要挂的 dist-tag（如 1.0.1-rc / rc / test / latest）
+        description: 要挂的 dist-tag（latest / desktop 同步设置，仅允许 -D 版本；或 web / rc / test）
         required: true
         type: string
 
@@ -28,7 +28,18 @@ jobs:
           registry-url: https://registry.npmjs.org
 
       - name: Add dist-tag
-        run: npm dist-tag add dsh-wallpaper_share@$INPUTS_VERSION $TAG
+        shell: bash
+        run: |
+          if [[ "$TAG" == latest || "$TAG" == desktop ]]; then
+            if [[ "$INPUTS_VERSION" != *-D ]]; then
+              echo "latest / desktop require a -D version." >&2
+              exit 1
+            fi
+            npm dist-tag add "dsh-wallpaper_share@$INPUTS_VERSION" desktop
+            npm dist-tag add "dsh-wallpaper_share@$INPUTS_VERSION" latest
+          else
+            npm dist-tag add "dsh-wallpaper_share@$INPUTS_VERSION" "$TAG"
+          fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           INPUTS_VERSION: ${{ inputs.version }}

@@ -2,9 +2,9 @@
 # 触发：Actions 页面手动 Run workflow（选分支）。
 # 凭证：仓库 secret NPM_TOKEN（npmjs.com → Access Tokens → Publish 类型）。
 # 仓库自带预构建 lib/，无需 install/build，直接 publish。
-# 版本语义：纯数字版本（26.9.10）→ latest；预发布版本必须显式 --tag（npm 拒绝把
-#   预发布版挂上 latest，2026-09-10 run #4 失败即此因）：-T → test，-rc* → rc，
-#   其它后缀原样作 tag；也可用 tag 输入覆盖。
+# 版本语义：-D → latest + desktop；纯数字版本 → web；-T → test；-rc* → rc。
+# desktop 是安装渠道，-D 是版本号后缀；默认安装始终优先桌面版。
+# 手动 tag 输入可覆盖渠道；latest / desktop 仅允许 -D 版本，并同步更新两者。
 name: Publish to npm
 
 on:
@@ -15,7 +15,7 @@ on:
         type: boolean
         default: false
       tag:
-        description: dist-tag（留空 = 预发布版按后缀自动选：T→test，rc*→rc）
+        description: dist-tag（留空自动选：D→latest+desktop，纯数字→web，T→test，rc→rc）
         type: string
         default: ''
 
@@ -26,6 +26,9 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-24.04
+    concurrency:
+      group: npm-publish
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v7
 
@@ -53,15 +56,24 @@ jobs:
           elif [[ "$V" == *-* ]]; then
             SUFFIX="${V##*-}"
             case "$SUFFIX" in
+              D) TAG=latest ;;
               [Tt]|test) TAG=test ;;
               rc*) TAG=rc ;;
-              *) TAG="$SUFFIX" ;;
+              *) echo "Unknown version suffix: $SUFFIX. Specify a dist-tag explicitly." >&2; exit 1 ;;
             esac
-          fi
-          if [ -n "$TAG" ]; then
-            npm publish --provenance --tag "$TAG" $DRY_RUN
           else
-            npm publish --provenance $DRY_RUN
+            TAG=web
+          fi
+          if [[ "$TAG" == latest || "$TAG" == desktop ]]; then
+            if [[ "$V" != *-D ]]; then
+              echo "latest / desktop require a -D version." >&2
+              exit 1
+            fi
+            TAG=latest
+          fi
+          npm publish --provenance --tag "$TAG" $DRY_RUN
+          if [[ "$TAG" == latest && -z "$DRY_RUN" ]]; then
+            npm dist-tag add "$(node -p "require('./package.json').name")@$V" desktop
           fi
 
       - name: Show result
