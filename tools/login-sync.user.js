@@ -1,18 +1,4 @@
-/**
- * 登录态同步助手（Tampermonkey 用户脚本）v3.1.0 —— 139 网盘。
- *
- * 在 yun.139.com / caiyun.139.com 拦截页面自身 API 请求（hook XHR setRequestHeader / fetch），
- * 从真实 Authorization 头捕获登录态 —— v1.0 教训：按 cookie 名 `authorization` 直读会被
- * Kaspersky 注入的同名 cookie 污染（实测同步进去的是 gc.kis.v2.scr.kaspersky-labs.com 的
- * URL）；cookie / GM_cookie 仅作兜底且同样过校验。POST /we-sync/launcher/139auth。
- *
- * 服务端有严格归一校验（normalize139Authorization），杂讯进不来。
- * （百度网盘分享链接支持已移除：2026 风控下自盘接口绑定设备指纹，非 PDF 大文件无法由服务端
- *  取得下载直链，故不再提供百度登录态同步。）
- */
-export const HELPER_SYNC_URL = '/we-sync/login-sync.user.js'
-
-export const HELPER_SYNC_SCRIPT = `// ==UserScript==
+// ==UserScript==
 // @name         DSH 壁纸插件 · 登录态同步助手（139 网盘）
 // @namespace    dsh-wallpaper-share
 // @version      3.1.0
@@ -33,7 +19,7 @@ export const HELPER_SYNC_SCRIPT = `// ==UserScript==
 (function () {
   'use strict'
   var HOST = location.hostname
-  var IS139 = /(^|\\.)yun\\.139\\.com$/.test(HOST) || /(^|\\.)caiyun\\.139\\.com$/.test(HOST)
+  var IS139 = /(^|\.)yun\.139\.com$/.test(HOST) || /(^|\.)caiyun\.139\.com$/.test(HOST)
   if (!IS139) return
 
   // ── 公共：右上角提示条 ─────────────────────────────────────────────
@@ -72,13 +58,13 @@ export const HELPER_SYNC_SCRIPT = `// ==UserScript==
     if (!v) return false
     var s = String(v).trim()
     if (s.indexOf('%') >= 0) { try { s = decodeURIComponent(s) } catch (e) { /* 原样 */ } }
-    if (/^Basic\\s/i.test(s)) s = s.replace(/^Basic\\s+/i, '')
+    if (/^Basic\s/i.test(s)) s = s.replace(/^Basic\s+/i, '')
     var inner = ''
     if (/^[A-Za-z0-9+/=]+$/.test(s)) { try { inner = atob(s) } catch (e) { /* 非法 b64 */ } }
-    if (!/^\\w+:[^:]*:.+/.test(inner)) inner = s
+    if (!/^\w+:[^:]*:.+/.test(inner)) inner = s
     var parts = inner.split(':')
     if (parts.length !== 3) return false
-    return /^\\w{1,32}$/.test(parts[0]) && parts[1].length >= 4 && /^[\\d@.a-zA-Z_-]+$/.test(parts[1]) && parts[2].length > 0
+    return /^\w{1,32}$/.test(parts[0]) && parts[1].length >= 4 && /^[\d@.a-zA-Z_-]+$/.test(parts[1]) && parts[2].length > 0
   }
 
   var captured139 = '' // 只保存在当前页面内存，供用户主动复制
@@ -172,4 +158,3 @@ export const HELPER_SYNC_SCRIPT = `// ==UserScript==
   setTimeout(pollFallback139, 2000)
   setInterval(pollFallback139, 10000)
 })()
-`

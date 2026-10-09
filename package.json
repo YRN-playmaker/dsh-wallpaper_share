@@ -62,6 +62,7 @@
     "vendor/dwp/",
     "tools/scene-renderer/",
     "tools/check-package.mjs",
-    "docs/encoding-and-release.md"
+    "docs/encoding-and-release.md",
+    "tools/login-sync.user.js"
   ]
 }

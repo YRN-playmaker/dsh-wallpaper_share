@@ -118,6 +118,7 @@ dsh plugin --profile web add ./dsh-wallpaper_share-26.10.9-D.tgz
 - **应用启动器**：支持 HTTP(S) 直链及 139 分享链接，导入 `.zip`、`.7z` 或 `.exe`；智能粘贴可从分享文本识别链接、提取码、解压密码和启动文件。应用在「本地 → 应用」启动，列表显示名称、位置与下载时间。
 - **DWP 背景**：挂载自定义壁纸包后由 WebGL2 渲染，低配时回退 Canvas2D；挂载期间暂停 WE 同步。内置工作区脉搏可展示近期文件变化，支持昼夜变量与纹理档位。
 - **DeepSeek 日夜侧边栏效果**：使用包含此功能的新版插件，挂载「DeepSeek 日夜」后，普通悬停显示蓝色背景，选中项显示深色鱼剪影游动；品牌按钮除外。系统开启「减少动态效果」时剪影静止。效果随插件提供，无需替换 DWP 包；仅更新壁纸包不会为旧版插件增加此功能。
+- **139 登录态导入（桌面端）**：安装 / 更新油猴登录态同步助手，在浏览器登录139网盘并打开文件列表或分享页；从油猴菜单点击「复制 139 登录态（用于桌面端粘贴）」，回到壁纸库点击「手动导入登录态」，粘贴并保存。随后粘贴分享内容、点击「下载安装」，安装后从应用栏启动（每次确认）。Web端仍可自动同步；其他网盘需提供可下载的直链。
 
 **快捷键设置**
 
@@ -329,6 +330,7 @@ High-DPI display scaling requires **we-capture 0.4.3 or newer**, with both front
 - **App launcher:** import `.zip`, `.7z` or `.exe` files using HTTP(S) direct links or 139 share links. Smart Paste detects the link, share passcode, archive password and launch file from a share post. Launch apps from **Local → Apps**; the list shows name, location and download time.
 - **DWP backgrounds:** custom wallpaper packages render through WebGL2 with a Canvas2D fallback. WE background sync pauses while a DWP is mounted. The built-in Workspace Pulse displays recent file changes; day/night variables and texture tiers are supported.
 - **DeepSeek Day & Night sidebar effects:** with a plugin release containing this feature, mounting this wallpaper enables blue hover backgrounds and dark swimming fish on selected items, excluding the brand button. Reduced-motion preferences keep the fish still. The effect ships with the plugin; updating only the DWP package does not add it to older plugin versions.
+- **139 login import (desktop):** install/update the Tampermonkey login helper, sign in to 139 and open its file list or share page. Choose “复制 139 登录态（用于桌面端粘贴）” in the helper menu; return to Wallpaper Library, click “Import login state”, paste and save. Then paste the share text and install. Launching an installed app still asks for confirmation each time. Web auto-sync remains available; other drives require a downloadable direct URL.
 
 **Keyboard Shortcuts**
 

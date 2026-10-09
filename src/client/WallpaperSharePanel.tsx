@@ -1,3 +1,4 @@
+import { loginHelperUrl } from './login-helper-url.ts'
 import { DwpEditorCard } from './DwpEditorCard.tsx'
 /**
  * wallpaper_share 会话视图标签页：当前壁纸信息、同步开关、显示器选择、
@@ -176,7 +177,7 @@ const DICT = {
     launcherPwdNeed: '压缩包已加密，请填写解压密码后重试',
     launcherPwdWrong: '解压密码错误，或压缩包已损坏',
     launcherAuthTitle: '139 登录态',
-    launcherAuthHint: '手动方式：登录 yun.139.com 后，F12 → 网络 → 任意请求 → 请求标头里的 Authorization，整串复制粘贴到这里',
+    launcherAuthHint: '桌面端：在浏览器登录139网盘，油猴菜单 →「复制 139 登录态（用于桌面端粘贴）」；回到这里粘贴并保存。登录态仅保存在本机，请勿分享。也可复制请求标头 Authorization。',
     launcherHelperLink: '一键方式：安装登录态同步助手（139 网盘）',
     launcherTutorialBeta: '该功能为测试版本',
     launcherTutorialPrepTitle: '启动前的准备：',
@@ -188,14 +189,14 @@ const DICT = {
     launcherTutorialUse1: '1. 把分享内容整段粘贴到上方输入框（自动解析），或直接在对话框内填入下载链接、解压密码、提取码、名称',
     launcherTutorialUse2: '2. 点击「下载安装」',
     launcherTutorialUse3: '3. 看到应用栏出现应用后，单击启动应用（每次启动有确认弹窗）',
-    launcherAuthPlaceholder: 'Basic xxxx… 或 basic:手机号:token',
-    launcherAuthSave: '保存',
+    launcherAuthPlaceholder: '粘贴助手复制的139登录态…',
+    launcherAuthSave: '保存登录态', launcherAuthImport: '手动导入登录态', launcherTutorialPrep4: '桌面端：在网盘打开文件列表或分享页，从油猴菜单复制139登录态，回到下方「139登录态」粘贴并保存。Web端可继续自动同步。',
     launcherAuthClear: '清除',
     launcherAuthSaved: '139 登录态已保存',
     launcherAuthNeed: '139 原始文件下载需要登录态，请在下方粘贴 Authorization',
     launcherAuthNeedShort: '该 139 链接需要登录态：',
     launcherAuthOpenBtn: '一键打开 139 并登录',
-    launcherAuthWaiting: '等待登录态同步…（登录后自动检测，最多 10 分钟）',
+    launcherAuthWaiting: '等待自动同步…桌面端也可直接复制、粘贴并保存。',
     launcherAuthSynced: '✔ 已同步 139 登录态，可以安装了',
     launcherRootTag: '（启动器安装位置）',
     launcherRootChange: '更改',
@@ -405,7 +406,7 @@ const DICT = {
     launcherPwdNeed: 'Archive is encrypted — enter the password and retry',
     launcherPwdWrong: 'Wrong password, or the archive is corrupted',
     launcherAuthTitle: '139 Login (Authorization)',
-    launcherAuthHint: 'Manual: sign in at yun.139.com, open DevTools → Network → any request → copy the whole Authorization request header, paste it here',
+    launcherAuthHint: 'Desktop: sign in to 139 in your browser, choose Copy 139 login state in the Tampermonkey menu, then paste and save here. Stored locally; do not share. Copying the Authorization request header also works.',
     launcherHelperLink: 'One-click: install the login-sync helper (139 drive)',
     launcherTutorialBeta: 'This feature is in beta',
     launcherTutorialPrepTitle: 'First-time setup:',
@@ -417,14 +418,14 @@ const DICT = {
     launcherTutorialUse1: '1. Paste the whole share post into the box above (auto-parsed), or fill in link, archive password, passcode and title directly',
     launcherTutorialUse2: '2. Click "Install"',
     launcherTutorialUse3: '3. Once the app tile appears in the library, click it to launch (a confirm dialog shows each time)',
-    launcherAuthPlaceholder: 'Basic xxxx… or basic:phone:token',
-    launcherAuthSave: 'Save',
+    launcherAuthPlaceholder: 'Paste the 139 login state copied by the helper…',
+    launcherAuthSave: 'Save login state', launcherAuthImport: 'Import login state', launcherTutorialPrep4: 'Desktop: open the drive file list or share page, copy 139 login state from the Tampermonkey menu, then paste and save below. Web users can still use automatic sync.',
     launcherAuthClear: 'Clear',
     launcherAuthSaved: '139 authorization saved',
     launcherAuthNeed: '139 original-file download needs an Authorization — paste it below',
     launcherAuthNeedShort: 'This 139 link needs a login state:',
     launcherAuthOpenBtn: 'Open 139 & sign in',
-    launcherAuthWaiting: 'Waiting for login sync… (auto-detected after sign-in, up to 10 min)',
+    launcherAuthWaiting: 'Waiting for auto sync… Desktop users can copy, paste and save instead.',
     launcherAuthSynced: '✔ 139 login synced — ready to install',
     launcherRootTag: '(launcher install root)',
     launcherRootChange: 'Change',
@@ -1267,8 +1268,11 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
 
   const onOpen139Login = async (): Promise<void> => {
     window.open('https://yun.139.com/', '_blank', 'noopener')
-    setLAuthWaiting(true)
     setLAuthOpen(true)
+    // External browsers cannot automatically reach every desktop transport.
+    // Desktop users copy from the helper and import through this page's fetch.
+    if (location.protocol !== 'http:' && location.protocol !== 'https:') return
+    setLAuthWaiting(true)
     const started = Date.now()
     // 最多等 10 分钟（够用户慢慢输账号密码）；每 2s 查一次本机登录态
     while (Date.now() - started < 600000) {
@@ -1458,15 +1462,18 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
   }
 
   /** 139 登录态保存/清除。 */
-  const on139AuthSave = async (): Promise<void> => {
+  const on139AuthSave = async (authorization = lAuth.trim()): Promise<void> => {
     setLAuthBusy(true)
     try {
-      const r = await set139Auth(lAuth.trim(), (u, i) => fetch(u, i))
+      const r = await set139Auth(authorization, (u, i) => fetch(u, i))
       if (!r.ok) { flashL(t.flashLFailed + '：' + (r.error ?? '')); return }
       setLAuth('')
       const a = await get139Auth((u) => fetch(u))
       setLAuthPresent(a.present ? a.account : '')
+      setLAuthWaiting(false)
       flashL(t.launcherAuthSaved)
+    } catch (e) {
+      flashLErr(t.flashLFailed + '：' + String((e as Error).message ?? e))
     } finally { setLAuthBusy(false) }
   }
 
@@ -2105,8 +2112,9 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
                                 </div>
                               )
                             : null}
-                          {/* 139 登录态（需要时自动展开 / 已配置常驻显示状态） */}
-                          {lAuthOpen || lAuthPresent !== ''
+                          <button className="wesync-btn" onClick={() => setLAuthOpen(true)}>{t.launcherAuthImport}</button>
+                          {/* 139 登录态：手动展开或识别分享链接后即可导入 */}
+                          {lAuthOpen || lAuthPresent !== '' || is139Share(lUrl)
                             ? (
                                 <div className="wesync-dir-row" style={{ alignItems: 'center' }}>
                                   <span style={{ flex: '0 0 auto', fontSize: 12, opacity: 0.75 }}>
@@ -2115,6 +2123,8 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
                                   <input
                                     className="wesync-dir-input"
                                     type="password"
+                                    autoComplete="off"
+                                    disabled={lAuthBusy}
                                     placeholder={t.launcherAuthPlaceholder}
                                     value={lAuth}
                                     onChange={(e) => setLAuth(e.target.value)}
@@ -2131,13 +2141,14 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
                             <div style={{ marginTop: 4 }}><b>{t.launcherTutorialPrepTitle}</b></div>
                             <div>1. {t.launcherTutorialPrep1}</div>
                             <div>2. {t.launcherTutorialPrep2}</div>
-                            <div>3. {t.launcherTutorialPrep3Lead}<a href="/we-sync/login-sync.user.js" target="_blank" rel="noreferrer" style={{ color: 'inherit', textDecoration: 'underline' }}>{t.launcherHelperLink}</a>{t.launcherTutorialPrep3Tail}</div>
+                            <div>3. {t.launcherTutorialPrep3Lead}<a href={loginHelperUrl()} target="_blank" rel="noreferrer" style={{ color: 'inherit', textDecoration: 'underline' }}>{t.launcherHelperLink}</a>{t.launcherTutorialPrep3Tail}</div>
+                            <div>4. {t.launcherTutorialPrep4}</div>
                             <div style={{ marginTop: 4 }}><b>{t.launcherTutorialUseTitle}</b></div>
                             <div>{t.launcherTutorialUse1}</div>
                             <div>{t.launcherTutorialUse2}</div>
                             <div>{t.launcherTutorialUse3}</div>
                           </div>
-                          {lAuthOpen ? <div style={{ fontSize: 12, opacity: 0.6, marginTop: 4 }}>{t.launcherAuthHint}</div> : null}
+                          {lAuthOpen || is139Share(lUrl) ? <div style={{ fontSize: 12, opacity: 0.6, marginTop: 4 }}>{t.launcherAuthHint}</div> : null}
                           {/* 安装位置在上方「壁纸读取位置」列表统一管理（带启动器标记，点「更改」展开编辑） */}
                           {lFlash !== '' ? <div className="wesync-market-flash">{lFlash}</div> : null}
                           {lApps.length === 0
