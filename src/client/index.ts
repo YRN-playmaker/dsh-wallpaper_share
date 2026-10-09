@@ -7,6 +7,7 @@
  */
 import { WallpaperSharePanel } from './WallpaperSharePanel.tsx'
 import { PANEL_CSS } from './panelStyle.ts'
+import { SETTINGS_GLASS_CSS } from './settings-glass.ts'
 import { SceneCanvas } from './SceneCanvas.ts'
 import { SceneModelRenderer } from './SceneModelRenderer.ts'
 import { getGaze, startGaze, stopGaze, isGazeRunning } from './GazeLens.ts'
@@ -245,7 +246,7 @@ export function apply(ctx: CordisCtx): void {
 
   const panelStyleTag = document.createElement('style')
   panelStyleTag.dataset.plugin = 'dsh-wallpaper_share'
-  panelStyleTag.textContent = PANEL_CSS
+  panelStyleTag.textContent = PANEL_CSS + SETTINGS_GLASS_CSS
   document.head.appendChild(panelStyleTag)
 
   const dayNightSidebarStyle = document.createElement('style')
