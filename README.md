@@ -19,7 +19,7 @@
 <a id="中文"></a>
 ## 中文
 
-把 Wallpaper Engine（WE）当前壁纸同步为 DeepSeek Harness（DSH）Web / 桌面端界面的背景，在 `wallpaper_share` 标签页调整渲染模式、透明度、模糊、阴影、专注透镜与壁纸库。已适配 harness `0.1.5`。
+把 Wallpaper Engine（WE）当前壁纸同步为 DeepSeek Harness（DSH）Web / 桌面端界面的背景，在 `wallpaper_share` 标签页调整渲染模式、透明度、模糊、阴影、专注透镜与壁纸库。已适配 harness `0.2.0`。
 
 同步功能读取 WE 状态，不更改桌面壁纸。安装目录会自动检测；眼动追踪在本机推理，摄像头画面不上传。
 
@@ -232,7 +232,7 @@ node tools/test-capture-browser.mjs --native
 <a id="english"></a>
 ## English
 
-Sync the active Wallpaper Engine (WE) wallpaper into the DeepSeek Harness (DSH) Web / Desktop UI. Use the `wallpaper_share` tab to adjust rendering, transparency, blur, shadows, the focus lens and the wallpaper library. Adapted for harness `0.1.5`.
+Sync the active Wallpaper Engine (WE) wallpaper into the DeepSeek Harness (DSH) Web / Desktop UI. Use the `wallpaper_share` tab to adjust rendering, transparency, blur, shadows, the focus lens and the wallpaper library. Adapted for harness `0.2.0`.
 
 Wallpaper sync reads WE state without changing your desktop wallpaper. The installation directory is detected automatically. Eye tracking runs locally; camera frames are not uploaded.
 
