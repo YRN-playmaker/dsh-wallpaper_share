@@ -20,7 +20,7 @@ import { buildZipStored, type ZipEntryIn } from '../workspace/zip.ts'
 import type { Manifest, Scene } from '../../vendor/dwp/packages/dwp-core/src/index.ts'
 
 export const DAYNIGHT_ID = 'yrn.deepseek-day-night'
-export const DAYNIGHT_VERSION = '1.1.0'
+export const DAYNIGHT_VERSION = '1.2.0'
 export const DAYNIGHT_WIDTH = 1920
 export const DAYNIGHT_HEIGHT = 1080
 
@@ -86,6 +86,18 @@ export interface DayNightAssets {
 /** 组包：wallpaper.json + scene.json + 两档四张 PNG（+ 预览）→ .dwp 字节（确定性输出）。 */
 export function buildDayNightPackage(assets: DayNightAssets): Uint8Array {
   const entries: ZipEntryIn[] = [
+    { name: 'README.md', data: new TextEncoder().encode(
+      '# DeepSeek Day & Night / DeepSeek 日夜\n\n'
+      + 'DWP 1.2.0 preserves the day/night crossfade and SD/HD textures.\n\n'
+      + 'Sidebar fish silhouettes require dsh-wallpaper_share 26.10.9-D or later. '
+      + 'Install/upgrade the plugin, restart Harness, then mount this wallpaper. '
+      + 'Selected sidebar items show swimming dark fish; hover alone is blue. '
+      + 'The DeepSeek brand button is excluded. Reduced-motion preferences stop swimming.\n\n'
+      + '侧边栏鱼剪影需要 dsh-wallpaper_share 26.10.9-D 或新版插件；升级插件并重启 Harness 后挂载本壁纸。'
+      + '选中项显示深色游鱼，普通悬停仅显示蓝色；品牌按钮除外。系统减少动态效果时游鱼静止。'
+      + '仅更新 DWP 包不会给旧插件增加侧边栏效果。\n\n'
+      + 'Plugin: https://github.com/YRN-playmaker/dsh-wallpaper_share\n'
+    ) },
     { name: 'wallpaper.json', data: new TextEncoder().encode(JSON.stringify(buildDayNightManifest({ version: assets.version, name: assets.name }))) },
     { name: 'scene.json', data: new TextEncoder().encode(JSON.stringify(buildDayNightScene())) },
     { name: 'assets/day.png', data: assets.dayPng },

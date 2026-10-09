@@ -2,10 +2,11 @@
 
 <div align="center">
   <b>Wallpaper Engine → DeepSeek Harness Web / Desktop</b><br /><br />
-  <a href="https://github.com/YRN-playmaker/dsh-wallpaper_share"><img alt="GitHub version 26.10.6-D" src="https://img.shields.io/badge/GitHub-26.10.6--D-4d6bfe" /></a>
+  <a href="https://github.com/YRN-playmaker/dsh-wallpaper_share"><img alt="GitHub version 26.10.9-D" src="https://img.shields.io/badge/GitHub-26.10.9--D-4d6bfe" /></a>
   <a href="https://www.npmjs.com/package/dsh-wallpaper_share"><img alt="npm version" src="https://img.shields.io/npm/v/dsh-wallpaper_share" /></a>
   <a href="https://www.npmjs.com/package/dsh-wallpaper_share"><img alt="npm downloads" src="https://img.shields.io/npm/dm/dsh-wallpaper_share" /></a>
   <a href="https://github.com/YRN-playmaker/dsh-wallpaper_share/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/YRN-playmaker/dsh-wallpaper_share" /></a>
+  <a href="https://dsh-plugin.org/plugins/yrn-playmaker/dsh-wallpaper-share"><img alt="Listed on dsh-plugin.org" src="https://dsh-plugin.org/badges/listed.svg" /></a>
   <a href="LICENSE"><img alt="GPL-3.0 license" src="https://img.shields.io/badge/License-GPL--3.0-blue.svg" /></a><br /><br />
   <img alt="壁纸同步" src="https://img.shields.io/badge/-%E5%A3%81%E7%BA%B8%E5%90%8C%E6%AD%A5-4d6bfe" /> <img alt="场景渲染" src="https://img.shields.io/badge/-%E5%9C%BA%E6%99%AF%E6%B8%B2%E6%9F%93-4d6bfe" /> <img alt="DWP 市场" src="https://img.shields.io/badge/-DWP%20%E5%B8%82%E5%9C%BA-4d6bfe" /> <img alt="眼动追踪" src="https://img.shields.io/badge/-%E7%9C%BC%E5%8A%A8%E8%BF%BD%E8%B8%AA-4d6bfe" /> <img alt="专注模式" src="https://img.shields.io/badge/-%E4%B8%93%E6%B3%A8%E6%A8%A1%E5%BC%8F-4d6bfe" /> <img alt="多显示器" src="https://img.shields.io/badge/-%E5%A4%9A%E6%98%BE%E7%A4%BA%E5%99%A8-4d6bfe" />
 </div>
@@ -22,16 +23,22 @@
 
 同步功能读取 WE 状态，不更改桌面壁纸。安装目录会自动检测；眼动追踪在本机推理，摄像头画面不上传。
 
-- [26.10.6-D 更新](#zh-update)
+- [26.10.9-D 更新](#zh-update)
 - [安装与升级](#zh-install)
 - [渲染模式与窗口跟随](#zh-render)
 - [功能与操作](#zh-features)
 - [配置](#zh-config)
 - [限制与排查](#zh-troubleshooting)
 - [开发与验证](#zh-development)
+- [关于我 / 赞助](#zh-support)
 
 <a id="zh-update"></a>
-### 26.10.6-D 更新
+### 26.10.9-D 更新
+
+- **DeepSeek 日夜侧边栏**：普通悬停变蓝，选中项显示两层深色游鱼剪影，剪影缩小 10%；DeepSeek 品牌按钮除外。支持展开、收起、刷新恢复和减少动态效果偏好。
+- **配套 DWP 1.2.0**：日夜壁纸包附带新版插件使用说明，保留昼夜切换和两档纹理。
+
+#### 26.10.6-D 更新
 
 - **桌面端捕获连接修复**：Capture 使用 Harness 桌面端提供的帧流地址，解决桌面端无法连接的问题；Web 端继续使用页面地址连接。
 <img width="426" height="240" alt="Video Project 31" src="https://github.com/user-attachments/assets/29b54b40-71c0-425f-82dd-974b66792a67" />
@@ -41,7 +48,7 @@
 - **移除状态圆点**：删除侧边栏和右上角状态圆点，避免桌面端显示异常。专注模式仍会根据会话任务状态调整视觉浓度。
 - **移除桌面悬浮球**：不再提供悬浮球开关、状态显示和点击返回窗口功能，随包也不再包含悬浮球程序。沉浸模式通过快捷键进入。
 
-完整记录见 [CHANGELOG.md](CHANGELOG.md) 的 `Unreleased` 段落。本 README 对应仓库版本 **26.10.6-D**；npm `web` 标签仍对应 **26.10.3**，不包含上述桌面端更新。
+完整记录见 [CHANGELOG.md](CHANGELOG.md) 的 `Unreleased` 段落。本 README 对应仓库版本 **26.10.9-D**；npm `web` 标签仍对应 **26.10.3**，不包含上述桌面端更新。
 
 <a id="zh-install"></a>
 ### 安装与升级
@@ -69,7 +76,7 @@ dsh plugin --profile web add dsh-wallpaper_share@desktop
 dsh plugin --profile web add dsh-wallpaper_share@web
 
 # 自行打包的本地安装包
-dsh plugin --profile web add ./dsh-wallpaper_share-26.10.6-D.tgz
+dsh plugin --profile web add ./dsh-wallpaper_share-26.10.9-D.tgz
 ```
 
 安装或升级后，**重启 DSH Web profile 并刷新浏览器页面**。默认地址为 `http://127.0.0.1:3080`，实际端口以启动日志为准。仅刷新页面不会更新已加载的后端程序。
@@ -110,6 +117,7 @@ dsh plugin --profile web add ./dsh-wallpaper_share-26.10.6-D.tgz
 - **壁纸库**：管理本地 DWP、WE 应用与启动器应用；市场支持搜索、筛选、安装与更新。管理模式支持多选卸载 DWP 和启动器应用，Steam 工坊内容不参与批量删除。
 - **应用启动器**：支持 HTTP(S) 直链及 139 分享链接，导入 `.zip`、`.7z` 或 `.exe`；智能粘贴可从分享文本识别链接、提取码、解压密码和启动文件。应用在「本地 → 应用」启动，列表显示名称、位置与下载时间。
 - **DWP 背景**：挂载自定义壁纸包后由 WebGL2 渲染，低配时回退 Canvas2D；挂载期间暂停 WE 同步。内置工作区脉搏可展示近期文件变化，支持昼夜变量与纹理档位。
+- **DeepSeek 日夜侧边栏效果**：使用包含此功能的新版插件，挂载「DeepSeek 日夜」后，普通悬停显示蓝色背景，选中项显示深色鱼剪影游动；品牌按钮除外。系统开启「减少动态效果」时剪影静止。效果随插件提供，无需替换 DWP 包；仅更新壁纸包不会为旧版插件增加此功能。
 
 **快捷键设置**
 
@@ -211,6 +219,13 @@ node tools/test-capture-browser.mjs --native
 
 提交与打包前遵守 [AGENTS.md](AGENTS.md) 和 [编码与发布规范](docs/encoding-and-release.md)。`package.json` 必须为 UTF-8 无 BOM；发布验证应使用实际安装包，并确认新会话的前端标签可见。
 
+<a id="zh-support"></a>
+### 关于我 / 赞助
+
+我是 [YRN-playmaker](https://github.com/YRN-playmaker)，这个插件的开发者。感谢你使用、反馈问题和分享这个项目。
+
+如果这个插件对你有帮助，欢迎通过 [Ko-fi 支持我](https://ko-fi.com/yrnplaymaker)，为后续维护、兼容适配与新功能开发提供支持。赞助完全自愿，插件功能免费使用。
+
 
 ---
 
@@ -221,16 +236,22 @@ Sync the active Wallpaper Engine (WE) wallpaper into the DeepSeek Harness (DSH) 
 
 Wallpaper sync reads WE state without changing your desktop wallpaper. The installation directory is detected automatically. Eye tracking runs locally; camera frames are not uploaded.
 
-- [What's new in 26.10.6-D](#en-update)
+- [What's new in 26.10.9-D](#en-update)
 - [Install and upgrade](#en-install)
 - [Render modes and window following](#en-render)
 - [Features and controls](#en-features)
 - [Configuration](#en-config)
 - [Limitations and troubleshooting](#en-troubleshooting)
 - [Development and validation](#en-development)
+- [About me / Support](#en-support)
 
 <a id="en-update"></a>
-### What's new in 26.10.6-D
+### What's new in 26.10.9-D
+
+- **DeepSeek Day & Night sidebar:** blue hover backgrounds and two dark swimming fish silhouettes on selected items, reduced in size by 10%. Excludes the brand button; supports the collapsed rail, restored wallpaper selection and reduced-motion preferences.
+- **Companion DWP 1.2.0:** includes plugin upgrade instructions while preserving day/night transitions and both texture tiers.
+
+#### What's new in 26.10.6-D
 
 - **Desktop Capture connection:** Capture now uses the stream address supplied by Harness Desktop, fixing failed desktop connections. The Web UI continues to connect through its page address.
 - **High-DPI window following:** the bundled **we-capture 0.4.3** handles Windows display scaling correctly, fixing wallpaper misalignment at scaling levels such as 125% and offsets that grew as the window moved right.
@@ -238,7 +259,7 @@ Wallpaper sync reads WE state without changing your desktop wallpaper. The insta
 - **Status dots removed:** sidebar and top-right status dots have been removed to avoid desktop display issues. Focus intensity still adapts to session task activity.
 - **Desktop floater removed:** its switch, status display, return-to-window action and bundled program are no longer available. Use the keyboard shortcut to enter immersive mode.
 
-See the `Unreleased` section of [CHANGELOG.md](CHANGELOG.md) for details. This README describes repository version **26.10.6-D**. The npm `web` tag still selects **26.10.3**, which does not include these desktop updates.
+See the `Unreleased` section of [CHANGELOG.md](CHANGELOG.md) for details. This README describes repository version **26.10.9-D**. The npm `web` tag still selects **26.10.3**, which does not include these desktop updates.
 
 <a id="en-install"></a>
 ### Install and upgrade
@@ -307,6 +328,7 @@ High-DPI display scaling requires **we-capture 0.4.3 or newer**, with both front
 - **Wallpaper library:** manage local DWP packages, WE apps and launcher apps. The market supports search, filters, installation and updates. Management mode allows bulk uninstall of DWP and launcher apps; Steam workshop content is excluded from bulk deletion.
 - **App launcher:** import `.zip`, `.7z` or `.exe` files using HTTP(S) direct links or 139 share links. Smart Paste detects the link, share passcode, archive password and launch file from a share post. Launch apps from **Local → Apps**; the list shows name, location and download time.
 - **DWP backgrounds:** custom wallpaper packages render through WebGL2 with a Canvas2D fallback. WE background sync pauses while a DWP is mounted. The built-in Workspace Pulse displays recent file changes; day/night variables and texture tiers are supported.
+- **DeepSeek Day & Night sidebar effects:** with a plugin release containing this feature, mounting this wallpaper enables blue hover backgrounds and dark swimming fish on selected items, excluding the brand button. Reduced-motion preferences keep the fish still. The effect ships with the plugin; updating only the DWP package does not add it to older plugin versions.
 
 **Keyboard Shortcuts**
 
@@ -407,6 +429,13 @@ node tools/test-capture-browser.mjs --native
 - `docs/`: format and implementation notes, including [scene-fallback.md](docs/scene-fallback.md) and [effect-shake.md](docs/effect-shake.md).
 
 Follow [AGENTS.md](AGENTS.md) and the [encoding and release rules](docs/encoding-and-release.md) before committing or packaging. `package.json` must be UTF-8 without a BOM. Validate the actual installation archive and confirm that the frontend tab appears in a new session.
+
+<a id="en-support"></a>
+### About me / Support
+
+I’m [YRN-playmaker](https://github.com/YRN-playmaker), the developer of this plugin. Thank you for using it, reporting issues and sharing the project.
+
+If you find this plugin useful, you can [support me on Ko-fi](https://ko-fi.com/yrnplaymaker) to help with maintenance, compatibility updates and new features. Sponsorship is entirely optional; the plugin remains free to use.
 
 
 ---

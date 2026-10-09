@@ -1,6 +1,16 @@
 ﻿# 「DeepSeek 日夜」DWP 壁纸：状态与再发布
 
-## 当前状态：**1.1.0 已发布到市场 ✓**（2026-09-10）
+## 最新更新：1.2.0（2026-10-09）
+
+- Release 已上传并回读校验：https://github.com/YRN-playmaker/dwp-releases/releases/tag/deepseek-day-night-1.2.0
+- 市场更新 PR：https://github.com/YRN-playmaker/dwp-registry/pull/3（待 CI / 合并）
+- 配套插件：dsh-wallpaper_share 26.10.9-D；选中侧边栏项显示缩小 10% 的深色游鱼，悬停仅蓝底，品牌按钮除外。效果在插件内嵌，升级 DWP 本身不会为旧插件增加侧边栏效果。
+- 包内新增双语使用 / 升级说明，昼夜切换和两档纹理保持原样。
+- integrity：sha512-6g+oF26Pey6vuLcJng+V0J1DrIcDwiM65H5fabS9jxUPcWC3QXajeSOBEFm0lhupf2li+faS4LBxrUKO860u4g==
+- size：6,878,533 B
+- 验证：DWP 编译、两档 × 9 时刻评估、7 项 DWP 测试、清单回归与市场校验通过；前端安装包生命周期测试使用模拟宿主接口，尚未完成真实 Harness 安装验收。npm 发布仍由维护者选择执行。
+
+## 历史状态：**1.1.0 已发布到市场 ✓**（2026-09-10）
 
 | 项 | 值 |
 | --- | --- |

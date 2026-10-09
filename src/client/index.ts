@@ -16,6 +16,7 @@ import { applyDwp, unapplyDwp, fetchApplied } from './market-api.ts'
 import { pulseVars, PULSE_DWP_ID, type PulseChange } from './pulse-vars.ts'
 import { clockSig, clockVars } from './clock-vars.ts'
 import { matchesBinding, isTypingBinding } from './hotkeys.ts'
+import { dayNightSidebarCss } from './daynight-sidebar.ts'
 
 export const inject = ['slots', 'theme']
 
@@ -246,6 +247,10 @@ export function apply(ctx: CordisCtx): void {
   panelStyleTag.dataset.plugin = 'dsh-wallpaper_share'
   panelStyleTag.textContent = PANEL_CSS
   document.head.appendChild(panelStyleTag)
+
+  const dayNightSidebarStyle = document.createElement('style')
+  dayNightSidebarStyle.dataset.plugin = 'dsh-wallpaper_share-daynight-sidebar'
+  document.head.appendChild(dayNightSidebarStyle)
 
   // 增强模式媒体层：视频或 iframe（性能模式不创建）
   let mediaEl: HTMLVideoElement | HTMLIFrameElement | null = null
@@ -550,6 +555,7 @@ export function apply(ctx: CordisCtx): void {
   }
 
   function applyBackground(): void {
+    dayNightSidebarStyle.textContent = dayNightSidebarCss(store.settings.dwpMounted)
     // DWP 挂载优先：接管背景层，停掉所有 WE 层，忽略 WE info（避免同步 / 性能模式与 DWP 抢背景）。
     if (store.settings.dwpMounted !== null) {
       const lensActive = store.settings.focus
@@ -781,6 +787,7 @@ export function apply(ctx: CordisCtx): void {
   ctx.effect(() => () => {
     styleTag.remove()
     panelStyleTag.remove()
+    dayNightSidebarStyle.remove()
     immersiveStyleTag.remove()
     destroyFocusLens()
     document.removeEventListener('keydown', onHotkey)

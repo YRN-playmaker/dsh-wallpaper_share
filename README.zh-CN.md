@@ -2,8 +2,9 @@
 
 <div align="center">
   <a href="https://www.npmjs.com/package/dsh-wallpaper_share"><img alt="npm version" src="https://img.shields.io/npm/v/dsh-wallpaper_share" /></a>
+  <a href="https://dsh-plugin.org/plugins/yrn-playmaker/dsh-wallpaper-share"><img alt="Listed on dsh-plugin.org" src="https://dsh-plugin.org/badges/listed.svg" /></a>
   <a href="LICENSE"><img alt="GPL-3.0 license" src="https://img.shields.io/badge/License-GPL--3.0-blue.svg" /></a>
-  <a href="https://github.com/YRN-playmaker/dsh-wallpaper_share"><img alt="GitHub version 26.10.6-D" src="https://img.shields.io/badge/GitHub-26.10.6--D-4d6bfe" /></a>
+  <a href="https://github.com/YRN-playmaker/dsh-wallpaper_share"><img alt="GitHub version 26.10.9-D" src="https://img.shields.io/badge/GitHub-26.10.9--D-4d6bfe" /></a>
 </div>
 
 [English](README.md#english) · [双语 README](README.md)
@@ -20,16 +21,22 @@
 
 同步功能读取 WE 状态，不更改桌面壁纸。安装目录会自动检测；眼动追踪在本机推理，摄像头画面不上传。
 
-- [26.10.6-D 更新](#zh-update)
+- [26.10.9-D 更新](#zh-update)
 - [安装与升级](#zh-install)
 - [渲染模式与窗口跟随](#zh-render)
 - [功能与操作](#zh-features)
 - [配置](#zh-config)
 - [限制与排查](#zh-troubleshooting)
 - [开发与验证](#zh-development)
+- [关于我 / 赞助](#zh-support)
 
 <a id="zh-update"></a>
-### 26.10.6-D 更新
+### 26.10.9-D 更新
+
+- **DeepSeek 日夜侧边栏**：普通悬停变蓝，选中项显示两层深色游鱼剪影，剪影缩小 10%；DeepSeek 品牌按钮除外。支持展开、收起、刷新恢复和减少动态效果偏好。
+- **配套 DWP 1.2.0**：日夜壁纸包附带新版插件使用说明，保留昼夜切换和两档纹理。
+
+#### 26.10.6-D 更新
 
 - **桌面端捕获连接修复**：Capture 使用 Harness 桌面端提供的帧流地址，解决桌面端无法连接的问题；Web 端继续使用页面地址连接。
 - **高 DPI 窗口跟随修复**：随包捕获器升级为 **we-capture 0.4.3**，正确处理 Windows 显示缩放，修复 125% 等缩放下背景与真实壁纸错位、窗口越靠右偏差越大的问题。
@@ -37,7 +44,7 @@
 - **移除状态圆点**：删除侧边栏和右上角状态圆点，避免桌面端显示异常。专注模式仍会根据会话任务状态调整视觉浓度。
 - **移除桌面悬浮球**：不再提供悬浮球开关、状态显示和点击返回窗口功能，随包也不再包含悬浮球程序。沉浸模式通过快捷键进入。
 
-完整记录见 [CHANGELOG.md](CHANGELOG.md) 的 `Unreleased` 段落。本 README 对应仓库版本 **26.10.6-D**；npm `web` 标签仍对应 **26.10.3**，不包含上述桌面端更新。
+完整记录见 [CHANGELOG.md](CHANGELOG.md) 的 `Unreleased` 段落。本 README 对应仓库版本 **26.10.9-D**；npm `web` 标签仍对应 **26.10.3**，不包含上述桌面端更新。
 
 <a id="zh-install"></a>
 ### 安装与升级
@@ -65,7 +72,7 @@ dsh plugin --profile web add dsh-wallpaper_share@desktop
 dsh plugin --profile web add dsh-wallpaper_share@web
 
 # 自行打包的本地安装包
-dsh plugin --profile web add ./dsh-wallpaper_share-26.10.6-D.tgz
+dsh plugin --profile web add ./dsh-wallpaper_share-26.10.9-D.tgz
 ```
 
 安装或升级后，**重启 DSH Web profile 并刷新浏览器页面**。默认地址为 `http://127.0.0.1:3080`，实际端口以启动日志为准。仅刷新页面不会更新已加载的后端程序。
@@ -106,6 +113,7 @@ dsh plugin --profile web add ./dsh-wallpaper_share-26.10.6-D.tgz
 - **壁纸库**：管理本地 DWP、WE 应用与启动器应用；市场支持搜索、筛选、安装与更新。管理模式支持多选卸载 DWP 和启动器应用，Steam 工坊内容不参与批量删除。
 - **应用启动器**：支持 HTTP(S) 直链及 139 分享链接，导入 `.zip`、`.7z` 或 `.exe`；智能粘贴可从分享文本识别链接、提取码、解压密码和启动文件。应用在「本地 → 应用」启动，列表显示名称、位置与下载时间。
 - **DWP 背景**：挂载自定义壁纸包后由 WebGL2 渲染，低配时回退 Canvas2D；挂载期间暂停 WE 同步。内置工作区脉搏可展示近期文件变化，支持昼夜变量与纹理档位。
+- **DeepSeek 日夜侧边栏效果**：使用包含此功能的新版插件，挂载「DeepSeek 日夜」后，普通悬停显示蓝色背景，选中项显示深色鱼剪影游动；品牌按钮除外。系统开启「减少动态效果」时剪影静止。效果随插件提供，无需替换 DWP 包；仅更新壁纸包不会为旧版插件增加此功能。
 
 **快捷键设置**
 
@@ -206,6 +214,13 @@ node tools/test-capture-browser.mjs --native
 - `docs/`：格式与实现记录，包括 [scene-fallback.md](docs/scene-fallback.md) 和 [effect-shake.md](docs/effect-shake.md)。
 
 提交与打包前遵守 [AGENTS.md](AGENTS.md) 和 [编码与发布规范](docs/encoding-and-release.md)。`package.json` 必须为 UTF-8 无 BOM；发布验证应使用实际安装包，并确认新会话的前端标签可见。
+
+<a id="zh-support"></a>
+### 关于我 / 赞助
+
+我是 [YRN-playmaker](https://github.com/YRN-playmaker)，这个插件的开发者。感谢你使用、反馈问题和分享这个项目。
+
+如果这个插件对你有帮助，欢迎通过 [Ko-fi 支持我](https://ko-fi.com/yrnplaymaker)，为后续维护、兼容适配与新功能开发提供支持。赞助完全自愿，插件功能免费使用。
 
 
 ## 许可

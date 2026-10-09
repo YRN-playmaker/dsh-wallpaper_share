@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 26.10.9-D
+
+- DeepSeek 日夜 DWP：侧边栏悬停蓝底，选中后显示缩小 10% 的深色游鱼；品牌按钮除外，支持减少动态效果、刷新恢复及卸载清理。
+- DWP 1.2.0 包内附配套插件升级说明；昼夜切换和两档纹理保持原样。
+- README 增加关于我 / Ko-fi 赞助及 dsh-plugin.org 引流徽章。
+
+## 26.10.6-D
+
 - **删除侧边栏 / 右上角状态圆点**：以免桌面端出现显示bug；连带状态色推导、审批面板 DOM 观察器与 `approvalPending` 字段一并撤掉（专注模式「任务进行中」的浓度仍由 sessions 快照驱动）。
 - **删除「桌面悬浮球」全链路**：面板开关与文案、client 上报器 `src/client/floater-report.ts`、node 半 `src/floater/`（状态机 / 子进程管理 / `/we-sync/floater` 路由）、位置存档 `~/.dsh/storages/we-sync-floater-pos.json` 与 `settings.floater` 全部移除；原生侧删除 `native/we-capture/src/bin/we-floater.rs` 与随包 `bin/we-floater.exe`，并重编 `bin/we-capture.exe`（源码指纹随源码变更更新），`tools/check-package.mjs` 的原生产物清单只剩捕获器。
 - **沉浸模式与专注模式改为可自定义快捷键**：面板新增「快捷键设置」卡片（位于「视觉效果」与「壁纸读取位置」之间），每行一个功能加当前键位，点右侧按钮后按下新按键即替换（录制中 `Esc` 取消，录制期间全局快捷键让位给录制器）。默认沉浸 `F11`、专注 `F10`，键位随其余偏好一起持久化。新增纯模块 `src/client/hotkeys.ts`（规格归一化 / 匹配 / 存档校验，含单测）：修饰键按固定顺序、要求完全一致地匹配，焦点在输入框（含 `contenteditable`）内时不触发；沉浸模式仍可再按一次、按 `Esc` 或点侧边栏任意按钮退出。

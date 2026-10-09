@@ -52,9 +52,10 @@ test('组包：zip 可读回，含清单/场景/两档四张图/预览', () => {
   const pkg = buildDayNightPackage({ dayPng: TINY_DAY, nightPng: TINY_NIGHT, dayHdPng: TINY_DAY_HD, nightHdPng: TINY_NIGHT_HD });
   const map = readZipMap(pkg);
   assert.deepEqual([...map.keys()].sort(), [
-    'assets/day.png', 'assets/day_hd.png', 'assets/night.png', 'assets/night_hd.png', 'assets/preview.png', 'scene.json', 'wallpaper.json',
+    'README.md', 'assets/day.png', 'assets/day_hd.png', 'assets/night.png', 'assets/night_hd.png', 'assets/preview.png', 'scene.json', 'wallpaper.json',
   ]);
   assert.deepEqual([...(map.get('assets/day.png') ?? [])], [...TINY_DAY]);
+  assert.ok(text(map.get('README.md')).includes('26.10.9-D'), '用户安装包应包含配套插件升级要求');
   assert.deepEqual([...(map.get('assets/night.png') ?? [])], [...TINY_NIGHT]);
   assert.deepEqual([...(map.get('assets/day_hd.png') ?? [])], [...TINY_DAY_HD]);
   assert.deepEqual([...(map.get('assets/night_hd.png') ?? [])], [...TINY_NIGHT_HD]);
