@@ -17,10 +17,12 @@
  * 消费端在低档位把它们换成占位图——于是预览/捕获档**根本不下载、不解码 8K 纹理**，这才叫省。
  */
 import { buildZipStored, type ZipEntryIn } from '../workspace/zip.ts'
+import { DAYNIGHT_TAB_SCENE } from './tab-scene.ts'
 import type { Manifest, Scene } from '../../vendor/dwp/packages/dwp-core/src/index.ts'
 
 export const DAYNIGHT_ID = 'yrn.deepseek-day-night'
-export const DAYNIGHT_VERSION = '1.2.0'
+export const DAYNIGHT_VERSION = '1.3.0'
+export const DAYNIGHT_TAB_CLIENT_VERSION = '26.10.12-D'
 export const DAYNIGHT_WIDTH = 1920
 export const DAYNIGHT_HEIGHT = 1080
 
@@ -28,7 +30,7 @@ export const DAYNIGHT_HEIGHT = 1080
 export const DAYNIGHT_HD_ASSETS = ['assets/day_hd.png', 'assets/night_hd.png']
 
 /** 组装 scene.json：低档打底 + 高档覆盖，夜层由 $night_sd / $night_hd 分别控制。 */
-export function buildDayNightScene(): Scene {
+export function buildDayNightScene(withTabScene = false): Scene {
   const full = { anchor: [0.5, 0.5] as [number, number], offset: [0, 0] as [number, number], size: [DAYNIGHT_WIDTH, DAYNIGHT_HEIGHT] as [number, number] }
   const scene = {
     canvas: { width: DAYNIGHT_WIDTH, height: DAYNIGHT_HEIGHT, fit: 'cover' as const, background: '#0b0d12' },
@@ -47,7 +49,7 @@ export function buildDayNightScene(): Scene {
     ],
   }
   // 消费端扩展（scene 里多出的键 core 会忽略）
-  return { ...scene, dsh: { hdAssets: DAYNIGHT_HD_ASSETS } } as unknown as Scene
+  return { ...scene, dsh: { hdAssets: DAYNIGHT_HD_ASSETS, ...(withTabScene ? { tabScene: DAYNIGHT_TAB_SCENE } : {}) } } as unknown as Scene
 }
 
 /** 组装 wallpaper.json（manifest）。 */
@@ -81,6 +83,8 @@ export interface DayNightAssets {
   previewPng?: Uint8Array
   version?: string
   name?: Record<string, string>
+  /** Portrait and ten foam cels keyed by their package paths. */
+  tabAssets?: Record<string, Uint8Array>
 }
 
 /** 组包：wallpaper.json + scene.json + 两档四张 PNG（+ 预览）→ .dwp 字节（确定性输出）。 */
@@ -88,7 +92,8 @@ export function buildDayNightPackage(assets: DayNightAssets): Uint8Array {
   const entries: ZipEntryIn[] = [
     { name: 'README.md', data: new TextEncoder().encode(
       '# DeepSeek Day & Night / DeepSeek 日夜\n\n'
-      + 'DWP 1.2.0 preserves the day/night crossfade and SD/HD textures.\n\n'
+      + `DWP ${assets.version ?? DAYNIGHT_VERSION} preserves the day/night crossfade and SD/HD textures.\n\n`
+      + (assets.tabAssets ? `Underwater tab animation requires dsh-wallpaper_share ${DAYNIGHT_TAB_CLIENT_VERSION} or later. The portrait, ten splash cels and visual settings are included in this DWP. Open wallpaper_share to enter the water; scroll down to dive deeper and fade the surface reflections. Bubble glow and moving caustics run only in Complete mode. Focus + Complete adds a 1–4px breathing blur.\n\n入水页面效果需要 dsh-wallpaper_share ${DAYNIGHT_TAB_CLIENT_VERSION} 或新版插件。人物、水花帧和视觉参数均在此 DWP 内；进入 wallpaper_share 播放入水，滚轮下滑加深水色并淡出水面光斑，离开页面播放退出。泡泡发光和动态焦散仅在「完整」模式显示；专注 + 完整时启用 1–4px 呼吸模糊。普通 DWP 播放器仅显示日夜场景。\n\n` : '')
       + 'Sidebar fish silhouettes require dsh-wallpaper_share 26.10.9-D or later. '
       + 'Install/upgrade the plugin, restart Harness, then mount this wallpaper. '
       + 'Selected sidebar items show swimming dark fish; hover alone is blue. '
@@ -99,12 +104,23 @@ export function buildDayNightPackage(assets: DayNightAssets): Uint8Array {
       + 'Plugin: https://github.com/YRN-playmaker/dsh-wallpaper_share\n'
     ) },
     { name: 'wallpaper.json', data: new TextEncoder().encode(JSON.stringify(buildDayNightManifest({ version: assets.version, name: assets.name }))) },
-    { name: 'scene.json', data: new TextEncoder().encode(JSON.stringify(buildDayNightScene())) },
+    { name: 'scene.json', data: new TextEncoder().encode(JSON.stringify(buildDayNightScene(assets.tabAssets !== undefined))) },
     { name: 'assets/day.png', data: assets.dayPng },
     { name: 'assets/night.png', data: assets.nightPng },
     { name: 'assets/day_hd.png', data: assets.dayHdPng ?? assets.dayPng },
     { name: 'assets/night_hd.png', data: assets.nightHdPng ?? assets.nightPng },
     { name: 'assets/preview.png', data: assets.previewPng ?? assets.dayPng },
   ]
+  if (assets.tabAssets) {
+    for (const name of [DAYNIGHT_TAB_SCENE.portrait, ...DAYNIGHT_TAB_SCENE.foam]) {
+      const data = assets.tabAssets[name]
+      if (!data?.length) throw new Error('Missing DWP tab asset: ' + name)
+      entries.push({ name, data })
+    }
+    entries.push({ name: 'TAB-SCENE.md', data: new TextEncoder().encode(
+      '# Tab scene extension\n\nThis package contains the portrait, ten foam cels and all entry/exit, scroll, silhouette gradient and breathing blur settings in scene.json → dsh.tabScene.\n\n'
+      + `This is declarative data, not executable package code. A host supporting dsh/tab-scene/1 must provide tab visibility, scroll progress, focus and quality state. Standard DWP 1.0 players still render the day/night scene but ignore this extension. Requires dsh-wallpaper_share ${DAYNIGHT_TAB_CLIENT_VERSION} or later. Surface light stays at the top and fades out by surfaceLight.scrollFadeEnd (0.65 of the scroll range).\n`
+    ) })
+  }
   return buildZipStored(entries)
 }

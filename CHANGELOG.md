@@ -1,3 +1,9 @@
+## 26.10.12-D (2026-10-12)
+
+- Add the generic DWP tab-scene renderer and DeepSeek Day & Night 1.3.0: fast decelerating water entry, inverted portrait with depth silhouettes, scroll depth, and exit animation. Portrait, splash cels and settings ship inside the DWP.
+- Complete mode adds moving refracted caustics and bubble lighting; Focus + Complete uses 1–4px breathing blur. Theme compensation is scoped to the wallpaper_share page.
+- Surface reflections stay at the screen top and fade out while diving; scrolling back restores them. Bottom dot rows emerge near maximum depth.
+
 # Changelog
 
 ## Unreleased

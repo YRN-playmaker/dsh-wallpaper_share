@@ -17,6 +17,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { buildDayNightPackage, DAYNIGHT_ID, DAYNIGHT_VERSION } from '../src/daynight/pack.ts'
+import { DAYNIGHT_TAB_SCENE } from '../src/daynight/tab-scene.ts'
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url))
 const argv = process.argv.slice(2)
@@ -43,7 +44,9 @@ const nightPng = new Uint8Array(readFileSync(nightPath))
 const dayHdPng = optional(dayHdPath)
 const nightHdPng = optional(nightHdPath)
 
-const pkg = buildDayNightPackage({ dayPng, nightPng, dayHdPng, nightHdPng })
+const tabAssets = Object.fromEntries([DAYNIGHT_TAB_SCENE.portrait, ...DAYNIGHT_TAB_SCENE.foam].map(name => [name,
+  new Uint8Array(readFileSync(join(ROOT, 'src/client/assets/daynight', name.split('/').at(-1))))]))
+const pkg = buildDayNightPackage({ dayPng, nightPng, dayHdPng, nightHdPng, tabAssets })
 const integrity = 'sha512-' + createHash('sha512').update(pkg).digest('base64')
 const outDir = join(ROOT, '_dist', 'daynight')
 mkdirSync(outDir, { recursive: true })

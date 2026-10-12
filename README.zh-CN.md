@@ -72,7 +72,7 @@ dsh plugin --profile web add dsh-wallpaper_share@desktop
 dsh plugin --profile web add dsh-wallpaper_share@web
 
 # 自行打包的本地安装包
-dsh plugin --profile web add ./dsh-wallpaper_share-26.10.9-D.tgz
+dsh plugin --profile web add ./dsh-wallpaper_share-26.10.12-D.tgz
 ```
 
 安装或升级后，**重启 DSH Web profile 并刷新浏览器页面**。默认地址为 `http://127.0.0.1:3080`，实际端口以启动日志为准。仅刷新页面不会更新已加载的后端程序。
@@ -227,3 +227,8 @@ node tools/test-capture-browser.mjs --native
 ## 许可
 
 [GPL-3.0](LICENSE)
+
+
+### DeepSeek 日夜 1.3.0
+
+新版日夜 DWP 包含 wallpaper_share 页面的入水、水花、倒置人物渐变、滚轮深度与退出动画，最低需要插件 **26.10.12-D**。水面光斑固定在顶部并随下潜淡出；「完整」模式增加折射焦散与泡泡照明，专注 + 完整时有 1–4px 呼吸模糊。人物、水花素材与参数随 DWP 分发。[扩展说明](docs/daynight-tab-scene.md) · [壁纸下载](https://github.com/YRN-playmaker/dwp-releases/releases/tag/deepseek-day-night-1.3.0)。

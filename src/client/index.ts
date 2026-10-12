@@ -18,6 +18,7 @@ import { pulseVars, PULSE_DWP_ID, type PulseChange } from './pulse-vars.ts'
 import { clockSig, clockVars } from './clock-vars.ts'
 import { matchesBinding, isTypingBinding } from './hotkeys.ts'
 import { dayNightSidebarCss } from './daynight-sidebar.ts'
+import { dayNightVisualCss } from './daynight-dive.ts'
 
 export const inject = ['slots', 'theme']
 
@@ -476,6 +477,7 @@ export function apply(ctx: CordisCtx): void {
       lensStart = performance.now()
       focusLens = document.createElement('div')
       focusLens.dataset.plugin = 'dsh-wallpaper_share'
+      focusLens.dataset.wesyncFocusLens = '1'
       focusLens.style.cssText = 'position:fixed;inset:0;z-index:-1;pointer-events:none;'
       focusLens.style.setProperty('--wesync-lens-x', lensX + 'px')
       focusLens.style.setProperty('--wesync-lens-y', lensY + 'px')
@@ -568,7 +570,8 @@ export function apply(ctx: CordisCtx): void {
       styleTag.textContent =
         'html { background-color: #0d0e12; }' +
         'body::after { content: ""; position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: -1; ' +
-        'background: linear-gradient(rgba(6,8,12,' + shadowAlpha.toFixed(3) + '), rgba(6,8,12,' + (shadowAlpha * 0.85).toFixed(3) + ')); }'
+        'background: linear-gradient(rgba(6,8,12,' + shadowAlpha.toFixed(3) + '), rgba(6,8,12,' + (shadowAlpha * 0.85).toFixed(3) + ')); }' +
+        dayNightVisualCss(blurPx, scale)
       // 档位先同步：切换渲染模式时这里会按新档位重新挂载（低档位不拉 8K 纹理）
       dwpBg.setQuality(qualityOf(store.settings.renderMode))
       void dwpBg.mount(store.settings.dwpMounted)

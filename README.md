@@ -76,7 +76,7 @@ dsh plugin --profile web add dsh-wallpaper_share@desktop
 dsh plugin --profile web add dsh-wallpaper_share@web
 
 # 自行打包的本地安装包
-dsh plugin --profile web add ./dsh-wallpaper_share-26.10.9-D.tgz
+dsh plugin --profile web add ./dsh-wallpaper_share-26.10.12-D.tgz
 ```
 
 安装或升级后，**重启 DSH Web profile 并刷新浏览器页面**。默认地址为 `http://127.0.0.1:3080`，实际端口以启动日志为准。仅刷新页面不会更新已加载的后端程序。
@@ -444,3 +444,8 @@ If this plugin is helpful to you, please consider supporting me by [contributing
 ## License
 
 [GPL-3.0](LICENSE)
+
+
+### DeepSeek Day & Night 1.3.0
+
+The DWP includes the wallpaper_share water entry and exit, splash cels, inverted portrait with depth gradients, and scroll-driven diving. Requires plugin **26.10.12-D** or later. Surface reflections remain at the top and fade as you dive; Complete mode adds refracted caustics and bubble lighting. Focus + Complete uses a 1–4px breathing blur. Portrait, splash textures and settings ship inside the DWP. [Extension notes](docs/daynight-tab-scene.md) · [Wallpaper download](https://github.com/YRN-playmaker/dwp-releases/releases/tag/deepseek-day-night-1.3.0).

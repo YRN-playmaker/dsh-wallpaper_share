@@ -1,4 +1,5 @@
 import { loginHelperUrl } from './login-helper-url.ts'
+import { startPackageTabScene } from './daynight-dive.ts'
 import { DwpEditorCard } from './DwpEditorCard.tsx'
 /**
  * wallpaper_share 会话视图标签页：当前壁纸信息、同步开关、显示器选择、
@@ -6,7 +7,7 @@ import { DwpEditorCard } from './DwpEditorCard.tsx'
  * 样式类名由 PANEL_CSS 在 apply 阶段注入，不依赖 CSS Modules。
  */
 import { useEffect, useRef, useState, type ClipboardEvent } from 'react'
-import { store, PLUGIN_VERSION, PLUGIN_REPO_URL, type WeSyncInfo } from './index'
+import { store, effectiveVisuals, PLUGIN_VERSION, PLUGIN_REPO_URL, type WeSyncInfo } from './index'
 import { startGaze, stopGaze, calibrate, onGazeStatus, hasCalibrationData, type GazeStatus } from './GazeLens.ts'
 import { fetchCatalog, fetchInstalled, buildCards, searchCards, collectTags, install, uninstall, type MarketEntry, type MarketCard } from './market-api.ts'
 import { fetchInstalled as fetchLauncherInstalled, installApp, uninstallApp, launchApp, isValidHttpUrl, get139Auth, set139Auth, getLauncherRoot, setLauncherRoot, type InstalledApp } from './launcher-api.ts'
@@ -506,6 +507,13 @@ function resolveLang(): Lang {
  * 3. 主面板组件
  * ========================================================================= */
 export function WallpaperSharePanel(props?: { ctx?: any }) {
+  const tabScenePackage = store.settings.dwpMounted
+  useEffect(() => {
+    if (tabScenePackage) return startPackageTabScene(tabScenePackage, {
+      scrollProgress: () => geoRef.current.maxPos > 0 ? posRef.current / geoRef.current.maxPos : 0,
+      visualState: () => ({ focus: store.settings.focus, mode: store.settings.renderMode, panelAlpha: effectiveVisuals().panelAlpha }),
+    })
+  }, [tabScenePackage])
   const [, force] = useState(0)
   const t = DICT[resolveLang()]
 

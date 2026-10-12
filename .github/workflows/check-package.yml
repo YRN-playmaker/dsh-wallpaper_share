@@ -1,0 +1,29 @@
+name: Check package
+on:
+  push:
+    branches: [main, 'codex/**']
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    strategy:
+      matrix:
+        os: [ubuntu-24.04, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Preserve source line endings
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - run: npm run check:package
+      - run: npm run test:package
+      - run: npm test
+      - name: Verify actual installation archive
+        shell: bash
+        run: |
+          npm pack
+          node tools/verify-packed-plugin.mjs "dsh-wallpaper_share-$(node -p "require('./package.json').version").tgz"

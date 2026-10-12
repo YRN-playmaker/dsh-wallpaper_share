@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildDayNightManifest, buildDayNightPackage, buildDayNightScene, DAYNIGHT_HD_ASSETS, DAYNIGHT_ID } from '../pack.ts';
+import { buildDayNightManifest, buildDayNightPackage, buildDayNightScene, DAYNIGHT_HD_ASSETS, DAYNIGHT_ID, DAYNIGHT_VERSION, DAYNIGHT_TAB_CLIENT_VERSION } from '../pack.ts';
 import { readZipMap } from '../../market/unzip.ts';
+import { DAYNIGHT_TAB_SCENE, parseTabScene } from '../tab-scene.ts';
 
 const TINY_DAY = new Uint8Array([1, 2, 3, 4, 5]);
 const TINY_NIGHT = new Uint8Array([9, 8, 7, 6]);
@@ -9,6 +10,38 @@ const TINY_DAY_HD = new Uint8Array([11, 12]);
 const TINY_NIGHT_HD = new Uint8Array([21, 22]);
 
 const text = (bytes: Uint8Array | undefined): string => new TextDecoder().decode(bytes ?? new Uint8Array());
+
+test('tab scene is self-contained: behavior and all referenced textures survive ZIP roundtrip', () => {
+  const tabAssets = Object.fromEntries([DAYNIGHT_TAB_SCENE.portrait, ...DAYNIGHT_TAB_SCENE.foam].map(name => [name, TINY_DAY]))
+  const files = readZipMap(buildDayNightPackage({ dayPng: TINY_DAY, nightPng: TINY_NIGHT, tabAssets }))
+  const profile = parseTabScene(JSON.parse(text(files.get('scene.json'))).dsh.tabScene)
+  assert.ok(profile)
+  assert.deepEqual(profile, DAYNIGHT_TAB_SCENE)
+  for (const name of [profile.portrait, ...profile.foam]) assert.deepEqual(files.get(name), TINY_DAY)
+  assert.equal(profile.entry.start, profile.splash.start)
+  assert.equal(profile.water.clipFigure, true)
+  assert.ok(profile.water.revealStart + profile.water.revealDuration < profile.entry.start + profile.entry.duration * 0.6)
+  assert.equal(profile.figure.opacity, 0.75)
+  assert.deepEqual(profile.figure.surfaceTint, { color: '#F7F4D4', maxAlpha: 0.3, depth: 0.4 })
+  assert.deepEqual([profile.focus.minBlur, profile.focus.maxBlur], [1, 4])
+  assert.ok(profile.bottomDots && profile.bottomDots.scrollStart > 0.8)
+  assert.ok(profile.bubbleLight && profile.bubbleLight.detailOpacity > profile.bubbleLight.glowOpacity)
+  assert.equal(profile.bubbleLight.mode, 'enhanced')
+  assert.equal(profile.surfaceLight?.mode, 'enhanced')
+  assert.ok(profile.surfaceLight)
+  assert.equal(profile.surfaceLight.scrollFadeEnd, 0.65)
+  assert.equal(parseTabScene({ ...profile, surfaceLight: { ...profile.surfaceLight, scrollFadeEnd: 0 } }), null)
+  assert.equal(parseTabScene({ ...profile, surfaceLight: { ...profile.surfaceLight, opacity: 1 } }), null)
+  assert.equal(parseTabScene({ ...profile, bubbleLight: { ...profile.bubbleLight, radius: -1 } }), null)
+  assert.equal(parseTabScene({ ...profile, bottomDots: { ...profile.bottomDots, spacing: 0 } }), null)
+  assert.ok(files.has('TAB-SCENE.md'))
+  assert.ok(text(files.get('README.md')).includes(DAYNIGHT_TAB_CLIENT_VERSION))
+  assert.ok(text(files.get('README.md')).includes(`DWP ${DAYNIGHT_VERSION}`))
+  assert.equal(JSON.parse(text(files.get('wallpaper.json'))).version, DAYNIGHT_VERSION)
+  assert.throws(() => buildDayNightPackage({ dayPng: TINY_DAY, nightPng: TINY_NIGHT, tabAssets: {} }), /Missing DWP tab asset/)
+  assert.equal(parseTabScene({ ...profile, portrait: 'assets/../secret.png' }), null)
+  assert.equal(parseTabScene({ ...profile, entry: {} }), null)
+})
 
 test('scene：低档打底 + 高档覆盖，夜层按档位各自控透明度', () => {
   const s = buildDayNightScene();
