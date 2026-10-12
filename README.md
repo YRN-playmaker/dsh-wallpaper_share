@@ -43,21 +43,6 @@
 
 **本次源码和配套包仍使用 26.10.12-D。** 早先 [v26.10.12-D Release](https://github.com/YRN-playmaker/dsh-wallpaper_share/releases/tag/v26.10.12-D) 的资产保留，不包含上述 1.3.1 页面衔接修复。请安装本仓库最新源码，或使用 [壁纸 1.3.1 Release](https://github.com/YRN-playmaker/dwp-releases/releases/tag/deepseek-day-night-1.3.1) 附带的 `dsh-wallpaper_share-26.10.12-D-daynight-1.3.1.tgz`；即使已经安装同名版本，也需要重新安装这份配套包并重启。此次不更新 npm 渠道。
 
-#### 26.10.9-D 更新
-
-- **DeepSeek 日夜 壁纸适配**：普通悬停变蓝，选中项显示两层深色游鱼剪影，剪影缩小 10%；DeepSeek 品牌按钮除外。支持展开、收起、刷新恢复和减少动态效果偏好。
-- **配套 DWP 1.2.0**：日夜壁纸包附带新版插件使用说明，保留昼夜切换和两档纹理。
-
-#### 26.10.6-D 更新
-
-- **桌面端捕获连接修复**：Capture 使用 Harness 桌面端提供的帧流地址，解决桌面端无法连接的问题；Web 端继续使用页面地址连接。
-<img width="426" height="240" alt="Video Project 31" src="https://github.com/user-attachments/assets/29b54b40-71c0-425f-82dd-974b66792a67" />
-
-- **高 DPI 窗口跟随修复**：随包捕获器升级为 **we-capture 0.4.3**，正确处理 Windows 显示缩放，修复 125% 等缩放下背景与真实壁纸错位、窗口越靠右偏差越大的问题。
-- **自定义快捷键**：新增「快捷键设置」卡片，沉浸模式默认 `F11`、专注模式默认 `F10`；支持录制新按键或组合键，设置会保存并在重启后恢复。
-- **移除状态圆点**：删除侧边栏和右上角状态圆点，避免桌面端显示异常。专注模式仍会根据会话任务状态调整视觉浓度。
-- **移除桌面悬浮球**：不再提供悬浮球开关、状态显示和点击返回窗口功能，随包也不再包含悬浮球程序。沉浸模式通过快捷键进入。
-
 完整记录见 [CHANGELOG.md](CHANGELOG.md)。仓库源码版本为 **26.10.12-D**；2026-10-12 核对 npm `latest` / `desktop` 为 **26.10.9-D**、`web` 为 **26.10.3**，不含本次入水页面修复。
 
 <a id="zh-install"></a>
@@ -156,7 +141,8 @@ dsh plugin --profile web add ./dsh-wallpaper_share-26.10.12-D-daynight-1.3.1.tgz
 
 **壁纸同步界面**
 
-![壁纸同步界面](https://github.com/user-attachments/assets/6f147644-6283-456b-a9eb-c9c6d9925079)
+<img width="426" height="240" alt="Video Project 31" src="https://github.com/user-attachments/assets/29b54b40-71c0-425f-82dd-974b66792a67" />
+
 
 **专注模式演示**
 
