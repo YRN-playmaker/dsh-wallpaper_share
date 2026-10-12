@@ -1,9 +1,29 @@
 ﻿# 「DeepSeek 日夜」DWP 壁纸：状态与再发布
 
-## 最新更新：1.2.0（2026-10-09）
+## 最新更新：1.3.0 已发布并收录（2026-10-12）
+
+- 壁纸 Release：https://github.com/YRN-playmaker/dwp-releases/releases/tag/deepseek-day-night-1.3.0
+- 配套插件 Release：https://github.com/YRN-playmaker/dsh-wallpaper_share/releases/tag/v26.10.12-D
+- 源码已上传 main；发布包对应源码提交 `11aa7f9ddcce502b7acf1c4f3bab274f35e6bece`。
+- 市场 PR #3 已更新为 1.3.0 并合并：https://github.com/YRN-playmaker/dwp-registry/pull/3；合并提交 `593bde40a62ef58d1fcb82e29fcd86c67f78322d`。公开 catalog 已回读确认版本、下载地址、大小与校验值一致，其他两条市场记录保留。
+- DWP：11,621,528 B；`sha512-EsYjE+Sxzj8kHQXlCIUCOjEV3YnxIaITwFoNpNSNyKI+zkCUYlbGreDO1cIu0tUEby4xzhNY4rBGl4xkirjI3A==`。
+- 插件 tgz：888,955 B；`sha512-a129Rfg2g3wO7a+O1lV4hyfe5CAau5hVHkGxjWZxW+FZb37972jSWdZ6btsptBLWTmtVRhlYuCSk3XfEUEegUg==`。
+- 两个 Release 的所有公开下载均已回读并校验 SHA-512；未覆盖旧版本，未发布 npm。
+
+页面动画需要插件 **26.10.12-D 或更新版本**。人物、水花与声明式参数位于 DWP 的 `dsh.tabScene` 扩展内，插件提供通用渲染器；旧版标准播放器继续显示日夜场景和 SD/8K 纹理。
+
+本次包含 U 型水体展开、首帧人物入场与水阻减速、滚轮下潜、人物深度渐变、底部圆点和退出动画。「完整」状态开启水面折射焦散与泡泡局部照明；专注 + 完整启用 1–4px 呼吸模糊。水面光斑固定在顶端，下潜时淡出并在滚回顶部恢复。页面主题补偿覆盖宿主行内主题色，离开页面后恢复原主题。
+
+验证环境为 Windows、Node 24.19.0、独立 `DSH_HOME` 中的 Harness 0.1.0-rc.6，安装的是实际 tgz。确认新会话的 wallpaper_share 标签、真实 DWP 接口、浅色/深色主题、返回对话再进入、预览切完整（含专注）、滚轮光效淡出/恢复、呼吸模糊和退出，无前端加载或渲染错误。216 项回归、9 项包检查、实际 tarball 检查通过；Windows/Linux CI 和市场 validate-and-build 均通过。
+
+- 插件 CI：https://github.com/YRN-playmaker/dsh-wallpaper_share/actions/runs/38212830521
+- 市场 CI：https://github.com/YRN-playmaker/dwp-registry/actions/runs/38212960883
+- 重现真实安装验证：`node _dev/verify-installed-daynight.mjs http://127.0.0.1:4319`（先在独立 Harness 启动已安装包）。
+
+## 历史更新：1.2.0（2026-10-09）
 
 - Release 已上传并回读校验：https://github.com/YRN-playmaker/dwp-releases/releases/tag/deepseek-day-night-1.2.0
-- 市场更新 PR：https://github.com/YRN-playmaker/dwp-registry/pull/3（待 CI / 合并）
+- 市场更新 PR：https://github.com/YRN-playmaker/dwp-registry/pull/3（后续更新为 1.3.0 并合并）
 - 配套插件：dsh-wallpaper_share 26.10.9-D；选中侧边栏项显示缩小 10% 的深色游鱼，悬停仅蓝底，品牌按钮除外。效果在插件内嵌，升级 DWP 本身不会为旧插件增加侧边栏效果。
 - 包内新增双语使用 / 升级说明，昼夜切换和两档纹理保持原样。
 - integrity：sha512-6g+oF26Pey6vuLcJng+V0J1DrIcDwiM65H5fabS9jxUPcWC3QXajeSOBEFm0lhupf2li+faS4LBxrUKO860u4g==
