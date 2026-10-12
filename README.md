@@ -19,7 +19,7 @@
 <a id="中文"></a>
 ## 中文
 
-把 Wallpaper Engine（WE）当前壁纸同步为 DeepSeek Harness（DSH）Web / 桌面端界面的背景，在 `wallpaper_share` 标签页调整渲染模式、透明度、模糊、阴影、专注透镜与壁纸库。本次在独立 Harness `0.1.0-rc.6` 环境完成实际安装与浏览器验证。
+把 Wallpaper Engine（WE）当前壁纸同步为 DeepSeek Harness（DSH）Web / 桌面端界面的背景，在 `wallpaper_share` 标签页调整渲染模式、透明度、模糊、阴影、专注透镜与壁纸库。本次在Harness `0.1.0-rc.6` 与`0.2.0-rc.2`环境完成实际安装与验证。
 
 同步功能读取 WE 状态，不更改桌面壁纸。安装目录会自动检测；眼动追踪在本机推理，摄像头画面不上传。
 
@@ -36,15 +36,13 @@
 <a id="zh-update"></a>
 ### 26.10.13-D 更新 · 日夜壁纸 1.3.2
 
-1. **突破大文件下载限制**：启动器现在支持通过直链、网盘下载超过 4 GB 的大型软件。下载逐块写入磁盘、同步校验，不再把整个文件装进内存；支持 ZIP64 和大压缩包的磁盘解压。当前下载上限为 64 GiB，单层展开上限为 128 GiB，需为下载包和解压文件预留磁盘空间。[详细说明](docs/launcher-large-download.md)。
+1. **突破大文件下载限制**：启动器现在支持通过直链、网盘下载超过 4 GB 的大型软件。支持 ZIP64 和大压缩包的磁盘解压。当前下载上限为 64 GiB，单层展开上限为 128 GiB，需为下载包和解压文件预留磁盘空间。[详细说明](docs/launcher-large-download.md)。
 2. **优化背景与主题冲突**：重新调整壁纸、侧边栏和页面的主题衔接，减少叠加遮罩；浅色主题下文字更清晰，进入、退出及切回对话时保持平滑过渡。
-3. **一并更新 DeepSeek 日夜主题**：DWP 1.3.2 带来更丰富的入水、滚轮下潜、水面焦散和二维气泡动画，并细分预览与完整模式。预览模式下，`wallpaper_share` 页面固定使用白天蓝色背景，不随本地时间切换，并采用开销更低的普通气泡；完整模式保留昼夜切换、夜间暖红水体与完整剪影、橙金水花及珊瑚红按钮。上浮气泡经过剪影时显露人物细节并放大至 1.35 倍，常驻气泡最多 12 个，入场临时小泡泡除外。
+3. **一并更新 DeepSeek 日夜主题**： 1.3.2版本 带来更丰富的入水、滚轮下潜、水面焦散和二维气泡动画，并细分预览与完整模式。预览模式下，`wallpaper_share` 页面固定使用白天蓝色背景，不随本地时间切换，并采用开销更低的普通气泡；完整模式保留昼夜切换、夜间暖红水体与完整剪影、水花及按钮变色。
 
 ![DeepSeek 日夜：白天完整模式](docs/images/deepseek-daynight-day.png)
 
 ![DeepSeek 日夜：夜间完整模式](docs/images/deepseek-daynight-night.png)
-
-从 [插件 26.10.13-D Release](https://github.com/YRN-playmaker/dsh-wallpaper_share/releases/tag/v26.10.13-D) 安装 `dsh-wallpaper_share-26.10.13-D.tgz`，重启 Harness 后，在壁纸库更新或导入 [日夜 1.3.2](https://github.com/YRN-playmaker/dwp-releases/releases/tag/deepseek-day-night-1.3.2) 并重新挂载。人物、水花素材及声明式效果参数均随 DWP 分发；插件提供通用渲染器。截图由作者提供，界面显示的旧插件版本仅为演示。此次更新 GitHub 发布，不变更 npm 渠道。
 
 完整记录见 [CHANGELOG.md](CHANGELOG.md)。仓库源码版本为 **26.10.13-D**；2026-10-12 核对 npm `latest` / `desktop` 为 **26.10.9-D**、`web` 为 **26.10.3**，不含本次入水页面修复。
 
@@ -85,7 +83,7 @@ dsh plugin --profile web add ./dsh-wallpaper_share-26.10.13-D.tgz
 <a id="zh-daynight"></a>
 ### DeepSeek 日夜 1.3.2
 
-1. 从 [1.3.2 Release](https://github.com/YRN-playmaker/dwp-releases/releases/tag/deepseek-day-night-1.3.2) 下载壁纸 `deepseek-day-night.dwp` 和本次配套插件包。
+1. 从 [1.3.2 Release](https://github.com/YRN-playmaker/dwp-releases/releases/tag/deepseek-day-night-1.3.2) 下载壁纸 `deepseek-day-night.dwp` 和本插件包。
 2. 安装插件，重启 DSH Web profile 并刷新页面：
 
    ```bash
