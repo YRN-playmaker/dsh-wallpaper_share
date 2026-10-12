@@ -34,7 +34,7 @@ export const DAYNIGHT_TAB_SCENE: TabScene = {
   scroll: { figureOffset: 0.12, bubbleOffset: 0.025, smoothing: 180, wheelScale: 0.3 },
   exit: { duration: 450, middleLift: -3, lift: -8, middleClip: 18, middleOpacity: 0.75 },
   focus: { mode: 'enhanced', minBlur: 1, maxBlur: 4, duration: 5, scale: 1.015 },
-  ui: { pageAlpha: 0.035, layerAlpha: 0.045, sliderInfluence: 0.12, darkCardAlpha: 0.62, lightCardAlpha: 0.76, darkSidebarAlpha: 0.58, lightSidebarAlpha: 0.8, cardBlur: 12 },
+  ui: { pageAlpha: 0.035, layerAlpha: 0.045, sliderInfluence: 0.12, darkCardAlpha: 0.62, lightCardAlpha: 0.76, darkSidebarAlpha: 0.16, lightSidebarAlpha: 0.12, cardBlur: 12 },
 }
 
 /** Reject missing or malformed profiles before fetching their resources. */

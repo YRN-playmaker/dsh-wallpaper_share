@@ -1,10 +1,19 @@
+# Changelog
+
 ## 26.10.12-D (2026-10-12)
+
+### Additional source update for Day & Night 1.3.1
+
+- Feather the underwater sidebar into the page, remove its stacked fills, and retain readable labels in both themes.
+- Synchronize theme restoration with water entry/exit, including rapid returns and reduced motion. DeepSeek Day & Night 1.3.1 stores the lighter sidebar wash in its DWP.
+
+The source version remains 26.10.12-D. Install the revised companion archive from the Day & Night 1.3.1 release; the earlier v26.10.12-D release assets and tag remain unchanged. npm channels are unchanged.
+
+### Original 1.3.0 companion release
 
 - Add the generic DWP tab-scene renderer and DeepSeek Day & Night 1.3.0: fast decelerating water entry, inverted portrait with depth silhouettes, scroll depth, and exit animation. Portrait, splash cels and settings ship inside the DWP.
 - Complete mode adds moving refracted caustics and bubble lighting; Focus + Complete uses 1–4px breathing blur. Theme compensation is scoped to the wallpaper_share page.
 - Surface reflections stay at the screen top and fade out while diving; scrolling back restores them. Bottom dot rows emerge near maximum depth.
-
-# Changelog
 
 ## Unreleased
 

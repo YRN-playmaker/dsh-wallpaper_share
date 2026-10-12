@@ -21,7 +21,7 @@ import { DAYNIGHT_TAB_SCENE } from './tab-scene.ts'
 import type { Manifest, Scene } from '../../vendor/dwp/packages/dwp-core/src/index.ts'
 
 export const DAYNIGHT_ID = 'yrn.deepseek-day-night'
-export const DAYNIGHT_VERSION = '1.3.0'
+export const DAYNIGHT_VERSION = '1.3.1'
 export const DAYNIGHT_TAB_CLIENT_VERSION = '26.10.12-D'
 export const DAYNIGHT_WIDTH = 1920
 export const DAYNIGHT_HEIGHT = 1080
@@ -94,6 +94,7 @@ export function buildDayNightPackage(assets: DayNightAssets): Uint8Array {
       '# DeepSeek Day & Night / DeepSeek 日夜\n\n'
       + `DWP ${assets.version ?? DAYNIGHT_VERSION} preserves the day/night crossfade and SD/HD textures.\n\n`
       + (assets.tabAssets ? `Underwater tab animation requires dsh-wallpaper_share ${DAYNIGHT_TAB_CLIENT_VERSION} or later. The portrait, ten splash cels and visual settings are included in this DWP. Open wallpaper_share to enter the water; scroll down to dive deeper and fade the surface reflections. Bubble glow and moving caustics run only in Complete mode. Focus + Complete adds a 1–4px breathing blur.\n\n入水页面效果需要 dsh-wallpaper_share ${DAYNIGHT_TAB_CLIENT_VERSION} 或新版插件。人物、水花帧和视觉参数均在此 DWP 内；进入 wallpaper_share 播放入水，滚轮下滑加深水色并淡出水面光斑，离开页面播放退出。泡泡发光和动态焦散仅在「完整」模式显示；专注 + 完整时启用 1–4px 呼吸模糊。普通 DWP 播放器仅显示日夜场景。\n\n` : '')
+      + (assets.tabAssets ? 'For the 1.3.1 sidebar and page-transition fixes, install dsh-wallpaper_share-26.10.12-D-daynight-1.3.1.tgz from this wallpaper release, then restart Harness. The earlier v26.10.12-D release archive is preserved and lacks these fixes.\n\n1.3.1 的侧边栏与页面过渡修复需使用本次壁纸 Release 附带的 dsh-wallpaper_share-26.10.12-D-daynight-1.3.1.tgz，安装后重启；早先同版本资产保留且不含这些修复。\n\n' : '')
       + 'Sidebar fish silhouettes require dsh-wallpaper_share 26.10.9-D or later. '
       + 'Install/upgrade the plugin, restart Harness, then mount this wallpaper. '
       + 'Selected sidebar items show swimming dark fish; hover alone is blue. '

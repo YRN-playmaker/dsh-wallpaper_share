@@ -30,6 +30,32 @@ export function entryWaterEdge(x: number, progress: number, center: number, curv
 // The reference settles into underwater motion around 0.8s. Keep the supplied
 // ten drawings as discrete cels, with exposure lengths on a 24fps timeline.
 let finishPendingExit: (() => void) | undefined
+let pendingThemePresence = 0
+let pendingThemeBaseline: ThemePalette | undefined
+
+const themeTokens = ['--dsw-alias-bg-base', '--dsw-alias-bg-layer-1', '--dsw-alias-bg-layer-2', '--dsw-specific-sidebar-fill', '--dsw-alias-label-primary', '--dsw-alias-label-secondary', '--dsw-alias-label-tertiary', '--dsw-alias-label-dimmed', '--dsw-alias-button-elevated-fill', '--dsw-alias-button-floating-fill', '--dsw-alias-button-floating-hover', '--dsw-alias-border-l1', '--dsw-alias-border-l2'] as const
+type ThemePalette = Record<string, string>
+
+/** Interpolate the actual tokens so newly mounted page containers also inherit
+ * the in-between palette, instead of painting their final wash immediately. */
+function blendColor(from: string, to: string, presence: number): string {
+  if (presence >= 1) return to
+  if (presence <= 0) return from || 'transparent'
+  const channels = (color: string): number[] | undefined => {
+    if (!color || color === 'transparent') return [0, 0, 0, 0]
+    const hex = color.match(/^#([\da-f]{3,8})$/i)?.[1]
+    if (hex) {
+      const full = hex.length <= 4 ? [...hex].map(c => c + c).join('') : hex
+      return [0, 2, 4].map(i => parseInt(full.slice(i, i + 2), 16)).concat(full.length === 8 ? parseInt(full.slice(6), 16) / 255 : 1)
+    }
+    const rgb = color.match(/^rgba?\(([^)]+)\)$/)?.[1].split(/[,\s/]+/).filter(Boolean).map(Number)
+    return rgb?.length === 3 ? [...rgb, 1] : rgb?.length === 4 ? rgb : undefined
+  }
+  const a = channels(from.trim()), b = channels(to.trim())
+  if (!a || !b || ![...a, ...b].every(Number.isFinite)) return to
+  const values = a.map((v, i) => v + (b[i] - v) * presence)
+  return `rgba(${values.slice(0, 3).map(Math.round).join(',')},${values[3].toFixed(3)})`
+}
 
 /** Shared with the host background settings and the standalone preview. */
 export function dayNightVisualCss(blurPx: number, scale: number, breathing?: TabScene['focus']): string {
@@ -46,23 +72,39 @@ export function dayNightVisualCss(blurPx: number, scale: number, breathing?: Tab
 }
 
 /** Keep page-wide washes thin, and preserve contrast on local reading surfaces. */
-export function tabSceneThemeCss(ui: TabScene['ui'], panelAlpha: number): string {
+export function tabSceneThemeCss(ui: TabScene['ui'], panelAlpha: number, sidebarInk = '#031633', presence = 1, baseline: ThemePalette = {}): string {
   if (!ui) return ''
   const amount = clamp(panelAlpha / 100)
   const alpha = (base: number, influence = ui.sliderInfluence): string => Math.min(0.96, base + amount * influence).toFixed(3)
   const scope = 'body:has(canvas[data-daynight-dive="1"])'
+  const color = (key: string, target: string): string => blendColor(baseline[key] ?? '', target, presence)
+  const sidebarFill = blendColor(baseline['--dsw-specific-sidebar-fill'] ?? '', 'transparent', presence)
   const theme = (dark: boolean): string => {
     const s = scope + (dark ? '[data-ds-dark-theme]' : ':not([data-ds-dark-theme])')
     const page = dark ? '15,16,20' : '246,247,250'
     const layer = dark ? '24,26,32' : '255,255,255'
-    const sidebar = dark ? '13,14,17' : '238,240,244'
+    const sidebar = [1, 3, 5].map(i => parseInt(sidebarInk.slice(i, i + 2), 16)).join(',')
     const cardAlpha = dark ? ui.darkCardAlpha : ui.lightCardAlpha
     return `${s} {
-      --dsw-alias-bg-base: rgba(${page},${alpha(ui.pageAlpha)}) !important;
-      --dsw-alias-bg-layer-1: rgba(${layer},${alpha(ui.layerAlpha)}) !important;
-      --dsw-alias-bg-layer-2: rgba(${layer},${alpha(ui.layerAlpha)}) !important;
-      --dsw-specific-sidebar-fill: rgba(${sidebar},${alpha(dark ? ui.darkSidebarAlpha : ui.lightSidebarAlpha)}) !important;
+      --wesync-tab-ui-presence: ${presence.toFixed(3)};
+      --dsw-alias-bg-base: ${color('--dsw-alias-bg-base', `rgba(${page},${alpha(ui.pageAlpha)})`)} !important;
+      --dsw-alias-bg-layer-1: ${color('--dsw-alias-bg-layer-1', `rgba(${layer},${alpha(ui.layerAlpha)})`)} !important;
+      --dsw-alias-bg-layer-2: ${color('--dsw-alias-bg-layer-2', `rgba(${layer},${alpha(ui.layerAlpha)})`)} !important;
+      --dsw-specific-sidebar-fill: ${color('--dsw-specific-sidebar-fill', `rgba(${sidebar},${alpha(dark ? ui.darkSidebarAlpha : ui.lightSidebarAlpha)})`)} !important;
     }
+    ${s} [class*="sidebarCol"] {
+      --dsw-alias-label-primary: ${color('--dsw-alias-label-primary', '#eef8ff')};
+      --dsw-alias-label-secondary: ${color('--dsw-alias-label-secondary', '#c4dbea')};
+      --dsw-alias-label-tertiary: ${color('--dsw-alias-label-tertiary', '#a4c0d3')};
+      --dsw-alias-label-dimmed: ${color('--dsw-alias-label-dimmed', '#829eaf')};
+      --dsw-alias-button-elevated-fill: ${color('--dsw-alias-button-elevated-fill', 'rgba(231,246,255,0.12)')};
+      --dsw-alias-button-floating-fill: ${color('--dsw-alias-button-floating-fill', 'rgba(231,246,255,0.14)')};
+      --dsw-alias-button-floating-hover: ${color('--dsw-alias-button-floating-hover', 'rgba(231,246,255,0.22)')};
+      --dsw-alias-border-l2: ${color('--dsw-alias-border-l2', 'rgba(177,224,255,0.18)')};
+      background-color: ${sidebarFill} !important;
+      border-right-color: ${color('--dsw-alias-border-l1', 'rgba(177,224,255,0.08)')};
+    }
+    ${s} :is([class*="sidebarCol"] > [class*="_root"], [class*="sidebarCol"] [class*="_root"]:has(> [class*="logoRow"])) { background-color: ${sidebarFill} !important; }
     ${s} .wesync-card {
       --dsw-alias-bg-base: rgba(${layer},${alpha(cardAlpha)});
       --dsw-alias-bg-layer-1: rgba(${layer},${alpha(cardAlpha)});
@@ -74,6 +116,26 @@ export function tabSceneThemeCss(ui: TabScene['ui'], panelAlpha: number): string
     ${s} [data-conversation-scroll] { background-color: transparent; }`
   }
   return theme(true) + theme(false)
+}
+
+/** Keep transitions alive while the outgoing canvas reveals the next page.
+ * The sidebar has one feathered wash, rather than two stacked solid fills.
+ */
+export function tabSceneTransitionCss(ui: TabScene['ui'], panelAlpha: number, sidebarInk: string): string {
+  if (!ui) return ''
+  const scope = 'body:has(canvas[data-daynight-dive="1"])'
+  const rgb = [1, 3, 5].map(i => parseInt(sidebarInk.slice(i, i + 2), 16)).join(',')
+  const gradient = (alpha: number): string => `linear-gradient(90deg, rgba(${rgb},${alpha}) 0%, rgba(${rgb},${alpha * 0.8}) 42%, rgba(${rgb},0) 100%)`
+  const amount = clamp(panelAlpha / 100) * ui.sliderInfluence
+  return `${scope} [class*="sidebarCol"] { position: relative; }
+  ${scope} :is([class*="sidebarCol"] > [class*="_root"], [class*="sidebarCol"] [class*="_root"]:has(> [class*="logoRow"])) { position: relative; z-index: 1; }
+  ${scope} [class*="sidebarCol"]::before {
+    content: ''; position: absolute; inset: 0; pointer-events: none;
+    background: ${gradient(Math.min(0.96, ui.lightSidebarAlpha + amount))};
+    opacity: var(--wesync-tab-ui-presence, 0);
+  }
+  ${scope}[data-ds-dark-theme] [class*="sidebarCol"]::before { background: ${gradient(Math.min(0.96, ui.darkSidebarAlpha + amount))}; }
+  `
 }
 export function splashAt(t: number, profile: TabScene): { frame: number; alpha: number; progress: number } | null {
   const cel = Math.floor((t - profile.splash.start) * profile.splash.fps)
@@ -251,8 +313,10 @@ function drawBubbleLights(ctx: CanvasRenderingContext2D, bubbles: RisingBubble[]
 /** A tab-owned background; cleanup also cancels pending decodes and animation frames. */
 export function startDayNightDive(opts: { profile: TabScene; assetUrl: (path: string) => string; scrollProgress?: () => number; visualState?: () => { focus: boolean; mode: string; panelAlpha?: number } }): () => void {
   const p = opts.profile
+  const originalBody = getComputedStyle(document.body)
+  const fallbackPalette = pendingThemeBaseline ?? Object.fromEntries(themeTokens.map(key => [key, originalBody.getPropertyValue(key).trim()]))
+  const entryPresence = finishPendingExit ? pendingThemePresence : 0
   // A quick return to the tab replaces the outgoing background immediately.
-  finishPendingExit?.()
   const canvas = document.createElement('canvas')
   canvas.dataset.daynightDive = '1'
   canvas.setAttribute('aria-hidden', 'true')
@@ -260,15 +324,39 @@ export function startDayNightDive(opts: { profile: TabScene; assetUrl: (path: st
   const ctx = canvas.getContext('2d')
   if (!ctx) return () => {}
   document.body.appendChild(canvas)
+  const transitionStyle = document.createElement('style')
+  transitionStyle.dataset.daynightTransition = '1'
+  document.head.appendChild(transitionStyle)
   const visualStyle = document.createElement('style')
   document.head.appendChild(visualStyle)
   let visualSignature = ''
   const motion = matchMedia('(prefers-reduced-motion: reduce)')
   let disposed = false, raf = 0, start = 0, last = -Infinity, visualPoll = 0
+  let themeRaf = 0, themePresence = entryPresence, transitionAlpha = -1
   const visualKey = (): string => {
     const state = opts.visualState?.()
-    return String(state?.focus === true && state.mode === p.focus.mode) + ':' + (state?.panelAlpha ?? 0) + ':' + (state?.mode ?? '')
+    return String(state?.focus === true && state.mode === p.focus.mode) + ':' + (state?.panelAlpha ?? 0) + ':' + (state?.mode ?? '') + ':' + document.body.hasAttribute('data-ds-dark-theme')
   }
+  const updateUi = (presence: number): void => {
+    presence = Number(clamp(presence).toFixed(3))
+    themePresence = presence
+    const signature = visualKey() + ':' + presence.toFixed(3)
+    if (signature === visualSignature) return
+    visualSignature = signature
+    const state = opts.visualState?.()
+    const panelAlpha = state?.panelAlpha ?? 0
+    const baseline = Object.fromEntries(themeTokens.map(key => [key, document.body.style.getPropertyValue(key).trim() || fallbackPalette[key]]))
+    if (panelAlpha !== transitionAlpha) {
+      transitionAlpha = panelAlpha
+      transitionStyle.textContent = tabSceneTransitionCss(p.ui, panelAlpha, p.figure.ink)
+    }
+    visualStyle.textContent = tabSceneThemeCss(p.ui, panelAlpha, p.figure.ink, presence, baseline)
+      + (state?.focus === true && state.mode === p.focus.mode ? dayNightVisualCss(0, 1, p.focus) : '')
+  }
+  // Install the incoming palette before removing a pending exit, keeping the
+  // currently visible mix continuous during quick returns.
+  updateUi(entryPresence)
+  finishPendingExit?.()
   let scrollTarget = 0, scrollPosition = 0, previousFrame = 0
   let silhouette: HTMLCanvasElement | undefined
   let portrait: HTMLImageElement | undefined
@@ -282,13 +370,7 @@ export function startDayNightDive(opts: { profile: TabScene; assetUrl: (path: st
     if (disposed || !silhouette || !portrait) return
     const reduced = motion.matches
     const state = opts.visualState?.()
-    const breathe = state?.focus === true && state.mode === p.focus.mode
-    const panelAlpha = state?.panelAlpha ?? 0
-    const signature = String(breathe) + ':' + panelAlpha + ':' + (state?.mode ?? '')
-    if (signature !== visualSignature) {
-      visualSignature = signature
-      visualStyle.textContent = tabSceneThemeCss(p.ui, panelAlpha) + (breathe ? dayNightVisualCss(0, 1, p.focus) : '')
-    }
+    updateUi(reduced ? 1 : entryPresence + (1 - entryPresence) * smooth((now - start) / p.exit.duration))
     if (opts.scrollProgress) scrollTarget = clamp(opts.scrollProgress())
     const elapsed = previousFrame === 0 ? 0 : Math.min(100, now - previousFrame)
     previousFrame = now
@@ -477,15 +559,24 @@ export function startDayNightDive(opts: { profile: TabScene; assetUrl: (path: st
       foam = frames; start = performance.now(); redraw()
       // Reduced motion has no animation loop; still react to display settings.
       visualPoll = window.setInterval(() => {
-        if (!disposed && motion.matches && visualKey() !== visualSignature) redraw()
+        if (!disposed && motion.matches && visualKey() + ':1.000' !== visualSignature) redraw()
       }, 250)
-    }).catch((error: unknown) => { if (!disposed) { canvas.remove(); visualStyle.remove(); console.warn('[daynight] 入水素材加载失败', error) } })
+    }).catch((error: unknown) => { if (!disposed) { canvas.remove(); visualStyle.remove(); transitionStyle.remove(); console.warn('[daynight] 入水素材加载失败', error) } })
   return () => {
     if (disposed) return
     disposed = true; cancelAnimationFrame(raf); clearInterval(visualPoll)
     window.removeEventListener('resize', redraw); motion.removeEventListener('change', redraw)
     document.removeEventListener('wheel', onWheel, { capture: true })
-    if (!portrait || motion.matches || document.hidden) { canvas.remove(); visualStyle.remove(); return }
+    if (!portrait || motion.matches || document.hidden) { canvas.remove(); visualStyle.remove(); transitionStyle.remove(); return }
+    // Interpolate tokens throughout exit, including newly mounted containers.
+    const exitStart = performance.now(), fromPresence = themePresence
+    pendingThemeBaseline = fallbackPalette; pendingThemePresence = fromPresence
+    const fadeTheme = (now: number): void => {
+      pendingThemePresence = fromPresence * (1 - smooth((now - exitStart) / p.exit.duration))
+      updateUi(pendingThemePresence)
+      if (pendingThemePresence > 0) themeRaf = requestAnimationFrame(fadeTheme)
+    }
+    themeRaf = requestAnimationFrame(fadeTheme)
     // Freeze the last rendered frame, lift it toward the surface and withdraw
     // the water from bottom to top while fading into the next tab's background.
     const scaleTransform = getComputedStyle(canvas).transform
@@ -497,8 +588,10 @@ export function startDayNightDive(opts: { profile: TabScene; assetUrl: (path: st
     ], { duration: p.exit.duration, easing: 'cubic-bezier(0.4, 0, 0.2, 1)', fill: 'forwards' })
     const finish = (): void => {
       clearTimeout(fallback)
-      exit.cancel(); canvas.remove(); visualStyle.remove()
-      if (finishPendingExit === finish) finishPendingExit = undefined
+      cancelAnimationFrame(themeRaf)
+      updateUi(0)
+      exit.cancel(); canvas.remove(); visualStyle.remove(); transitionStyle.remove()
+      if (finishPendingExit === finish) { finishPendingExit = undefined; pendingThemeBaseline = undefined; pendingThemePresence = 0 }
     }
     const fallback = window.setTimeout(finish, p.exit.duration + 150)
     finishPendingExit = finish
@@ -512,7 +605,6 @@ export function startPackageTabScene(id: string, opts: {
   visualState?: () => { focus: boolean; mode: string; panelAlpha?: number }
   base?: string
 } = {}): () => void {
-  finishPendingExit?.()
   const abort = new AbortController()
   let stop: (() => void) | undefined
   const base = opts.base ?? '/we-sync/dwp'

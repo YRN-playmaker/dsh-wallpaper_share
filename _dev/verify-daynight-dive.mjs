@@ -164,10 +164,12 @@ try {
     wash.style.cssText = 'position:fixed;inset:0;z-index:-1;pointer-events:none;background:var(--dsw-alias-bg-base)'
     document.body.appendChild(wash)
   })
-  assert.deepEqual(await themeState(), { page: 'rgba(15,16,20,0.035)', sidebar: 'rgba(13,14,17,0.580)', card: 'rgba(24, 26, 32, 0.62)' })
+  await page.waitForTimeout(500)
+  assert.deepEqual(await themeState(), { page: 'rgba(15,16,20,0.035)', sidebar: 'rgba(3,22,51,0.160)', card: 'rgba(24, 26, 32, 0.62)' })
   await page.screenshot({ path: resolve('_dist/dive-preview/theme-dark.png') })
   await page.evaluate(() => { document.body.removeAttribute('data-ds-dark-theme'); document.body.style.color = '#193052' })
-  assert.deepEqual(await themeState(), { page: 'rgba(246,247,250,0.035)', sidebar: 'rgba(238,240,244,0.800)', card: 'rgba(255, 255, 255, 0.76)' })
+  await page.waitForTimeout(500)
+  assert.deepEqual(await themeState(), { page: 'rgba(246,247,250,0.035)', sidebar: 'rgba(3,22,51,0.120)', card: 'rgba(255, 255, 255, 0.76)' })
   await page.screenshot({ path: resolve('_dist/dive-preview/theme-light.png') })
   await page.evaluate(() => { document.querySelector('#theme-wash').remove(); document.body.style.removeProperty('color') })
   await page.evaluate(async () => {
@@ -232,7 +234,7 @@ try {
   await page.mouse.wheel(0, 900)
   await page.waitForTimeout(700)
   const midCaustic = await page.evaluate(() => window.causticPlacement)
-  assert.ok(midCaustic?.alpha > 0 && midCaustic.alpha < topCaustic.alpha * 0.7, 'surface caustics fade while diving')
+  assert.ok(midCaustic?.alpha > 0 && midCaustic.alpha < topCaustic.alpha * 0.7, 'surface caustics fade while diving: ' + JSON.stringify({ topCaustic, midCaustic }))
   assert.equal(midCaustic.y, 0, 'surface caustics remain anchored instead of moving with the background')
   await page.mouse.wheel(0, 3000)
   await page.waitForTimeout(700)
