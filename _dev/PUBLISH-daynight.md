@@ -1,6 +1,23 @@
 ﻿# 「DeepSeek 日夜」DWP 壁纸：状态与再发布
 
-## 最新更新：1.3.0 已发布并收录（2026-10-12）
+## 最新更新：1.3.1 已发布并收录（2026-10-12）
+
+- 壁纸与修复后配套插件：https://github.com/YRN-playmaker/dwp-releases/releases/tag/deepseek-day-night-1.3.1
+- 插件源码版本按要求保留 26.10.12-D，修复对应提交 47649f29b482c19e34f3ec5eb8b990e992a169bc；README.md / README.zh-CN.md 在该提交推送前已完善。
+- 配套文件：dsh-wallpaper_share-26.10.12-D-daynight-1.3.1.tgz。旧 v26.10.12-D 的标签和资产保留且不含此次页面过渡修复；安装本次配套包后需重启 Harness，即使界面显示的版本相同也需重新安装。
+- 市场更新已合并：https://github.com/YRN-playmaker/dwp-registry/pull/4；合并提交 98c65011c654acabc136f5e582c0f7f37ca0a18a。公开 catalog 已确认 1.3.1、下载地址、大小和校验值一致，其他两条市场记录保留。
+- DWP：11,621,966 B；sha512-84b16e7QopjoucxlN95iJ78/hPBRrgYOdwVLLnGCYZkrDv4399jsXx8mTi/LpdZqadisqSXuIdGRJxBV7wHz0g==。
+- 配套 tgz：897,236 B；sha512-8cdpWBzTEO1+pE2Dt1/MUi2EBUZz08Fjkt+36eErejyGLnKwmyT3vNPKegzTCmZLljWKKUKJmKEL3lPuTX8Z/A==。
+- GitHub 上传和两个公开下载均校验成功。本地已安装日夜壁纸同步为 1.3.1，插件目录及构建产物为 26.10.12-D；未更新 npm 渠道。
+
+1.3.1 调低 DWP 内侧边栏浓度，并配套修复通用渲染器：侧边栏同色渐隐、消除双重背景填充、深浅主题下维持标签可读；入水、退出、快速返回均逐帧混合主题颜色，新挂载的对话容器也继承过渡中的颜色。保留 1.3.0 的入水、水花、剪影、滚轮下潜、焦散、泡泡照明和专注呼吸。
+
+验证环境：Windows、Node 24.19.0、独立 DSH_HOME 与独立用户目录内的 Harness 0.1.0-rc.6。实际安装上述 tgz 后确认插件 26.10.12-D、DWP 1.3.1、wallpaper_share 标签及真实 DWP 接口；深浅主题、侧边栏单层渐隐、入场中间帧、退出中间帧、对话返回、预览切完整、专注、滚轮光效淡出/恢复和退出清理均通过，无页面错误。216 项回归、9 项包检查、实际 tarball 和独立浏览器检查通过。
+
+- Windows/Linux 源码 CI：https://github.com/YRN-playmaker/dsh-wallpaper_share/actions/runs/38233167814
+- 市场 CI：https://github.com/YRN-playmaker/dwp-registry/actions/runs/38233321956
+
+## 历史更新：1.3.0 已发布并收录（2026-10-12）
 
 - 壁纸 Release：https://github.com/YRN-playmaker/dwp-releases/releases/tag/deepseek-day-night-1.3.0
 - 配套插件 Release：https://github.com/YRN-playmaker/dsh-wallpaper_share/releases/tag/v26.10.12-D
