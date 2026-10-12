@@ -247,7 +247,7 @@ node tools/test-capture-browser.mjs --native
 <a id="english"></a>
 ## English
 
-Sync the active Wallpaper Engine (WE) wallpaper into the DeepSeek Harness (DSH) Web / Desktop UI. Use the `wallpaper_share` tab to adjust rendering, transparency, blur, shadows, the focus lens and the wallpaper library. This update was installed and browser-tested in an isolated Harness `0.1.0-rc.6` environment.
+Sync the active Wallpaper Engine (WE) wallpaper into the DeepSeek Harness (DSH) Web / Desktop UI. Use the `wallpaper_share` tab to adjust rendering, transparency, blur, shadows, the focus lens and the wallpaper library. This update was installed and tested with Harness `0.1.0-rc.6` and `0.2.0-rc.2`.
 
 Wallpaper sync reads WE state without changing your desktop wallpaper. The installation directory is detected automatically. Eye tracking runs locally; camera frames are not uploaded.
 
@@ -264,30 +264,15 @@ Wallpaper sync reads WE state without changing your desktop wallpaper. The insta
 <a id="en-update"></a>
 ### What's new in 26.10.13-D · Day & Night 1.3.2
 
-1. **Downloads above 4 GB:** the launcher streams direct-link and supported cloud-drive downloads to disk while calculating the checksum. ZIP64 and large archives are extracted from files instead of whole-file buffers. Downloads are capped at 64 GiB and each archive layer at 128 GiB expanded; reserve disk space for both. See [large-download details](docs/launcher-large-download.md).
-2. **Theme readability:** wallpaper, sidebar and page colors transition together without stacked washes. Light-theme labels stay readable during entry, exit and returns to the conversation.
-3. **Updated DeepSeek Day & Night wallpaper:** DWP 1.3.2 adds richer underwater motion and separates Preview from Complete. On the `wallpaper_share` page, Preview keeps the daytime blue palette regardless of local time and uses ordinary, cheaper bubbles. Complete follows the day/night clock, with a muted warm-red sea, full silhouette, orange-gold splash cels and coral-red buttons at night. Rising 2D bubbles reveal portrait detail at 1.35× magnification; at most 12 persistent bubbles are visible, excluding temporary entry droplets.
+1. **Downloads above 4 GB:** the launcher supports large software downloads through direct links and cloud drives, with ZIP64 support and disk-based extraction of large archives. Downloads are capped at 64 GiB and each archive layer at 128 GiB expanded; reserve disk space for both the download and extracted files. See [details](docs/launcher-large-download.md).
+2. **Fewer wallpaper and theme conflicts:** wallpaper, sidebar and page styling now work together with fewer overlapping masks. Text is clearer in light themes, with smooth transitions when entering, leaving or returning to the conversation.
+3. **Updated DeepSeek Day & Night theme:** version 1.3.2 adds richer water entry, scroll-driven diving, surface caustics and 2D bubble animations, with clearer differences between Preview and Full. On the `wallpaper_share` page, Preview keeps the daytime blue background regardless of local time and uses lower-cost bubbles. Full retains day/night switching, warm-red water and a full silhouette at night, with matching splash and button colors.
 
-![DeepSeek 日夜：白天完整模式](docs/images/deepseek-daynight-day.png)
+![DeepSeek Day & Night: daytime Full mode](docs/images/deepseek-daynight-day.png)
 
-![DeepSeek 日夜：夜间完整模式](docs/images/deepseek-daynight-night.png)
+![DeepSeek Day & Night: nighttime Full mode](docs/images/deepseek-daynight-night.png)
 
-Install `dsh-wallpaper_share-26.10.13-D.tgz` from the [plugin release](https://github.com/YRN-playmaker/dsh-wallpaper_share/releases/tag/v26.10.13-D), restart Harness, then update/import and remount [wallpaper 1.3.2](https://github.com/YRN-playmaker/dwp-releases/releases/tag/deepseek-day-night-1.3.2). Portraits, splash textures and declarative settings ship inside the DWP; the plugin supplies the generic renderer. Author-provided screenshots show the previous displayed plugin version for illustration. This GitHub release does not change npm channels.
-
-#### What's new in 26.10.9-D
-
-- **DeepSeek Day & Night sidebar:** blue hover backgrounds and two dark swimming fish silhouettes on selected items, reduced in size by 10%. Excludes the brand button; supports the collapsed rail, restored wallpaper selection and reduced-motion preferences.
-- **Companion DWP 1.2.0:** includes plugin upgrade instructions while preserving day/night transitions and both texture tiers.
-
-#### What's new in 26.10.6-D
-
-- **Desktop Capture connection:** Capture now uses the stream address supplied by Harness Desktop, fixing failed desktop connections. The Web UI continues to connect through its page address.
-- **High-DPI window following:** the bundled **we-capture 0.4.3** handles Windows display scaling correctly, fixing wallpaper misalignment at scaling levels such as 125% and offsets that grew as the window moved right.
-- **Custom keyboard shortcuts:** the new Keyboard Shortcuts card lets you record keys or key combinations for immersive mode (default `F11`) and focus mode (default `F10`). Bindings are saved and restored after restarting.
-- **Status dots removed:** sidebar and top-right status dots have been removed to avoid desktop display issues. Focus intensity still adapts to session task activity.
-- **Desktop floater removed:** its switch, status display, return-to-window action and bundled program are no longer available. Use the keyboard shortcut to enter immersive mode.
-
-See [CHANGELOG.md](CHANGELOG.md). Repository source reports **26.10.13-D**. On 2026-10-12, npm `latest` / `desktop` select **26.10.9-D** and `web` selects **26.10.3**; these channels do not contain this underwater UI update.
+See [CHANGELOG.md](CHANGELOG.md) for the full history. Repository source reports **26.10.13-D**. As checked on 2026-10-12, npm `latest` / `desktop` point to **26.10.9-D** and `web` to **26.10.3**; these channels do not include this water-entry page fix.
 
 <a id="en-install"></a>
 ### Install and upgrade
@@ -326,17 +311,17 @@ Open a new session and find the `wallpaper_share` tab in the session area. Enabl
 <a id="en-daynight"></a>
 ### DeepSeek Day & Night 1.3.2
 
-1. Download `deepseek-day-night.dwp` and the updated companion plugin from the [1.3.2 release](https://github.com/YRN-playmaker/dwp-releases/releases/tag/deepseek-day-night-1.3.2).
-2. Install the companion archive, restart the DSH Web profile and refresh the page:
+1. Download `deepseek-day-night.dwp` and this plugin package from the [1.3.2 release](https://github.com/YRN-playmaker/dwp-releases/releases/tag/deepseek-day-night-1.3.2).
+2. Install the plugin, restart the DSH Web profile and refresh the page:
 
    ```bash
    dsh plugin --profile web add ./dsh-wallpaper_share-26.10.13-D.tgz
    ```
 
 3. Update the wallpaper to **1.3.2** in **Wallpaper Library → Market**, or import the downloaded DWP, then remount it.
-4. Open `wallpaper_share` for water entry, scroll to dive and return to the conversation for the exit transition. Complete mode enables caustics and bubble lighting; enabling Focus adds breathing blur.
+4. Open `wallpaper_share` to view water entry, scroll to dive, then return to the conversation to check the exit transition. Select Full for caustics and bubble lighting; enable Focus to see breathing blur.
 
-The portrait, ten splash cels and declarative water, silhouette, scroll, lighting and UI wash settings ship inside the DWP. The plugin supplies a generic renderer. Standard DWP players retain the automatic day/night scene and both texture tiers. Reduced-motion preferences suppress motion.
+The portrait, ten splash frames, U-shaped reveal, silhouette gradient, scroll depth, lighting and UI intensity settings ship inside the DWP. The plugin supplies a generic renderer. Standard DWP players retain the day/night background, both texture tiers and automatic switching. Reduced-motion preferences suppress motion.
 
 If the new effects are missing, confirm plugin **26.10.13-D** and wallpaper **1.3.2**, restart the backend and remount. Updating the DWP or refreshing the browser alone does not update the renderer. See [tab-scene documentation](docs/daynight-tab-scene.md).
 
@@ -385,7 +370,7 @@ Sidebar / top-right status dots and the desktop floater have been removed. Focus
 
 **Wallpaper sync**
 
-![Wallpaper sync](https://github.com/user-attachments/assets/6f147644-6283-456b-a9eb-c9c6d9925079)
+<img width="426" height="240" alt="Wallpaper sync" src="https://github.com/user-attachments/assets/29b54b40-71c0-425f-82dd-974b66792a67" />
 
 **Focus mode demonstration**
 
@@ -397,7 +382,7 @@ Sidebar / top-right status dots and the desktop floater have been removed. Focus
 
 **Settings panel**
 
-<img width="1050" height="703" alt="image" src="https://github.com/user-attachments/assets/19cb21fe-441a-4e18-bb29-ef61c173b8f5" />
+<img width="1050" height="703" alt="Settings panel" src="https://github.com/user-attachments/assets/272420f1-3730-40b1-b683-c8c7654db0f3" />
 
 
 These screenshots may show older versions. Any status dots or desktop floater shown are no longer available in 26.10.6-D; refer to the current interface for the layout.
@@ -483,15 +468,10 @@ Follow [AGENTS.md](AGENTS.md) and the [encoding and release rules](docs/encoding
 
 I’m [YRN-playmaker](https://github.com/YRN-playmaker), the developer of this plugin. Thank you for using it, reporting issues and sharing the project.
 
-If this plugin is helpful to you, please consider supporting me by [contributing to me on Ko-fi](https://ko-fi.com/yrnplaymaker) to help me get a cup of coffee. This will also facilitate maintenance, compatibility adaptation, and the development of new features.
+If this plugin helps you, consider [buying me a coffee on Ko-fi](https://ko-fi.com/yrnplaymaker) to support maintenance, compatibility improvements and new features.
 
 ---
 
 ## License
 
 [GPL-3.0](LICENSE)
-
-
-### DeepSeek Day & Night 1.3.2
-
-The DWP includes the wallpaper_share water entry and exit, splash cels, inverted portrait with depth gradients, and scroll-driven diving. Requires plugin **26.10.13-D** or later. Preview keeps the daytime palette on this page; Complete follows local time with muted warm-red nights and 1.35× bubble detail windows. Surface reflections remain at the top and fade as you dive; Complete mode adds refracted caustics and bubble lighting. Focus + Complete uses a 1–4px breathing blur. Portrait, splash textures and settings ship inside the DWP. [Extension notes](docs/daynight-tab-scene.md) · [Wallpaper download](https://github.com/YRN-playmaker/dwp-releases/releases/tag/deepseek-day-night-1.3.2).
