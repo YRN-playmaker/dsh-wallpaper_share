@@ -27,3 +27,5 @@ Remove-Item Env:WESYNC_LARGE_DOWNLOAD_TEST
 2026-10-12 验证环境：Windows、Node v24.19.0、Bandizip bz 7.40 Beta。96 MiB JavaScript 堆限制下，3 GiB ZIP 下载、校验和解压全部通过，Node 峰值 RSS 约 123 MiB。此结果不包含解压器子进程的内存。此项为此前的 3 GiB 验证记录。
 
 2026-10-13：同一 Windows / Node v24.19.0 / Bandizip 7.40 环境，真实 HTTP 5 GiB ZIP64 下载、SHA-512 校验与磁盘解压全部通过，96 MiB JS 堆限制下 Node 峰值 RSS 118 MiB（不包含解压器子进程）。超过 4 GiB 的文件不会再触发原来的下载上限。
+
+发布验证：插件 26.10.13-D 的 Windows / Linux GitHub 包检查与常规回归通过；独立 Harness 0.1.0-rc.6 安装实际 tgz 后前端标签可见且无加载错误。5 GiB 压力测试在 Windows 独立运行，Linux CI 不重复该磁盘压力测试。[发布记录](../_dev/PUBLISH-daynight.md)。

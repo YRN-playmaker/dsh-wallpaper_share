@@ -1,6 +1,26 @@
 ﻿# 「DeepSeek 日夜」DWP 壁纸：状态与再发布
 
-## 最新更新：1.3.1 已发布并收录（2026-10-12）
+## 最新更新：26.10.13-D / 日夜 1.3.2 已发布并收录（2026-10-13）
+
+- 插件 Release：https://github.com/YRN-playmaker/dsh-wallpaper_share/releases/tag/v26.10.13-D
+- 壁纸及配套插件：https://github.com/YRN-playmaker/dwp-releases/releases/tag/deepseek-day-night-1.3.2
+- 源码提交：effeac1ebf6fa6aae76a8598572114307942eb7e。推送前已完善 README 中英文和 CHANGELOG；日夜截图使用作者提供的原文件，未改图。
+- 市场更新：https://github.com/YRN-playmaker/dwp-registry/pull/5；合并提交 1c6461976b882a9f58760277b3196bdcc18c6d34。公开 catalog 已确认 1.3.2、下载地址、大小和 SHA-512，其余壁纸记录保留。
+- 插件附件：dsh-wallpaper_share-26.10.13-D.tgz，2677094 B；sha512-3gc//iCF8/S+5FDetM0K33HD6r2cygQG37OqarRa+7PPy9ZU3ZdMjLl6PIPzr+tE+aJtX9xYYCNy92yBKUaC8g==。
+- DWP 附件：11627887 B；sha512-v7U1MnYuAmNggqXmy3ieR4snJIpb4OO4uTjl8pEWKqnTucEMiFEMG99jRhHVs9L+WMCuNowu//+Uo1OZ7Y2h5Q==。
+- 两个 Release 的全部公开附件已重新下载校验；旧插件 26.10.12-D 和旧 DWP 1.3.1 标签及资产保持原样。npm 渠道未变更。
+
+本次启动器改为流式下载与增量校验，下载上限 64 GiB、单层展开上限 128 GiB。实际 HTTP 5 GiB ZIP64 下载、校验、解压与清理全部通过，96 MiB JavaScript 堆限制下 Node 峰值 RSS 118 MiB，不含解压器子进程。
+
+日夜 1.3.2 区分预览与完整：预览水下页面保持白天蓝色及普通气泡；完整模式有二维扁椭球气泡、伪随机上浮和晃动、1.35 倍人物细节窗口，最多 12 个常驻气泡，入场临时小泡泡除外。夜间采用柔和暖红水体、深酒红完整剪影、珊瑚红交互和橙金水花，水花原有透明边缘与帧时序保留。缓存复用与按高度渐变光照减少性能开销，主题、专注、模糊、滚轮与页面退出保持衔接。
+
+验证环境：Windows、Node v24.19.0、Bandizip 7.40、独立干净 checkout 和 DSH_HOME 中的 Harness 0.1.0-rc.6。实际发布 tgz 安装后的 manifest、README、动画文档及 host/client 字节与打包源一致；前端 wallpaper_share 标签、深浅主题、入场/退出、快速返回、预览切完整、滚轮光纹消失/恢复、专注呼吸和减少动态效果通过，无加载或渲染错误。224 项常规回归通过（大文件压力项独立运行），9 项包检查通过，市场 25 项测试通过。
+
+- 源码 CI（verify (ubuntu-24.04)）：https://github.com/YRN-playmaker/dsh-wallpaper_share/actions/runs/38283075506/job/114924797350
+- 源码 CI（verify (windows-latest)）：https://github.com/YRN-playmaker/dsh-wallpaper_share/actions/runs/38283075506/job/114924797082
+- 市场 CI：https://github.com/YRN-playmaker/dwp-registry/actions/runs/38283419417/job/114925933036
+
+## 历史更新：1.3.1 已发布并收录（2026-10-12）
 
 - 壁纸与修复后配套插件：https://github.com/YRN-playmaker/dwp-releases/releases/tag/deepseek-day-night-1.3.1
 - 插件源码版本按要求保留 26.10.12-D，修复对应提交 47649f29b482c19e34f3ec5eb8b990e992a169bc；README.md / README.zh-CN.md 在该提交推送前已完善。
