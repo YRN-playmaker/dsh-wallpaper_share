@@ -58,10 +58,10 @@ export function tabSceneThemeCss(ui: TabScene['ui'], panelAlpha: number): string
     const sidebar = dark ? '13,14,17' : '238,240,244'
     const cardAlpha = dark ? ui.darkCardAlpha : ui.lightCardAlpha
     return `${s} {
-      --dsw-alias-bg-base: rgba(${page},${alpha(ui.pageAlpha)});
-      --dsw-alias-bg-layer-1: rgba(${layer},${alpha(ui.layerAlpha)});
-      --dsw-alias-bg-layer-2: rgba(${layer},${alpha(ui.layerAlpha)});
-      --dsw-specific-sidebar-fill: rgba(${sidebar},${alpha(dark ? ui.darkSidebarAlpha : ui.lightSidebarAlpha)});
+      --dsw-alias-bg-base: rgba(${page},${alpha(ui.pageAlpha)}) !important;
+      --dsw-alias-bg-layer-1: rgba(${layer},${alpha(ui.layerAlpha)}) !important;
+      --dsw-alias-bg-layer-2: rgba(${layer},${alpha(ui.layerAlpha)}) !important;
+      --dsw-specific-sidebar-fill: rgba(${sidebar},${alpha(dark ? ui.darkSidebarAlpha : ui.lightSidebarAlpha)}) !important;
     }
     ${s} .wesync-card {
       --dsw-alias-bg-base: rgba(${layer},${alpha(cardAlpha)});

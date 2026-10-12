@@ -1,0 +1,98 @@
+// Verify the actual tgz installed into an isolated Harness, with real host APIs.
+import assert from 'node:assert/strict'
+import { pathToFileURL } from 'node:url'
+import { mkdirSync } from 'node:fs'
+import { resolve } from 'node:path'
+const url = process.argv[2] ?? 'http://127.0.0.1:4319'
+const project = process.argv[3] ?? resolve('_dist/daynight-harness-project')
+mkdirSync(project, { recursive: true })
+const { chromium } = await import(process.env.PLAYWRIGHT_MODULE ? pathToFileURL(process.env.PLAYWRIGHT_MODULE).href : 'playwright')
+const browser = await chromium.launch({ headless: true, channel: 'msedge' })
+try {
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
+  const errors = []
+  page.on('pageerror', e => errors.push(e.message))
+  await page.addInitScript(() => {
+    let loader
+    Object.defineProperty(window, '__ModuleLoader__', { configurable: true, get: () => loader, set(value) {
+      loader = value
+      const load = value.load
+      value.load = function (definition) {
+        const plugin = definition.id === 'dsh-wallpaper_share'
+        if (plugin || definition.id === '@deepseek-ai/dsh-client-ui-workspace') {
+          const factory = definition.factory
+          definition.factory = require => {
+            const exports = factory(require)
+            if (plugin) window.packedPlugin = exports
+            return { ...exports, apply(ctx, ...args) { if (plugin) window.pluginCtx = ctx; else window.workspaceCtx = ctx; return exports.apply(ctx, ...args) } }
+          }
+        }
+        return load.call(this, definition)
+      }
+    } })
+    const clear = CanvasRenderingContext2D.prototype.clearRect
+    const draw = CanvasRenderingContext2D.prototype.drawImage
+    CanvasRenderingContext2D.prototype.clearRect = function (...args) {
+      if (this.canvas.dataset.daynightDive) window.topCaustic = null
+      return clear.apply(this, args)
+    }
+    CanvasRenderingContext2D.prototype.drawImage = function (...args) {
+      if (this.canvas.dataset.daynightDive && args[0] instanceof HTMLCanvasElement && args[0].width === 320 && args[0].height === 96) window.topCaustic = { y: this.getTransform().f + args[2], alpha: this.globalAlpha }
+      return draw.apply(this, args)
+    }
+  })
+  await page.goto(url, { waitUntil: 'domcontentloaded' })
+  await page.waitForFunction(() => window.packedPlugin && window.workspaceCtx)
+  await page.waitForTimeout(2500)
+  for (const text of ['继续', '稍后配置']) {
+    const button = page.getByText(text, { exact: true })
+    if (await button.count()) { await button.click(); await page.waitForTimeout(400) }
+  }
+  if (!await page.getByText('wallpaper_share', { exact: true }).count()) {
+    await page.evaluate(async project => {
+      const workspace = await window.workspaceCtx.workspaces.create({ path: project })
+      window.workspaceCtx.workspaces.startSession(workspace.id)
+    }, project)
+    await page.locator('textarea').fill('壁纸安装验证（独立测试会话，无 API Key）')
+    await page.getByRole('button', { name: '发送消息', exact: true }).click()
+  }
+  await page.getByText('wallpaper_share', { exact: true }).waitFor({ state: 'visible' })
+  console.log('Installed plugin tab visible')
+  assert.equal(await page.evaluate(() => window.packedPlugin.PLUGIN_VERSION), '26.10.12-D')
+  const manifest = await page.evaluate(async () => (await fetch('/we-sync/dwp/manifest?id=yrn.deepseek-day-night')).json())
+  assert.equal(manifest.version, '1.3.0', 'real host serves the updated installed DWP')
+  await page.evaluate(() => {
+    const store = window.packedPlugin.store
+    Object.assign(store.settings, { dwpMounted: 'yrn.deepseek-day-night', renderMode: 'enhanced', focus: false, blur: 0, panelAlpha: 0, shadow: 0 })
+    store.actions.applyBackground(); store.notify()
+  })
+  await page.getByText('wallpaper_share', { exact: true }).click()
+  await page.waitForFunction(() => window.topCaustic?.alpha > 0.2)
+  console.log('Installed DWP entry rendered')
+  assert.equal(await page.locator('[data-daynight-dive]').count(), 1)
+  assert.equal(await page.evaluate(() => window.topCaustic.y), 0)
+  await page.screenshot({ path: '_dist/dive-preview/installed-host-top.png' })
+  assert.ok((await page.evaluate(() => getComputedStyle(document.body).getPropertyValue('--dsw-alias-bg-base'))).includes('0.035'), 'host inline theme does not obscure the wallpaper')
+  await page.evaluate(() => window.pluginCtx.theme.setTheme('dark'))
+  await page.waitForFunction(() => document.body.hasAttribute('data-ds-dark-theme'))
+  assert.ok((await page.evaluate(() => getComputedStyle(document.body).getPropertyValue('--dsw-alias-bg-base'))).includes('0.035'), 'dark theme keeps the same thin page wash')
+  await page.screenshot({ path: '_dist/dive-preview/installed-host-dark.png' })
+  await page.evaluate(() => window.pluginCtx.theme.setTheme('light'))
+  await page.mouse.move(850, 500)
+  for (let i = 0; i < 5; i++) { await page.mouse.wheel(0, 2000); await page.waitForTimeout(700) }
+  await page.waitForTimeout(700)
+  assert.equal(await page.evaluate(() => window.topCaustic), null, 'real panel scrolling fades surface caustics completely')
+  await page.screenshot({ path: '_dist/dive-preview/installed-host-deep.png' })
+  for (let i = 0; i < 5; i++) { await page.mouse.wheel(0, -2000); await page.waitForTimeout(700) }
+  await page.waitForFunction(() => window.topCaustic?.alpha > 0.2)
+  assert.equal(await page.evaluate(() => window.topCaustic.y), 0)
+  await page.evaluate(() => {
+    const store = window.packedPlugin.store
+    store.settings.focus = true; store.actions.applyBackground(); store.notify()
+  })
+  await page.waitForFunction(() => document.querySelector('[data-daynight-dive]')?.getAnimations().some(a => a.animationName === 'wesync-dive-breathe'))
+  await page.getByText('对话', { exact: true }).click()
+  await page.locator('[data-daynight-dive]').waitFor({ state: 'detached' })
+  assert.deepEqual(errors, [], 'actual installed plugin has no frontend load/render errors')
+  console.log('Actual installation checks passed: Harness 0.1.0-rc.6, plugin 26.10.12-D, DWP 1.3.0; tab visible, scroll light fade/restore, focus breathing, exit; no page errors.')
+} finally { await browser.close() }

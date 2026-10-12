@@ -220,6 +220,13 @@ try {
   assert.equal(await page.evaluate(() => window.bottomDots.length), 0, 'bottom dot grid stays hidden at the top')
   assert.ok(Number.isFinite(initialY), 'upper-body silhouette is visible')
   const topCaustic = await page.evaluate(() => window.causticPlacement)
+  const inlineTheme = await page.evaluate(() => {
+    document.body.style.setProperty('--dsw-alias-bg-base', '#ffffff')
+    const value = getComputedStyle(document.body).getPropertyValue('--dsw-alias-bg-base')
+    document.body.style.removeProperty('--dsw-alias-bg-base')
+    return value
+  })
+  assert.ok(inlineTheme.includes('0.035'), 'tab palette overrides host inline theme tokens while active')
   assert.ok(topCaustic?.alpha > 0.2 && topCaustic.y === 0, 'surface caustics are visible at the top')
   await page.mouse.move(1100, 500)
   await page.mouse.wheel(0, 900)
