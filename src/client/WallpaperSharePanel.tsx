@@ -191,7 +191,7 @@ const DICT = {
     launcherTutorialUse2: '2. 点击「下载安装」',
     launcherTutorialUse3: '3. 看到应用栏出现应用后，单击启动应用（每次启动有确认弹窗）',
     launcherAuthPlaceholder: '粘贴助手复制的139登录态…',
-    launcherAuthSave: '保存登录态', launcherAuthImport: '手动导入登录态', launcherTutorialPrep4: '桌面端：在网盘打开文件列表或分享页，从油猴菜单复制139登录态，回到下方「139登录态」粘贴并保存。Web端可继续自动同步。',
+    launcherAuthSave: '保存登录态', launcherTutorialPrep4: '桌面端：在网盘打开文件列表或分享页，从油猴菜单复制139登录态，回到下方「139登录态」粘贴并保存。Web端可继续自动同步。',
     launcherAuthClear: '清除',
     launcherAuthSaved: '139 登录态已保存',
     launcherAuthNeed: '139 原始文件下载需要登录态，请在下方粘贴 Authorization',
@@ -420,7 +420,7 @@ const DICT = {
     launcherTutorialUse2: '2. Click "Install"',
     launcherTutorialUse3: '3. Once the app tile appears in the library, click it to launch (a confirm dialog shows each time)',
     launcherAuthPlaceholder: 'Paste the 139 login state copied by the helper…',
-    launcherAuthSave: 'Save login state', launcherAuthImport: 'Import login state', launcherTutorialPrep4: 'Desktop: open the drive file list or share page, copy 139 login state from the Tampermonkey menu, then paste and save below. Web users can still use automatic sync.',
+    launcherAuthSave: 'Save login state', launcherTutorialPrep4: 'Desktop: open the drive file list or share page, copy 139 login state from the Tampermonkey menu, then paste and save below. Web users can still use automatic sync.',
     launcherAuthClear: 'Clear',
     launcherAuthSaved: '139 authorization saved',
     launcherAuthNeed: '139 original-file download needs an Authorization — paste it below',
@@ -2120,8 +2120,7 @@ export function WallpaperSharePanel(props?: { ctx?: any }) {
                                 </div>
                               )
                             : null}
-                          <button className="wesync-btn" onClick={() => setLAuthOpen(true)}>{t.launcherAuthImport}</button>
-                          {/* 139 登录态：手动展开或识别分享链接后即可导入 */}
+                          {/* 139 登录态：识别分享链接、已有登录态或下载提示时显示 */}
                           {lAuthOpen || lAuthPresent !== '' || is139Share(lUrl)
                             ? (
                                 <div className="wesync-dir-row" style={{ alignItems: 'center' }}>
