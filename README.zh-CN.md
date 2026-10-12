@@ -4,7 +4,7 @@
   <a href="https://www.npmjs.com/package/dsh-wallpaper_share"><img alt="npm version" src="https://img.shields.io/npm/v/dsh-wallpaper_share" /></a>
   <a href="https://dsh-plugin.org/plugins/yrn-playmaker/dsh-wallpaper-share"><img alt="Listed on dsh-plugin.org" src="https://dsh-plugin.org/badges/listed.svg" /></a>
   <a href="LICENSE"><img alt="GPL-3.0 license" src="https://img.shields.io/badge/License-GPL--3.0-blue.svg" /></a>
-  <a href="https://github.com/YRN-playmaker/dsh-wallpaper_share"><img alt="GitHub version 26.10.12-D" src="https://img.shields.io/badge/GitHub-26.10.12--D-4d6bfe" /></a>
+  <a href="https://github.com/YRN-playmaker/dsh-wallpaper_share"><img alt="GitHub version 26.10.13-D" src="https://img.shields.io/badge/GitHub-26.10.13--D-4d6bfe" /></a>
 </div>
 
 [English](README.md#english) · [双语 README](README.md)
@@ -21,8 +21,8 @@
 
 同步功能读取 WE 状态，不更改桌面壁纸。安装目录会自动检测；眼动追踪在本机推理，摄像头画面不上传。
 
-- [26.10.12-D 更新](#zh-update)
-- [DeepSeek 日夜 1.3.1](#zh-daynight)
+- [26.10.13-D 更新](#zh-update)
+- [DeepSeek 日夜 1.3.2](#zh-daynight)
 - [安装与升级](#zh-install)
 - [渲染模式与窗口跟随](#zh-render)
 - [功能与操作](#zh-features)
@@ -32,14 +32,17 @@
 - [关于我 / 赞助](#zh-support)
 
 <a id="zh-update"></a>
-### 26.10.12-D 更新 · 日夜壁纸 1.3.1
+### 26.10.13-D 更新 · 日夜壁纸 1.3.2
 
-- **入水与退出**：U 型水体从人物入水处展开，水花第一帧开始人物入场；人物先快后慢抵达目标位置。离开页面时，水体、人物和界面主题同步退出，快速切回也能平滑衔接。
-- **人物与下潜**：倒置的大幅人物叠加原图、75% 深色剪影及水面暖色渐变。滚轮加深水色并轻移人物；最深处出现底部圆点行列。
-- **完整模式光效**：顶端动态焦散模拟水面折射，随下潜淡出，滚回顶部恢复；上浮泡泡局部减弱人物剪影。专注 + 完整模式启用 1–4px 呼吸模糊，其他状态保留手动模糊设置。
-- **1.3.1 页面衔接修复**：侧边栏使用单层羽化水色，清理叠加遮罩；深浅主题保持文字可读。进入、离开与切回页面时逐帧混合主题颜色，修复新挂载对话页面突然变灰的问题。
+1. **突破大文件下载限制**：启动器现在支持通过直链、网盘下载超过 4 GB 的大型软件。下载逐块写入磁盘、同步校验，不再把整个文件装进内存；支持 ZIP64 和大压缩包的磁盘解压。当前下载上限为 64 GiB，单层展开上限为 128 GiB，需为下载包和解压文件预留磁盘空间。[详细说明](docs/launcher-large-download.md)。
+2. **优化背景与主题冲突**：重新调整壁纸、侧边栏和页面的主题衔接，减少叠加遮罩；浅色主题下文字更清晰，进入、退出及切回对话时保持平滑过渡。
+3. **一并更新 DeepSeek 日夜主题**：DWP 1.3.2 带来更丰富的入水、滚轮下潜、水面焦散和二维气泡动画，并细分预览与完整模式。预览模式下，`wallpaper_share` 页面固定使用白天蓝色背景，不随本地时间切换，并采用开销更低的普通气泡；完整模式保留昼夜切换、夜间暖红水体与完整剪影、橙金水花及珊瑚红按钮。上浮气泡经过剪影时显露人物细节并放大至 1.35 倍，常驻气泡最多 12 个，入场临时小泡泡除外。
 
-**本次源码和配套包仍使用 26.10.12-D。** 早先 [v26.10.12-D Release](https://github.com/YRN-playmaker/dsh-wallpaper_share/releases/tag/v26.10.12-D) 的资产保留，不包含上述 1.3.1 页面衔接修复。请安装本仓库最新源码，或使用 [壁纸 1.3.1 Release](https://github.com/YRN-playmaker/dwp-releases/releases/tag/deepseek-day-night-1.3.1) 附带的 `dsh-wallpaper_share-26.10.12-D-daynight-1.3.1.tgz`；即使已经安装同名版本，也需要重新安装这份配套包并重启。此次不更新 npm 渠道。
+![DeepSeek 日夜：白天完整模式](docs/images/deepseek-daynight-day.png)
+
+![DeepSeek 日夜：夜间完整模式](docs/images/deepseek-daynight-night.png)
+
+从 [插件 26.10.13-D Release](https://github.com/YRN-playmaker/dsh-wallpaper_share/releases/tag/v26.10.13-D) 安装 `dsh-wallpaper_share-26.10.13-D.tgz`，重启 Harness 后，在壁纸库更新或导入 [日夜 1.3.2](https://github.com/YRN-playmaker/dwp-releases/releases/tag/deepseek-day-night-1.3.2) 并重新挂载。人物、水花素材及声明式效果参数均随 DWP 分发；插件提供通用渲染器。截图由作者提供，界面显示的旧插件版本仅为演示。此次更新 GitHub 发布，不变更 npm 渠道。
 
 #### 26.10.9-D 更新
 
@@ -54,7 +57,7 @@
 - **移除状态圆点**：删除侧边栏和右上角状态圆点，避免桌面端显示异常。专注模式仍会根据会话任务状态调整视觉浓度。
 - **移除桌面悬浮球**：不再提供悬浮球开关、状态显示和点击返回窗口功能，随包也不再包含悬浮球程序。沉浸模式通过快捷键进入。
 
-完整记录见 [CHANGELOG.md](CHANGELOG.md)。仓库源码版本为 **26.10.12-D**；2026-10-12 核对 npm `latest` / `desktop` 为 **26.10.9-D**、`web` 为 **26.10.3**，不含本次入水页面修复。
+完整记录见 [CHANGELOG.md](CHANGELOG.md)。仓库源码版本为 **26.10.13-D**；2026-10-12 核对 npm `latest` / `desktop` 为 **26.10.9-D**、`web` 为 **26.10.3**，不含本次入水页面修复。
 
 <a id="zh-install"></a>
 ### 安装与升级
@@ -82,7 +85,7 @@ dsh plugin --profile web add dsh-wallpaper_share@desktop
 dsh plugin --profile web add dsh-wallpaper_share@web
 
 # 自行打包的本地安装包
-dsh plugin --profile web add ./dsh-wallpaper_share-26.10.12-D-daynight-1.3.1.tgz
+dsh plugin --profile web add ./dsh-wallpaper_share-26.10.13-D.tgz
 ```
 
 安装或升级后，**重启 DSH Web profile 并刷新浏览器页面**。默认地址为 `http://127.0.0.1:3080`，实际端口以启动日志为准。仅刷新页面不会更新已加载的后端程序。
@@ -91,21 +94,21 @@ dsh plugin --profile web add ./dsh-wallpaper_share-26.10.12-D-daynight-1.3.1.tgz
 
 
 <a id="zh-daynight"></a>
-### DeepSeek 日夜 1.3.1
+### DeepSeek 日夜 1.3.2
 
-1. 从 [1.3.1 Release](https://github.com/YRN-playmaker/dwp-releases/releases/tag/deepseek-day-night-1.3.1) 下载壁纸 `deepseek-day-night.dwp` 和本次配套插件包。
+1. 从 [1.3.2 Release](https://github.com/YRN-playmaker/dwp-releases/releases/tag/deepseek-day-night-1.3.2) 下载壁纸 `deepseek-day-night.dwp` 和本次配套插件包。
 2. 安装插件，重启 DSH Web profile 并刷新页面：
 
    ```bash
-   dsh plugin --profile web add ./dsh-wallpaper_share-26.10.12-D-daynight-1.3.1.tgz
+   dsh plugin --profile web add ./dsh-wallpaper_share-26.10.13-D.tgz
    ```
 
-3. 在「壁纸库 → 市场」更新日夜壁纸到 **1.3.1**，或导入下载的 DWP，然后重新挂载。
+3. 在「壁纸库 → 市场」更新日夜壁纸到 **1.3.2**，或导入下载的 DWP，然后重新挂载。
 4. 打开 `wallpaper_share` 查看入水；滚轮下潜，再切回对话检查退出过渡。选择「完整」查看焦散和泡泡照明；开启专注后查看呼吸模糊。
 
 人物、水花十帧、U 型展开、剪影渐变、滚轮深度、光效与界面浓度参数均随 DWP 分发，插件负责通用渲染。普通 DWP 播放器继续显示日夜背景；两档纹理及自动昼夜切换保留。系统「减少动态效果」会抑制动态效果。
 
-若仍看到黑色侧边栏或切页突然变灰，确认安装的是本次 **带 `daynight-1.3.1` 文件名的配套包**，重启后台后重新挂载 1.3.1。仅更新 DWP、仅刷新网页，或继续使用早先同版本的安装包都不能更新通用渲染器。参数与验证说明见 [页面动画文档](docs/daynight-tab-scene.md)。
+若未出现新版效果，确认插件为 **26.10.13-D**、壁纸为 **1.3.2**，重启后台后重新挂载。仅更新 DWP 或仅刷新网页不能更新插件渲染器。参数与验证说明见 [页面动画文档](docs/daynight-tab-scene.md)。
 
 <a id="zh-render"></a>
 ### 渲染模式与窗口跟随
@@ -257,6 +260,6 @@ node tools/test-capture-browser.mjs --native
 [GPL-3.0](LICENSE)
 
 
-### DeepSeek 日夜 1.3.1
+### DeepSeek 日夜 1.3.2
 
-新版日夜 DWP 包含 wallpaper_share 页面的入水、水花、倒置人物渐变、滚轮深度与退出动画，最低需要插件 **26.10.12-D**。水面光斑固定在顶部并随下潜淡出；「完整」模式增加折射焦散与泡泡照明，专注 + 完整时有 1–4px 呼吸模糊。人物、水花素材与参数随 DWP 分发。[扩展说明](docs/daynight-tab-scene.md) · [壁纸下载](https://github.com/YRN-playmaker/dwp-releases/releases/tag/deepseek-day-night-1.3.1)。
+新版日夜 DWP 包含 wallpaper_share 页面的入水、水花、倒置人物渐变、滚轮深度与退出动画，最低需要插件 **26.10.13-D**。预览页面保持白天蓝色，完整模式按本地时间切换柔和暖红夜色，并提供 1.35 倍气泡细节窗口。水面光斑固定在顶部并随下潜淡出；「完整」模式增加折射焦散与泡泡照明，专注 + 完整时有 1–4px 呼吸模糊。人物、水花素材与参数随 DWP 分发。[扩展说明](docs/daynight-tab-scene.md) · [壁纸下载](https://github.com/YRN-playmaker/dwp-releases/releases/tag/deepseek-day-night-1.3.2)。

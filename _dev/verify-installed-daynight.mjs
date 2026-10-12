@@ -15,6 +15,10 @@ try {
   const errors = []
   page.on('pageerror', e => errors.push(e.message))
   await page.addInitScript(() => {
+    const NativeDate = window.Date
+    window.Date = class extends NativeDate {
+      constructor(...args) { if (args.length) super(...args); else super(2026, 9, 13, 12, 0, 0) }
+    }
     let loader
     Object.defineProperty(window, '__ModuleLoader__', { configurable: true, get: () => loader, set(value) {
       loader = value

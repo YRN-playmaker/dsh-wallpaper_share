@@ -13,11 +13,10 @@
  */
 import { existsSync, rmSync, readFileSync, appendFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { LauncherInstaller, LauncherError, type InstalledAppRecord } from './installer.ts'
+import { LauncherInstaller, LauncherError, type InstalledAppRecord, type DownloadedFile } from './installer.ts'
 import { CryptZipError } from './crypt-zip.ts'
 import { parse139ShareUrl, Yun139Client, Yun139Error, normalize139Authorization } from './yun139.ts'
 import { HELPER_SYNC_SCRIPT, HELPER_SYNC_URL } from './helper-sync.ts'
-import { integrityOf, verifyIntegrity } from '../market/integrity.ts'
 
 export interface Req { url?: string; method?: string; headers?: Record<string, string | string[] | undefined> }
 export interface Res { statusCode: number; setHeader(name: string, v: string): void; end(body?: unknown): void }
@@ -148,6 +147,8 @@ export function createLauncherRoutes(deps: LauncherRoutesDeps): Route[] {
       previewBytes = pv.bytes
       previewMime = pv.mime
     }
+    let downloaded: DownloadedFile | undefined
+    let stagingToClean: string | undefined
     try {
       // 1) 下载（139 分享页链接 → 适配器换直链再下；提取码走 passcode 字段）
       let url = opts.url
@@ -165,10 +166,10 @@ export function createLauncherRoutes(deps: LauncherRoutesDeps): Route[] {
         }
       }
       const dl = await installer.download(url)
-      const bytes = dl.bytes
+      downloaded = dl
       const fileName = shareFileName ?? dl.fileName
       // 2) 可选完整性校验
-      if (integrity !== undefined && !verifyIntegrity(bytes, integrity)) {
+      if (integrity !== undefined && dl.sha512 !== integrity) {
         return json(res, 400, { error: '完整性校验失败: sha512 不匹配（包被篡改或损坏）' })
       }
       // 3) 落位：**先在暂存目录里解压 + 校验，全部通过后才原子替换正式目录**
@@ -180,23 +181,14 @@ export function createLauncherRoutes(deps: LauncherRoutesDeps): Route[] {
       const slug = installer.slugify(name)
       const dir = installer.appDir(slug)   // slug 越界/非法（如 `..`）在这里就抛错，绝不拼出安装根之外的路径
       const staging = installer.createStagingDir()
+      stagingToClean = staging
       // zip 识别：扩展名 / PK 头魔数 / 尾部 EOCD（视频+zip 复合文件，头部是媒体数据）
       // 7z 识别：头部魔数 + 「视频垫底+7z 追加」复合文件的中部签名（返回段偏移，解压只喂 7z 段）
-      const isZip = /\.zip$/i.test(fileName) || installer.isZipBytes(bytes)
-      const z7off = installer.is7zBytes(bytes) ? 0 : installer.find7zStart(bytes)
-      const is7z = z7off >= 0
       let files: string[]
       try {
-        if (is7z) {
-          files = installer.extract7z(bytes, staging, password, z7off)
-        } else if (isZip) {
-          files = installer.unzipToDir(bytes, staging, password)
-        } else {
-          const rel = installer.writeFileToDir(bytes, staging, fileName)
-          files = [rel]
-        }
+        files = await installer.unpackFile(dl.path, staging, fileName, password)
         // 嵌套包：外层是媒体复合 zip、内层还有 .7z/.zip 安装包 → 逐层解到出现可执行入口
-        files = installer.settleNested(staging, files, password)
+        files = await installer.settleNested(staging, files, password)
       } catch (e) {
         try { rmSync(staging, { recursive: true, force: true }) } catch { /* ignore */ }
         if (e instanceof CryptZipError) {
@@ -215,7 +207,7 @@ export function createLauncherRoutes(deps: LauncherRoutesDeps): Route[] {
       //    **索引在替换成功之后**才写 —— 失败时盘上与索引都保持旧状态
       const rec = installer.finalize({
         url: opts.url, fileName, slug, title: name, dir: staging, commitTo: dir,
-        entry: candidates[0]!, size: bytes.length, sha512: integrityOf(bytes), previewBytes, previewMime,
+        entry: candidates[0]!, size: dl.size, sha512: dl.sha512, previewBytes, previewMime,
       })
       json(res, 200, { ok: true, record: rec, candidates })
     } catch (e) {
@@ -228,6 +220,10 @@ export function createLauncherRoutes(deps: LauncherRoutesDeps): Route[] {
       } catch { /* 日志写不进不阻断主流程 */ }
       const msg = e instanceof LauncherError ? e.message : `${err.name}: ${err.message}`
       json(res, e instanceof LauncherError ? 400 : 500, { error: msg })
+    } finally {
+      // 杀软短暂占用暂存时，清理失败不能覆盖原错误或影响已发出的成功响应。
+      try { downloaded?.cleanup() } catch { /* 暂存目录隐藏，不影响已安装应用 */ }
+      try { if (stagingToClean) rmSync(stagingToClean, { recursive: true, force: true }) } catch { /* 同上 */ }
     }
   } }
 

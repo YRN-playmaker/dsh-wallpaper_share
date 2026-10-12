@@ -4,6 +4,7 @@ import { mkdtempSync, existsSync, readdirSync, readFileSync, writeFileSync } fro
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { deflateRawSync } from 'node:zlib'
+import { spawnSync } from 'node:child_process'
 import { LauncherInstaller, LauncherError, buildArchiveArgs, isPasswordErrorOutput, writeBytesSafe } from '../installer.ts'
 import { createLauncherRoutes, dataUrlToBytes, type Req, type Res, type Route } from '../routes.ts'
 import { Yun139Error } from '../yun139.ts'
@@ -51,7 +52,7 @@ function fakeRes(bytes: Uint8Array, opts: { status?: number; fileName?: string }
     ok: (opts.status ?? 200) < 400,
     status: opts.status ?? 200,
     headers: { get: (n: string) => (n.toLowerCase() === 'content-disposition' ? (opts.fileName !== undefined ? `attachment; filename="${opts.fileName}"` : null) : null) },
-    arrayBuffer: async () => bytes.slice().buffer,
+    body: new ReadableStream<Uint8Array>({ start(controller) { controller.enqueue(bytes); controller.close() } }),
   }
 }
 
@@ -587,7 +588,9 @@ test('installer/download：CDN 非法 Content-Length（HTTP 解析错误）→ �
   const dl = await installer.download('https://cdn.example.com/a.zip')
   assert.equal(calls, 2)
   assert.equal(retryHadRange, true)
-  assert.equal(dl.bytes.length, zip.length)
+  assert.equal(dl.size, zip.length)
+  assert.deepEqual(readFileSync(dl.path), Buffer.from(zip))
+  dl.cleanup()
 })
 
 test('routes/install：安装失败时错误完整落日志（无密码/凭据），面板可读到详细消息', async () => {
@@ -642,6 +645,53 @@ test('installer/writeBytesSafe：分块写入与读取回一致（>chunkSize 走
   assert.equal(back.length, data.length)
   assert.deepEqual([...back.subarray(0, 1024)], [...data.subarray(0, 1024)])
   assert.deepEqual([...back.subarray(-1024)], [...data.subarray(-1024)])
+})
+
+test('installer/unpackFile：展开量大的 ZIP 使用本机解压器，保留扁平化且不读整包解压', async (t) => {
+  const { installer, root } = mkInstaller()
+  if (!installer.resolveSevenZip() && !installer.resolveBandizip()) { t.skip('本机没有外部解压器'); return }
+  const archive = join(root, 'large.zip')
+  const payload = new Uint8Array(33 * 1024 * 1024).fill(0x61)
+  writeFileSync(archive, buildZip([{ name: 'wrapper/app.exe', data: payload, deflate: true }]))
+  installer.unzipToDir = () => { throw new Error('不允许走内存解压') }
+  const dest = installer.createStagingDir()
+  try {
+    assert.deepEqual(await installer.unpackFile(archive, dest, 'large.zip'), ['app.exe'])
+    assert.deepEqual(readFileSync(join(dest, 'app.exe')), Buffer.from(payload))
+  } finally { (await import('node:fs')).rmSync(root, { recursive: true, force: true }) }
+})
+
+test('installer/extractArchiveFile：外部解包前拒绝路径穿越', async (t) => {
+  const { installer, root } = mkInstaller()
+  if (!installer.resolveSevenZip() && !installer.resolveBandizip()) { t.skip('本机没有外部解压器'); return }
+  const archive = join(root, 'bad.zip')
+  writeFileSync(archive, buildZip([{ name: '../escaped.exe', data: enc('unsafe') }]))
+  const dest = installer.createStagingDir()
+  try {
+    await assert.rejects(installer.extractArchiveFile(archive, dest), /路径可疑/)
+    assert.deepEqual(readdirSync(dest), [])
+  } finally { (await import('node:fs')).rmSync(root, { recursive: true, force: true }) }
+})
+
+test('installer/unpackFile：本机真实 7z 密码包从磁盘解压', async (t) => {
+  const { installer, root } = mkInstaller()
+  const tool = installer.resolveSevenZip() ?? installer.resolveBandizip()
+  if (!tool) { t.skip('本机没有外部解压器'); return }
+  const source = join(root, 'app.exe')
+  const archive = join(root, 'app.7z')
+  writeFileSync(source, 'native archive fixture')
+  const password = 'test-password'
+  const bandizip = /bz(\.exe)?$/i.test(tool)
+  const args = ['a', '-y', bandizip ? '-p:' + password : '-p' + password, archive, source]
+  const result = spawnSync(tool, args, { windowsHide: true })
+  assert.equal(result.status, 0, result.stderr?.toString())
+  const dest = installer.createStagingDir()
+  try {
+    await assert.rejects(installer.unpackFile(archive, dest, 'app.7z'), /密码/)
+    await assert.rejects(installer.unpackFile(archive, dest, 'app.7z', 'wrong-password'), /密码/)
+    assert.deepEqual(await installer.unpackFile(archive, dest, 'app.7z', password), ['app.exe'])
+    assert.equal(readFileSync(join(dest, 'app.exe'), 'utf8'), 'native archive fixture')
+  } finally { (await import('node:fs')).rmSync(root, { recursive: true, force: true }) }
 })
 
 test('routes/root：GET 当前根；POST 换根（相对路径 400，绝对路径生效并回调持久化）', async () => {

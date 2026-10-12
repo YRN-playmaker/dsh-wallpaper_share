@@ -50,7 +50,7 @@ function fakeRes(bytes: Uint8Array, fileName = 'pkg.zip') {
   return {
     ok: true, status: 200,
     headers: { get: (n: string) => (n.toLowerCase() === 'content-disposition' ? `attachment; filename="${fileName}"` : null) },
-    arrayBuffer: async () => bytes.slice().buffer,
+    body: new ReadableStream<Uint8Array>({ start(controller) { controller.enqueue(bytes); controller.close() } }),
   }
 }
 

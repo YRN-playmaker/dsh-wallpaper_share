@@ -2,7 +2,7 @@
 
 <div align="center">
   <b>Wallpaper Engine → DeepSeek Harness Web / Desktop</b><br /><br />
-  <a href="https://github.com/YRN-playmaker/dsh-wallpaper_share"><img alt="GitHub version 26.10.12-D" src="https://img.shields.io/badge/GitHub-26.10.12--D-4d6bfe" /></a>
+  <a href="https://github.com/YRN-playmaker/dsh-wallpaper_share"><img alt="GitHub version 26.10.13-D" src="https://img.shields.io/badge/GitHub-26.10.13--D-4d6bfe" /></a>
   <a href="https://www.npmjs.com/package/dsh-wallpaper_share"><img alt="npm version" src="https://img.shields.io/npm/v/dsh-wallpaper_share" /></a>
   <a href="https://www.npmjs.com/package/dsh-wallpaper_share"><img alt="npm downloads" src="https://img.shields.io/npm/dm/dsh-wallpaper_share" /></a>
   <a href="https://github.com/YRN-playmaker/dsh-wallpaper_share/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/YRN-playmaker/dsh-wallpaper_share" /></a>
@@ -23,8 +23,8 @@
 
 同步功能读取 WE 状态，不更改桌面壁纸。安装目录会自动检测；眼动追踪在本机推理，摄像头画面不上传。
 
-- [26.10.12-D 更新](#zh-update)
-- [DeepSeek 日夜 1.3.1](#zh-daynight)
+- [26.10.13-D 更新](#zh-update)
+- [DeepSeek 日夜 1.3.2](#zh-daynight)
 - [安装与升级](#zh-install)
 - [渲染模式与窗口跟随](#zh-render)
 - [功能与操作](#zh-features)
@@ -34,16 +34,19 @@
 - [关于我 / 赞助](#zh-support)
 
 <a id="zh-update"></a>
-### 26.10.12-D 更新 · 日夜壁纸 1.3.1
+### 26.10.13-D 更新 · 日夜壁纸 1.3.2
 
-- **入水与退出**：U 型水体从人物入水处展开，水花第一帧开始人物入场；人物先快后慢抵达目标位置。离开页面时，水体、人物和界面主题同步退出，快速切回也能平滑衔接。
-- **人物与下潜**：倒置的大幅人物叠加原图、75% 深色剪影及水面暖色渐变。滚轮加深水色并轻移人物；最深处出现底部圆点行列。
-- **完整模式光效**：顶端动态焦散模拟水面折射，随下潜淡出，滚回顶部恢复；上浮泡泡局部减弱人物剪影。专注 + 完整模式启用 1–4px 呼吸模糊，其他状态保留手动模糊设置。
-- **1.3.1 页面衔接修复**：侧边栏使用单层羽化水色，清理叠加遮罩；深浅主题保持文字可读。进入、离开与切回页面时逐帧混合主题颜色，修复新挂载对话页面突然变灰的问题。
+1. **突破大文件下载限制**：启动器现在支持通过直链、网盘下载超过 4 GB 的大型软件。下载逐块写入磁盘、同步校验，不再把整个文件装进内存；支持 ZIP64 和大压缩包的磁盘解压。当前下载上限为 64 GiB，单层展开上限为 128 GiB，需为下载包和解压文件预留磁盘空间。[详细说明](docs/launcher-large-download.md)。
+2. **优化背景与主题冲突**：重新调整壁纸、侧边栏和页面的主题衔接，减少叠加遮罩；浅色主题下文字更清晰，进入、退出及切回对话时保持平滑过渡。
+3. **一并更新 DeepSeek 日夜主题**：DWP 1.3.2 带来更丰富的入水、滚轮下潜、水面焦散和二维气泡动画，并细分预览与完整模式。预览模式下，`wallpaper_share` 页面固定使用白天蓝色背景，不随本地时间切换，并采用开销更低的普通气泡；完整模式保留昼夜切换、夜间暖红水体与完整剪影、橙金水花及珊瑚红按钮。上浮气泡经过剪影时显露人物细节并放大至 1.35 倍，常驻气泡最多 12 个，入场临时小泡泡除外。
 
-**本次源码和配套包仍使用 26.10.12-D。** 早先 [v26.10.12-D Release](https://github.com/YRN-playmaker/dsh-wallpaper_share/releases/tag/v26.10.12-D) 的资产保留，不包含上述 1.3.1 页面衔接修复。请安装本仓库最新源码，或使用 [壁纸 1.3.1 Release](https://github.com/YRN-playmaker/dwp-releases/releases/tag/deepseek-day-night-1.3.1) 附带的 `dsh-wallpaper_share-26.10.12-D-daynight-1.3.1.tgz`；即使已经安装同名版本，也需要重新安装这份配套包并重启。此次不更新 npm 渠道。
+![DeepSeek 日夜：白天完整模式](docs/images/deepseek-daynight-day.png)
 
-完整记录见 [CHANGELOG.md](CHANGELOG.md)。仓库源码版本为 **26.10.12-D**；2026-10-12 核对 npm `latest` / `desktop` 为 **26.10.9-D**、`web` 为 **26.10.3**，不含本次入水页面修复。
+![DeepSeek 日夜：夜间完整模式](docs/images/deepseek-daynight-night.png)
+
+从 [插件 26.10.13-D Release](https://github.com/YRN-playmaker/dsh-wallpaper_share/releases/tag/v26.10.13-D) 安装 `dsh-wallpaper_share-26.10.13-D.tgz`，重启 Harness 后，在壁纸库更新或导入 [日夜 1.3.2](https://github.com/YRN-playmaker/dwp-releases/releases/tag/deepseek-day-night-1.3.2) 并重新挂载。人物、水花素材及声明式效果参数均随 DWP 分发；插件提供通用渲染器。截图由作者提供，界面显示的旧插件版本仅为演示。此次更新 GitHub 发布，不变更 npm 渠道。
+
+完整记录见 [CHANGELOG.md](CHANGELOG.md)。仓库源码版本为 **26.10.13-D**；2026-10-12 核对 npm `latest` / `desktop` 为 **26.10.9-D**、`web` 为 **26.10.3**，不含本次入水页面修复。
 
 <a id="zh-install"></a>
 ### 安装与升级
@@ -71,7 +74,7 @@ dsh plugin --profile web add dsh-wallpaper_share@desktop
 dsh plugin --profile web add dsh-wallpaper_share@web
 
 # 自行打包的本地安装包
-dsh plugin --profile web add ./dsh-wallpaper_share-26.10.12-D-daynight-1.3.1.tgz
+dsh plugin --profile web add ./dsh-wallpaper_share-26.10.13-D.tgz
 ```
 
 安装或升级后，**重启 DSH Web profile 并刷新浏览器页面**。默认地址为 `http://127.0.0.1:3080`，实际端口以启动日志为准。仅刷新页面不会更新已加载的后端程序。
@@ -80,21 +83,21 @@ dsh plugin --profile web add ./dsh-wallpaper_share-26.10.12-D-daynight-1.3.1.tgz
 
 
 <a id="zh-daynight"></a>
-### DeepSeek 日夜 1.3.1
+### DeepSeek 日夜 1.3.2
 
-1. 从 [1.3.1 Release](https://github.com/YRN-playmaker/dwp-releases/releases/tag/deepseek-day-night-1.3.1) 下载壁纸 `deepseek-day-night.dwp` 和本次配套插件包。
+1. 从 [1.3.2 Release](https://github.com/YRN-playmaker/dwp-releases/releases/tag/deepseek-day-night-1.3.2) 下载壁纸 `deepseek-day-night.dwp` 和本次配套插件包。
 2. 安装插件，重启 DSH Web profile 并刷新页面：
 
    ```bash
-   dsh plugin --profile web add ./dsh-wallpaper_share-26.10.12-D-daynight-1.3.1.tgz
+   dsh plugin --profile web add ./dsh-wallpaper_share-26.10.13-D.tgz
    ```
 
-3. 在「壁纸库 → 市场」更新日夜壁纸到 **1.3.1**，或导入下载的 DWP，然后重新挂载。
+3. 在「壁纸库 → 市场」更新日夜壁纸到 **1.3.2**，或导入下载的 DWP，然后重新挂载。
 4. 打开 `wallpaper_share` 查看入水；滚轮下潜，再切回对话检查退出过渡。选择「完整」查看焦散和泡泡照明；开启专注后查看呼吸模糊。
 
 人物、水花十帧、U 型展开、剪影渐变、滚轮深度、光效与界面浓度参数均随 DWP 分发，插件负责通用渲染。普通 DWP 播放器继续显示日夜背景；两档纹理及自动昼夜切换保留。系统「减少动态效果」会抑制动态效果。
 
-若仍看到黑色侧边栏或切页突然变灰，确认安装的是本次 **带 `daynight-1.3.1` 文件名的配套包**，重启后台后重新挂载 1.3.1。仅更新 DWP、仅刷新网页，或继续使用早先同版本的安装包都不能更新通用渲染器。参数与验证说明见 [页面动画文档](docs/daynight-tab-scene.md)。
+若未出现新版效果，确认插件为 **26.10.13-D**、壁纸为 **1.3.2**，重启后台后重新挂载。仅更新 DWP 或仅刷新网页不能更新插件渲染器。参数与验证说明见 [页面动画文档](docs/daynight-tab-scene.md)。
 
 <a id="zh-render"></a>
 ### 渲染模式与窗口跟随
@@ -250,8 +253,8 @@ Sync the active Wallpaper Engine (WE) wallpaper into the DeepSeek Harness (DSH) 
 
 Wallpaper sync reads WE state without changing your desktop wallpaper. The installation directory is detected automatically. Eye tracking runs locally; camera frames are not uploaded.
 
-- [What's new in 26.10.12-D](#en-update)
-- [DeepSeek Day & Night 1.3.1](#en-daynight)
+- [What's new in 26.10.13-D](#en-update)
+- [DeepSeek Day & Night 1.3.2](#en-daynight)
 - [Install and upgrade](#en-install)
 - [Render modes and window following](#en-render)
 - [Features and controls](#en-features)
@@ -261,14 +264,17 @@ Wallpaper sync reads WE state without changing your desktop wallpaper. The insta
 - [About me / Support](#en-support)
 
 <a id="en-update"></a>
-### What's new in 26.10.12-D · Day & Night 1.3.1
+### What's new in 26.10.13-D · Day & Night 1.3.2
 
-- **Water entry and exit:** a U-shaped water reveal grows from the character's entry point. The portrait appears on the first splash frame and decelerates as it settles. Water, portrait and UI colors leave together, including rapid tab returns.
-- **Portrait and depth:** a large inverted portrait blends the original image with a 75% dark silhouette and a warm surface tint. Scrolling deepens the water, slightly moves the portrait and reveals bottom dot rows near maximum depth.
-- **Complete-mode lighting:** moving surface caustics stay at the top and fade with diving depth; rising bubbles locally reveal portrait detail. Focus + Complete uses a 1–4px breathing blur; other states retain manual blur controls.
-- **1.3.1 UI continuity:** a single feathered sidebar wash avoids stacked masks and keeps labels readable in both themes. Theme colors interpolate during entry, exit and rapid returns, including newly mounted conversation containers.
+1. **Downloads above 4 GB:** the launcher streams direct-link and supported cloud-drive downloads to disk while calculating the checksum. ZIP64 and large archives are extracted from files instead of whole-file buffers. Downloads are capped at 64 GiB and each archive layer at 128 GiB expanded; reserve disk space for both. See [large-download details](docs/launcher-large-download.md).
+2. **Theme readability:** wallpaper, sidebar and page colors transition together without stacked washes. Light-theme labels stay readable during entry, exit and returns to the conversation.
+3. **Updated DeepSeek Day & Night wallpaper:** DWP 1.3.2 adds richer underwater motion and separates Preview from Complete. On the `wallpaper_share` page, Preview keeps the daytime blue palette regardless of local time and uses ordinary, cheaper bubbles. Complete follows the day/night clock, with a muted warm-red sea, full silhouette, orange-gold splash cels and coral-red buttons at night. Rising 2D bubbles reveal portrait detail at 1.35× magnification; at most 12 persistent bubbles are visible, excluding temporary entry droplets.
 
-**The updated source and companion archive still report 26.10.12-D.** Assets in the earlier [v26.10.12-D release](https://github.com/YRN-playmaker/dsh-wallpaper_share/releases/tag/v26.10.12-D) are preserved and do not include the 1.3.1 UI continuity fix. Install the latest repository source or `dsh-wallpaper_share-26.10.12-D-daynight-1.3.1.tgz` from the [wallpaper 1.3.1 release](https://github.com/YRN-playmaker/dwp-releases/releases/tag/deepseek-day-night-1.3.1). Reinstall that companion archive even if the displayed plugin version already matches, then restart Harness. This update does not change npm channels.
+![DeepSeek 日夜：白天完整模式](docs/images/deepseek-daynight-day.png)
+
+![DeepSeek 日夜：夜间完整模式](docs/images/deepseek-daynight-night.png)
+
+Install `dsh-wallpaper_share-26.10.13-D.tgz` from the [plugin release](https://github.com/YRN-playmaker/dsh-wallpaper_share/releases/tag/v26.10.13-D), restart Harness, then update/import and remount [wallpaper 1.3.2](https://github.com/YRN-playmaker/dwp-releases/releases/tag/deepseek-day-night-1.3.2). Portraits, splash textures and declarative settings ship inside the DWP; the plugin supplies the generic renderer. Author-provided screenshots show the previous displayed plugin version for illustration. This GitHub release does not change npm channels.
 
 #### What's new in 26.10.9-D
 
@@ -283,7 +289,7 @@ Wallpaper sync reads WE state without changing your desktop wallpaper. The insta
 - **Status dots removed:** sidebar and top-right status dots have been removed to avoid desktop display issues. Focus intensity still adapts to session task activity.
 - **Desktop floater removed:** its switch, status display, return-to-window action and bundled program are no longer available. Use the keyboard shortcut to enter immersive mode.
 
-See [CHANGELOG.md](CHANGELOG.md). Repository source reports **26.10.12-D**. On 2026-10-12, npm `latest` / `desktop` select **26.10.9-D** and `web` selects **26.10.3**; these channels do not contain this underwater UI update.
+See [CHANGELOG.md](CHANGELOG.md). Repository source reports **26.10.13-D**. On 2026-10-12, npm `latest` / `desktop` select **26.10.9-D** and `web` selects **26.10.3**; these channels do not contain this underwater UI update.
 
 <a id="en-install"></a>
 ### Install and upgrade
@@ -311,7 +317,7 @@ dsh plugin --profile web add dsh-wallpaper_share@desktop
 dsh plugin --profile web add dsh-wallpaper_share@web
 
 # A locally packed installation archive
-dsh plugin --profile web add ./dsh-wallpaper_share-26.10.12-D-daynight-1.3.1.tgz
+dsh plugin --profile web add ./dsh-wallpaper_share-26.10.13-D.tgz
 ```
 
 After installing or upgrading, **restart the DSH Web profile and refresh the browser page**. The default address is `http://127.0.0.1:3080`; check the startup log for the actual port. Refreshing the page alone does not reload the backend.
@@ -320,21 +326,21 @@ Open a new session and find the `wallpaper_share` tab in the session area. Enabl
 
 
 <a id="en-daynight"></a>
-### DeepSeek Day & Night 1.3.1
+### DeepSeek Day & Night 1.3.2
 
-1. Download `deepseek-day-night.dwp` and the updated companion plugin from the [1.3.1 release](https://github.com/YRN-playmaker/dwp-releases/releases/tag/deepseek-day-night-1.3.1).
+1. Download `deepseek-day-night.dwp` and the updated companion plugin from the [1.3.2 release](https://github.com/YRN-playmaker/dwp-releases/releases/tag/deepseek-day-night-1.3.2).
 2. Install the companion archive, restart the DSH Web profile and refresh the page:
 
    ```bash
-   dsh plugin --profile web add ./dsh-wallpaper_share-26.10.12-D-daynight-1.3.1.tgz
+   dsh plugin --profile web add ./dsh-wallpaper_share-26.10.13-D.tgz
    ```
 
-3. Update the wallpaper to **1.3.1** in **Wallpaper Library → Market**, or import the downloaded DWP, then remount it.
+3. Update the wallpaper to **1.3.2** in **Wallpaper Library → Market**, or import the downloaded DWP, then remount it.
 4. Open `wallpaper_share` for water entry, scroll to dive and return to the conversation for the exit transition. Complete mode enables caustics and bubble lighting; enabling Focus adds breathing blur.
 
 The portrait, ten splash cels and declarative water, silhouette, scroll, lighting and UI wash settings ship inside the DWP. The plugin supplies a generic renderer. Standard DWP players retain the automatic day/night scene and both texture tiers. Reduced-motion preferences suppress motion.
 
-If the sidebar still looks black or switching tabs suddenly turns the page gray, install the companion archive with **`daynight-1.3.1` in its filename**, restart the backend and remount 1.3.1. Updating the DWP alone, refreshing the browser alone or keeping the older same-version archive will not update the renderer. See the [tab-scene documentation](docs/daynight-tab-scene.md) for parameters and verification.
+If the new effects are missing, confirm plugin **26.10.13-D** and wallpaper **1.3.2**, restart the backend and remount. Updating the DWP or refreshing the browser alone does not update the renderer. See [tab-scene documentation](docs/daynight-tab-scene.md).
 
 <a id="en-render"></a>
 ### Render modes and window following
@@ -488,6 +494,6 @@ If this plugin is helpful to you, please consider supporting me by [contributing
 [GPL-3.0](LICENSE)
 
 
-### DeepSeek Day & Night 1.3.1
+### DeepSeek Day & Night 1.3.2
 
-The DWP includes the wallpaper_share water entry and exit, splash cels, inverted portrait with depth gradients, and scroll-driven diving. Requires plugin **26.10.12-D** or later. Surface reflections remain at the top and fade as you dive; Complete mode adds refracted caustics and bubble lighting. Focus + Complete uses a 1–4px breathing blur. Portrait, splash textures and settings ship inside the DWP. [Extension notes](docs/daynight-tab-scene.md) · [Wallpaper download](https://github.com/YRN-playmaker/dwp-releases/releases/tag/deepseek-day-night-1.3.1).
+The DWP includes the wallpaper_share water entry and exit, splash cels, inverted portrait with depth gradients, and scroll-driven diving. Requires plugin **26.10.13-D** or later. Preview keeps the daytime palette on this page; Complete follows local time with muted warm-red nights and 1.35× bubble detail windows. Surface reflections remain at the top and fade as you dive; Complete mode adds refracted caustics and bubble lighting. Focus + Complete uses a 1–4px breathing blur. Portrait, splash textures and settings ship inside the DWP. [Extension notes](docs/daynight-tab-scene.md) · [Wallpaper download](https://github.com/YRN-playmaker/dwp-releases/releases/tag/deepseek-day-night-1.3.2).

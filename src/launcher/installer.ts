@@ -10,9 +10,11 @@
  * 安全边界：仅接受 http(s) 直链；Content-Length 与实收字节数双查，超限即弃；
  * sha512 记账（可选传入期望值，不符即拒装）；解包条目数/总字节/路径穿越全防。
  */
-import { mkdirSync, writeFileSync, readFileSync, existsSync, statSync, readdirSync, rmSync, openSync, closeSync, writeSync, renameSync, cpSync, realpathSync } from 'node:fs'
-import { randomBytes } from 'node:crypto'
-import { spawnSync } from 'node:child_process'
+import { mkdirSync, writeFileSync, readFileSync, existsSync, statSync, readdirSync, rmSync, openSync, closeSync, writeSync, renameSync, cpSync, realpathSync, createReadStream, createWriteStream, lstatSync, readSync } from 'node:fs'
+import { randomBytes, createHash } from 'node:crypto'
+import { Readable, Transform } from 'node:stream'
+import { pipeline } from 'node:stream/promises'
+import { spawnSync, spawn } from 'node:child_process'
 import { join, dirname, extname, basename, normalize as pathNormalize, resolve, sep } from 'node:path'
 import { homedir } from 'node:os'
 import { fileURLToPath } from 'node:url'
@@ -23,9 +25,8 @@ export interface FetchLike {
   ok: boolean
   status: number
   headers: { get(name: string): string | null }
-  arrayBuffer(): Promise<ArrayBuffer>
-  /** 真实 fetch 才有的流式 body（大文件落盘用；测试假响应可省略） */
-  body?: unknown
+  /** 必须使用流；禁止回退到整包 arrayBuffer。 */
+  body?: ReadableStream<Uint8Array> | AsyncIterable<Uint8Array> | null
 }
 
 /** fetch 可选 init（下载层只用 headers；旧测试注入的 fetchFn 只收 url 也兼容） */
@@ -131,9 +132,19 @@ export class LauncherError extends Error {
   constructor(msg: string) { super(msg); this.name = 'LauncherError' }
 }
 
-const MAX_DOWNLOAD_BYTES = 4 * 1024 * 1024 * 1024 // 4GiB 硬上限
+const MAX_DOWNLOAD_BYTES = 64 * 1024 * 1024 * 1024 // 流式写盘，最多 64 GiB
+const MEMORY_ZIP_BYTES = 32 * 1024 * 1024 // 仅小 ZIP 使用内置读取器
+
+export interface DownloadedFile {
+  path: string
+  fileName: string
+  size: number
+  sha512: string
+  /** 调用方在安装结束（成功或失败）后必须释放。 */
+  cleanup(): void
+}
 const MAX_ZIP_ENTRIES = 20000
-const MAX_ZIP_UNPACKED = 6 * 1024 * 1024 * 1024 // 6GiB
+const MAX_ZIP_UNPACKED = 128 * 1024 * 1024 * 1024 // 每层最多展开 128 GiB
 const PREVIEW_EXT: Record<string, string> = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp' }
 const EXECUTABLE_EXTS = new Set(['.exe', '.bat', '.cmd'])
 /** zip 常见噪声目录 */
@@ -356,7 +367,7 @@ export class LauncherInstaller {
    *  故命中特征时自动带 Range 头重试一次；Range（206）响应不含 Content-Length，
    *  解析器不会再踩同一个坑。Range 重试也失败才把真实错误链抛给上层。
    *  `init.headers` 可注入自定义下载头（与内部 Range 重试头合并）。 */
-  async download(url: string, init?: FetchInitLike): Promise<{ bytes: Uint8Array; fileName: string }> {
+  async download(url: string, init?: FetchInitLike): Promise<DownloadedFile> {
     let parsed: URL
     try { parsed = new URL(url) } catch { throw new LauncherError(`URL 非法: ${url}`) }
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') throw new LauncherError(`仅支持 http(s) 直链: ${parsed.protocol}`)
@@ -377,29 +388,309 @@ export class LauncherInstaller {
         throw new LauncherError(`下载请求失败: ${lastErrText}`)
       }
     }
-    if (!res.ok) throw new LauncherError(`下载失败: HTTP ${res.status}`)
+    const cancelBody = async (): Promise<void> => {
+      if (res.body && 'cancel' in res.body) await res.body.cancel().catch(() => {})
+    }
+    if (!res.ok) {
+      await cancelBody()
+      throw new LauncherError(`下载失败: HTTP ${res.status}`)
+    }
+    // Range 头解析重试也必须得到完整文件，不能把某一段误装成整个包。
+    const contentRange = res.headers.get('content-range')
+    if (res.status === 206) {
+      const match = /^bytes 0-(\d+)\/(\d+)$/.exec(contentRange ?? '')
+      if (!match || Number(match[1]) + 1 !== Number(match[2])) {
+        await cancelBody()
+        throw new LauncherError('下载响应仅包含部分文件，拒绝安装')
+      }
+    }
     const cl = res.headers.get('content-length')
     if (cl !== null && cl !== '') {
       const declared = Number(cl)
       if (Number.isFinite(declared) && declared > MAX_DOWNLOAD_BYTES) {
+        await cancelBody()
         throw new LauncherError(`文件超过大小上限 (${Math.round(MAX_DOWNLOAD_BYTES / 1048576)} MiB): ${declared}`)
       }
     }
-    let buf: ArrayBuffer
+    if (!res.body) throw new LauncherError('下载响应缺少数据流')
+    // 放在安装盘上：同盘移动单文件无需再复制 GB 级数据。
+    const temp = this.createStagingDir()
+    const target = join(temp, 'download.part')
+    let size = 0
+    const hash = createHash('sha512')
+    const source = 'getReader' in res.body
+      ? Readable.fromWeb(res.body as import('node:stream/web').ReadableStream<Uint8Array>)
+      : Readable.from(res.body)
+    const meter = new Transform({
+      transform(chunk: Buffer, _encoding, callback) {
+        size += chunk.length
+        if (size > MAX_DOWNLOAD_BYTES) {
+          callback(new LauncherError(`文件超过大小上限 (4096 MiB): ${size}`))
+          return
+        }
+        hash.update(chunk)
+        callback(null, chunk)
+      },
+    })
     try {
-      buf = await res.arrayBuffer()
+      await pipeline(source, meter, createWriteStream(target, { flags: 'wx' }))
+      if (size === 0) throw new LauncherError('下载内容为空')
+      // fetch 自动解压传输编码，压缩传输不能拿压缩长度与解压后字节比较。
+      const declared = Number(cl)
+      const encoding = res.headers.get('content-encoding')
+      if ((!encoding || encoding === 'identity') && cl && Number.isFinite(declared) && size !== declared) {
+        throw new LauncherError(`下载不完整: 预期 ${declared} 字节，实际 ${size} 字节`)
+      }
+      if (res.status === 206 && size !== Number(contentRange!.split('/')[1])) {
+        throw new LauncherError('下载不完整: 实收大小与 Content-Range 不符')
+      }
     } catch (e) {
+      rmSync(temp, { recursive: true, force: true })
+      if (e instanceof LauncherError) throw e
       throw new LauncherError(`下载中断: ${fetchCauseText(e)}`)
     }
-    if (buf.byteLength > MAX_DOWNLOAD_BYTES) {
-      throw new LauncherError(`文件超过大小上限 (${Math.round(MAX_DOWNLOAD_BYTES / 1048576)} MiB): ${buf.byteLength}`)
-    }
-    if (buf.byteLength === 0) throw new LauncherError('下载内容为空')
     const fileName = fileNameFromUrl(url, res.headers.get('content-disposition'))
-    return { bytes: new Uint8Array(buf), fileName }
+    return { path: target, fileName, size, sha512: 'sha512-' + hash.digest('base64'),
+      cleanup: () => rmSync(temp, { recursive: true, force: true }) }
   }
 
   // ── 解包 / 落盘 ─────────────────────────────────────────────────────
+
+  /** 从磁盘读取有限的 ZIP 中央目录（包括 ZIP64），不读取包体。 */
+  zipFileInfo(path: string): { expanded: number; zip64: boolean } {
+    const fd = openSync(path, 'r')
+    const size = statSync(path).size
+    const read = (position: number, length: number): Buffer => {
+      if (position < 0 || position + length > size) throw new LauncherError('ZIP 目录越界或包已截断')
+      const data = Buffer.alloc(length)
+      let off = 0
+      while (off < length) {
+        const n = readSync(fd, data, off, length - off, position + off)
+        if (!n) throw new LauncherError('ZIP 目录读取不完整')
+        off += n
+      }
+      return data
+    }
+    const safeNumber = (value: bigint): number => {
+      if (value > BigInt(Number.MAX_SAFE_INTEGER)) throw new LauncherError('ZIP64 尺寸超限')
+      return Number(value)
+    }
+    try {
+      const tail = read(Math.max(0, size - 65557), Math.min(size, 65557))
+      let eocd = -1
+      for (let i = tail.length - 22; i >= 0; i--) {
+        if (tail.readUInt32LE(i) === 0x06054b50 && i + 22 + tail.readUInt16LE(i + 20) === tail.length) { eocd = i; break }
+      }
+      if (eocd < 0) throw new LauncherError('不是合法 ZIP：找不到 EOCD')
+      if (tail.readUInt16LE(eocd + 4) || tail.readUInt16LE(eocd + 6)) throw new LauncherError('不支持分卷 ZIP')
+      let count = tail.readUInt16LE(eocd + 10)
+      let cdSize = tail.readUInt32LE(eocd + 12)
+      let cdEnd = size - tail.length + eocd
+      let zip64 = count === 0xffff || cdSize === 0xffffffff || tail.readUInt32LE(eocd + 16) === 0xffffffff
+      if (zip64) {
+        // ZIP64 EOCD 位于 locator 前，标准固定部分为 56 字节。
+        const locator = read(cdEnd - 20, 20)
+        if (locator.readUInt32LE(0) !== 0x07064b50 || locator.readUInt32LE(4) !== 0 || locator.readUInt32LE(16) !== 1) throw new LauncherError('ZIP64 locator 非法或分卷')
+        const record = read(cdEnd - 20 - 56, 56)
+        if (record.readUInt32LE(0) !== 0x06064b50 || record.readBigUInt64LE(4) !== 44n || record.readUInt32LE(16) || record.readUInt32LE(20)) throw new LauncherError('不支持此 ZIP64 目录格式')
+        count = safeNumber(record.readBigUInt64LE(32))
+        cdSize = safeNumber(record.readBigUInt64LE(40))
+        cdEnd -= 76
+      }
+      if (count > MAX_ZIP_ENTRIES || cdSize > 16 * 1024 * 1024) throw new LauncherError('ZIP 条目数或目录大小超限')
+      const central = read(cdEnd - cdSize, cdSize)
+      let p = 0
+      let expanded = 0
+      for (let n = 0; n < count; n++) {
+        if (p + 46 > central.length || central.readUInt32LE(p) !== 0x02014b50) throw new LauncherError('ZIP 中央目录损坏')
+        const nameLen = central.readUInt16LE(p + 28)
+        const extraLen = central.readUInt16LE(p + 30)
+        const end = p + 46 + nameLen + extraLen + central.readUInt16LE(p + 32)
+        if (end > central.length) throw new LauncherError('ZIP 目录条目截断')
+        assertSafeRelPath(central.subarray(p + 46, p + 46 + nameLen).toString('utf8'))
+        const unixMode = central.readUInt32LE(p + 38) >>> 16
+        if ((unixMode & 0xf000) === 0xa000) throw new LauncherError('ZIP 包含符号链接，拒绝解包')
+        let unpacked = central.readUInt32LE(p + 24)
+        zip64 ||= unpacked === 0xffffffff || central.readUInt32LE(p + 20) === 0xffffffff || central.readUInt32LE(p + 42) === 0xffffffff
+        if (unpacked === 0xffffffff) {
+          let found = false
+          for (let q = p + 46 + nameLen; q + 4 <= p + 46 + nameLen + extraLen;) {
+            const length = central.readUInt16LE(q + 2)
+            if (q + 4 + length > p + 46 + nameLen + extraLen) throw new LauncherError('ZIP extra 截断')
+            if (central.readUInt16LE(q) === 1 && length >= 8) { unpacked = safeNumber(central.readBigUInt64LE(q + 4)); found = true; break }
+            q += 4 + length
+          }
+          if (!found) throw new LauncherError('ZIP64 条目缺少尺寸')
+        }
+        expanded += unpacked
+        if (expanded > MAX_ZIP_UNPACKED) throw new LauncherError('ZIP 解包总量超限')
+        p = end
+      }
+      return { expanded, zip64 }
+    } finally { closeSync(fd) }
+  }
+
+  /** 文件识别只读头尾；7z 中部签名扫描保留 5 字节重叠，避免跨块漏检。 */
+  async inspectFile(path: string): Promise<{ zip: boolean; sevenZipOffset: number }> {
+    const size = statSync(path).size
+    const fd = openSync(path, 'r')
+    let zip = false
+    let head: Buffer
+    try {
+      head = Buffer.alloc(Math.min(size, 6))
+      readSync(fd, head, 0, head.length, 0)
+      zip = head.length >= 2 && head[0] === 0x50 && head[1] === 0x4b
+      const tail = Buffer.alloc(Math.min(size, 65557))
+      readSync(fd, tail, 0, tail.length, size - tail.length)
+      for (let i = tail.length - 22; i >= 0 && !zip; i--) {
+        if (tail.readUInt32LE(i) !== 0x06054b50 || i + 22 + tail.readUInt16LE(i + 20) !== tail.length) continue
+        const cdAt = size - tail.length + i - tail.readUInt32LE(i + 12)
+        if (cdAt < 0) continue
+        const sig = Buffer.alloc(4)
+        if (readSync(fd, sig, 0, 4, cdAt) === 4 && sig.readUInt32LE(0) === 0x02014b50) zip = true
+      }
+    } finally { closeSync(fd) }
+    if (head.equals(SEVEN_ZIP_SIG)) return { zip, sevenZipOffset: 0 }
+    if (size < 1048576 || zip) return { zip, sevenZipOffset: -1 }
+    let carry = Buffer.alloc(0)
+    let position = 1024
+    for await (const chunk of createReadStream(path, { start: position, highWaterMark: 1024 * 1024 })) {
+      const data = Buffer.concat([carry, chunk as Buffer])
+      const index = data.indexOf(SEVEN_ZIP_SIG)
+      if (index >= 0) return { zip, sevenZipOffset: position - carry.length + index }
+      position += chunk.length
+      carry = Buffer.from(data.subarray(Math.max(0, data.length - 5)))
+    }
+    return { zip, sevenZipOffset: -1 }
+  }
+
+  /** 大包始终由文件解压；小 ZIP 的压缩+声明解压总量也必须满足内存预算。 */
+  async unpackFile(path: string, destDir: string, fileName: string, password?: string): Promise<string[]> {
+    const kind = await this.inspectFile(path)
+    if (kind.sevenZipOffset >= 0) {
+      let archive = path
+      let sliced: string | undefined
+      try {
+        if (kind.sevenZipOffset > 0) {
+          sliced = join(dirname(path), 'segment-' + randomBytes(6).toString('hex') + '.7z')
+          await pipeline(createReadStream(path, { start: kind.sevenZipOffset }), createWriteStream(sliced, { flags: 'wx' }))
+          archive = sliced
+        }
+        return await this.extractArchiveFile(archive, destDir, password)
+      } finally { if (sliced) rmSync(sliced, { force: true }) }
+    }
+    if (kind.zip || /\.zip$/i.test(fileName)) {
+      const info = this.zipFileInfo(path)
+      if (!info.zip64 && statSync(path).size + info.expanded <= MEMORY_ZIP_BYTES) {
+        const bytes = readFileSync(path)
+        return this.unzipToDir(bytes, destDir, password)
+      }
+      return this.extractArchiveFile(path, destDir, password)
+    }
+    const safe = assertSafeRelPath(fileName)
+    const target = join(destDir, ...safe.split('/'))
+    assertInside(destDir, target)
+    mkdirSync(dirname(target), { recursive: true })
+    // 下载与安装暂存在同一盘，直接改名避免重复复制 GB 级单文件。
+    renameSync(path, target)
+    return [safe]
+  }
+
+  /** 外部解压器先列清单校验路径、链接、条目数与展开量，再从磁盘解压。 */
+  async extractArchiveFile(path: string, destDir: string, password?: string): Promise<string[]> {
+    if ((await this.inspectFile(path)).zip) this.zipFileInfo(path)
+    const tool = this.resolveSevenZip() ?? this.resolveBandizip()
+    if (!tool) {
+      throw new LauncherError('未找到 7z 或 Bandizip：此压缩包需要从磁盘解压，请安装 7-Zip 或 Bandizip，或配置 launcherSevenZipPath（无需整包载入内存）')
+    }
+    const bandizip = /bz(\.exe)?$/i.test(tool)
+    const run = async (args: string[]): Promise<string> => {
+      const result = await new Promise<{ status: number | null; output: string; error?: Error }>((resolve) => {
+        const child = spawn(tool, args, { timeout: 10 * 60 * 1000, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
+        const chunks: Buffer[] = []
+        let size = 0
+        let error: Error | undefined
+        const collect = (chunk: Buffer): void => {
+          size += chunk.length
+          if (size > 16 * 1024 * 1024) {
+            error = new Error('解压器输出过大')
+            child.kill()
+          } else chunks.push(chunk)
+        }
+        child.stdout.on('data', collect)
+        child.stderr.on('data', collect)
+        child.on('error', (e) => { error = e })
+        child.on('close', (status) => resolve({ status, output: Buffer.concat(chunks).toString('utf8'), error }))
+      })
+      const output = result.output
+      if (result.status !== 0 || result.error) {
+        if (isPasswordErrorOutput(output, password)) throw new CryptZipError(password ? 'wrong_password' : 'password_required', password ? '密码错误（解压器报告密码不符）' : '压缩包已加密，需要解压密码')
+        throw new LauncherError(`7z 解压失败: ${result.error?.message ?? output.slice(-300)}`)
+      }
+      return output
+    }
+    const listing = bandizip
+      ? await run(['l', '-list:s', '-consolemode:utf8', ...(password ? ['-p:' + password] : []), path])
+      : await run(['l', '-slt', '-ba', '-sccUTF-8', '-p' + (password ?? ''), '--', path])
+    const blocks = listing.trim().split(/\r?\n\r?\n/)
+    let total = 0
+    let entries = 0
+    for (const block of bandizip ? [] : blocks) {
+      const name = /^Path = (.+)$/m.exec(block)?.[1]?.trimEnd()
+      if (!name) continue
+      entries++
+      assertSafeRelPath(name)
+      if (/^(Symbolic Link|Hard Link) = /m.test(block) || /^Attributes = .*\bl[rwx-]{9}/m.test(block)) throw new LauncherError(`压缩包包含链接，拒绝解包: ${name}`)
+      const size = Number(/^Size = (\d+)$/m.exec(block)?.[1] ?? 0)
+      total += size
+      if (entries > MAX_ZIP_ENTRIES || total > MAX_ZIP_UNPACKED) throw new LauncherError('压缩包条目数或解包总量超限')
+    }
+    if (bandizip) {
+      const names = listing.split(/\r?\n/).filter((line) => line !== '')
+      for (const name of names) assertSafeRelPath(name)
+      entries = names.length
+      // -list:v 的尺寸/Unix Mode 列固定在行首；名字由 -list:s 单独读取。
+      const details = await run(['l', '-list:v', '-consolemode:utf8', ...(password ? ['-p:' + password] : []), path])
+      const rows = [...details.matchAll(/^\d{4}-\d{2}-\d{2}[ \t]+\d{2}:\d{2}:\d{2}[ \t]+([A-Za-z_]{4})[ \t]+(\d+)[ \t]+\d+[ \t]+([^\r\n]*)/gm)]
+      if (rows.length !== entries) throw new LauncherError('无法识别 Bandizip 文件清单，请配置 7-Zip 解压器')
+      for (const row of rows) {
+        total += Number(row[2])
+        const unixMode = details.includes('Unix Mode') ? /^\S+[ \t]+\S+[ \t]+(\S+)/.exec(row[3]!)?.[1] : undefined
+        if (unixMode?.startsWith('l') || row[1]!.includes('L')) throw new LauncherError('压缩包包含链接，拒绝解包')
+      }
+      if (entries > MAX_ZIP_ENTRIES || total > MAX_ZIP_UNPACKED) throw new LauncherError('压缩包条目数或解包总量超限')
+    }
+    if (!entries && listing.trim()) throw new LauncherError('无法识别解压器文件清单')
+    const extracted = this.createStagingDir()
+    try {
+      await run(bandizip ? [...buildArchiveArgs('bandizip', path, extracted, password).slice(0, -1), '-consolemode:utf8', path]
+        : ['x', '-y', '-sccUTF-8', '-p' + (password ?? ''), '-o' + extracted, '--', path])
+      // 不跟随解压产生的符号链接 / junction，避免递归逃逸。
+      const walk = (dir: string): void => {
+        for (const name of readdirSync(dir)) {
+          const target = join(dir, name)
+          const st = lstatSync(target)
+          if (st.isSymbolicLink()) throw new LauncherError('解压产物包含链接，拒绝安装')
+          assertInside(realpathSync(extracted), realpathSync(target))
+          if (st.isDirectory()) walk(target)
+        }
+      }
+      walk(extracted)
+      const files = this.listFiles(extracted)
+      let actual = 0
+      for (const file of files) actual += statSync(join(extracted, file)).size
+      if (files.length > MAX_ZIP_ENTRIES || actual > MAX_ZIP_UNPACKED) throw new LauncherError('解压产物超限')
+      // 与内置 ZIP 一致，去掉唯一的顶层包装目录。
+      const flat = stripTopWrapper(files.map((file) => ({ orig: file, safe: file })))
+      for (const p of flat) {
+        const target = join(destDir, p.safe)
+        assertInside(destDir, target)
+        mkdirSync(dirname(target), { recursive: true })
+        renameSync(join(extracted, p.orig), target)
+      }
+      return flat.map((p) => p.safe)
+    } finally { rmSync(extracted, { recursive: true, force: true }) }
+  }
 
   /** zip → 目录。路径穿越/条目数/总字节三防；单一顶层包装目录自动扁平化；密码包走 crypt-zip 解密。返回写入的相对路径列表。 */
   unzipToDir(bytes: Uint8Array, destDir: string, password?: string): string[] {
@@ -573,7 +864,7 @@ export class LauncherInstaller {
    * 解包产物没有可执行入口、且恰好只有一个内层压缩包（.zip/.7z）时，解开它并删除包体，
    * 重新列目录；最多递归 3 层。密码透传给内层（提取码/解压密码复用密码框同值）。
    */
-  settleNested(dir: string, files: string[], password?: string): string[] {
+  async settleNested(dir: string, files: string[], password?: string): Promise<string[]> {
     let current = files
     for (let depth = 0; depth < 3; depth++) {
       if (this.detectEntryCandidates(current).length > 0) return current
@@ -581,12 +872,13 @@ export class LauncherInstaller {
       if (archives.length !== 1) return current
       const inner = archives[0]!
       const innerPath = join(dir, ...inner.split('/'))
-      let bytes: Uint8Array
-      try { bytes = new Uint8Array(readFileSync(innerPath)) } catch { return current }
-      // 先删包体再解包：内层若含同名文件（自嵌套），解包直接覆盖而不被随后的删除误伤
-      try { rmSync(innerPath, { force: true }) } catch { /* ignore */ }
-      if (this.is7zBytes(bytes)) this.extract7z(bytes, dir, password)
-      else this.unzipToDir(bytes, dir, password)
+      // 先改名到独立暂存再解包，防自嵌套同名文件覆盖输入；全程不读整包。
+      const temp = this.createStagingDir()
+      const archive = join(temp, 'nested' + extname(inner))
+      try {
+        renameSync(innerPath, archive)
+        await this.unpackFile(archive, dir, inner, password)
+      } finally { rmSync(temp, { recursive: true, force: true }) }
       current = this.listFiles(dir)
     }
     return current

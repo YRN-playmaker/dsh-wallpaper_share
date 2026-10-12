@@ -5,7 +5,7 @@ const fishImage = (opacity: number, flipped: boolean): string => {
   return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`
 }
 
-/** Host sidebar accents belong to the plugin, not the code-free DWP scene. */
+/** Host selectors live here; the DWP tab scene can supply clock-aware colors. */
 export function dayNightSidebarCss(id: string | null): string {
   if (id !== 'yrn.deepseek-day-night') return ''
   // AppFrame's sidebarCol contains both the expanded sidebar and collapsed rail.
@@ -15,16 +15,19 @@ export function dayNightSidebarCss(id: string | null): string {
   const selected = control + ':is([aria-current="page"], [aria-current="true"], [aria-selected="true"], [aria-pressed="true"], [data-state="active"])'
   return `
 ${control}:hover, ${selected} {
-  background-color: #2563eb !important;
   color: #fff !important;
   --dsw-alias-label-primary: #fff;
   --dsw-alias-label-secondary: #fff;
 }
 ${selected} {
+  background-color: var(--wesync-sidebar-selected-fill, #2563eb) !important;
   background-image: ${fishImage(0.48, false)}, ${fishImage(0.25, true)} !important;
   background-size: 144px 40px, 216px 32px;
   background-repeat: repeat-x;
   animation: wesync-daynight-fish-swim 8s linear infinite;
+}
+${control}:hover {
+  background-color: var(--wesync-sidebar-hover-fill, #2563eb) !important;
 }
 @keyframes wesync-daynight-fish-swim {
   0% { background-position: -144px calc(50% - 2px), 0 calc(50% + 5px); }

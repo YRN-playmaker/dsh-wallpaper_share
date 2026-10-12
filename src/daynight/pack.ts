@@ -21,8 +21,8 @@ import { DAYNIGHT_TAB_SCENE } from './tab-scene.ts'
 import type { Manifest, Scene } from '../../vendor/dwp/packages/dwp-core/src/index.ts'
 
 export const DAYNIGHT_ID = 'yrn.deepseek-day-night'
-export const DAYNIGHT_VERSION = '1.3.1'
-export const DAYNIGHT_TAB_CLIENT_VERSION = '26.10.12-D'
+export const DAYNIGHT_VERSION = '1.3.2'
+export const DAYNIGHT_TAB_CLIENT_VERSION = '26.10.13-D'
 export const DAYNIGHT_WIDTH = 1920
 export const DAYNIGHT_HEIGHT = 1080
 
@@ -93,14 +93,17 @@ export function buildDayNightPackage(assets: DayNightAssets): Uint8Array {
     { name: 'README.md', data: new TextEncoder().encode(
       '# DeepSeek Day & Night / DeepSeek 日夜\n\n'
       + `DWP ${assets.version ?? DAYNIGHT_VERSION} preserves the day/night crossfade and SD/HD textures.\n\n`
-      + (assets.tabAssets ? `Underwater tab animation requires dsh-wallpaper_share ${DAYNIGHT_TAB_CLIENT_VERSION} or later. The portrait, ten splash cels and visual settings are included in this DWP. Open wallpaper_share to enter the water; scroll down to dive deeper and fade the surface reflections. Bubble glow and moving caustics run only in Complete mode. Focus + Complete adds a 1–4px breathing blur.\n\n入水页面效果需要 dsh-wallpaper_share ${DAYNIGHT_TAB_CLIENT_VERSION} 或新版插件。人物、水花帧和视觉参数均在此 DWP 内；进入 wallpaper_share 播放入水，滚轮下滑加深水色并淡出水面光斑，离开页面播放退出。泡泡发光和动态焦散仅在「完整」模式显示；专注 + 完整时启用 1–4px 呼吸模糊。普通 DWP 播放器仅显示日夜场景。\n\n` : '')
-      + (assets.tabAssets ? 'For the 1.3.1 sidebar and page-transition fixes, install dsh-wallpaper_share-26.10.12-D-daynight-1.3.1.tgz from this wallpaper release, then restart Harness. The earlier v26.10.12-D release archive is preserved and lacks these fixes.\n\n1.3.1 的侧边栏与页面过渡修复需使用本次壁纸 Release 附带的 dsh-wallpaper_share-26.10.12-D-daynight-1.3.1.tgz，安装后重启；早先同版本资产保留且不含这些修复。\n\n' : '')
+      + (assets.tabAssets ? `Underwater tab animation requires dsh-wallpaper_share ${DAYNIGHT_TAB_CLIENT_VERSION} or later. The portrait, ten splash cels and visual settings are included in this DWP. Open wallpaper_share to enter the water; scroll down to dive deeper and fade the surface reflections. Flat illustrated bubbles and moving caustics run only in Complete mode. Focus + Complete adds a 1–4px breathing blur.\n\n入水页面效果需要 dsh-wallpaper_share ${DAYNIGHT_TAB_CLIENT_VERSION} 或新版插件。人物、水花帧和视觉参数均在此 DWP 内；进入 wallpaper_share 播放入水，滚轮下滑加深水色并淡出水面光斑，离开页面播放退出。二维气泡和动态焦散仅在「完整」模式显示；专注 + 完整时启用 1–4px 呼吸模糊。普通 DWP 播放器仅显示日夜场景。\n\n` : '')
+      + (assets.tabAssets ? 'Install dsh-wallpaper_share-26.10.13-D.tgz from the companion plugin release, restart Harness, and remount DWP 1.3.2. Preview keeps the daytime blue underwater page and cheaper effects regardless of local time; Complete enables the richer day/night effects.\n\n安装配套插件 dsh-wallpaper_share-26.10.13-D.tgz，重启 Harness 后重新挂载 DWP 1.3.2。预览页面固定白天蓝色与低开销效果，不随本地时间变化；完整模式启用丰富的日夜特效。\n\n' : '')
+      + (assets.tabAssets ? 'Complete mode follows the existing day/night clock: 18:00–18:10 fades to a muted amber / terracotta / deep-red sea (#CF8247, #CD5D3D, #BC443F, #A73F3A), and 05:50–06:00 returns to blue. The base gradient has about 21% lower mean sRGB relative luminance than the initial orange-red palette, with lower Oklab chroma. The global portrait color layer fades completely out at night, leaving a deep burgundy #320f20 silhouette at the same 75% opacity. Independent bubble windows still reveal portrait details at 1.35x. Surface light and bubbles use softer warm accents; bottom dots and sidebar shading follow the silhouette color. Palette changes reuse cached textures and preserve scroll and motion. Colors and portrait visibility are stored in nightPalette; Preview/Capture retain their original palette.\n\n完整模式沿用原有昼夜时钟：18:00–18:10 渐变进入柔和的琥珀、砖红与深红水色（#CF8247、#CD5D3D、#BC443F、#A73F3A），05:50–06:00 渐变回蓝色。相对首版橙红配色，基础渐变的平均 sRGB 相对亮度降低约 21%，Oklab 色度也降低。人物全局彩色层在夜间完全淡出，成为深酒红 #320f20 的完整剪影，保持 75% 不透明度；气泡内独立的原图细节窗口和 1.35 倍放大保留。水面光纹与气泡使用柔和暖色，底部圆点和侧边栏同步剪影底色。配色过渡复用贴图缓存，保留滚动位置与运动。颜色与人物可见度参数保存在 nightPalette，预览与捕获保留原有配色。\n\n' : '')
+      + (assets.tabAssets ? '1.3.2: In Complete mode, smooth ellipsoid bubbles tilt along their path and deform using a Weber-number aspect ratio and damped quadrupole response. Persistent bubbles are capped at 12; entry droplets are excluded. A uniform 10% white fill in the lower half crossfades to upper highlights, soft haze and inner lower shadows after crossing the screen midpoint, completing at one-quarter screen height. Haze uses a single cached 128x128 texture, without per-frame bubble blur. A closed convex ellipse replaces the indented skirt; a larger inner window reveals portrait detail and magnifies the current frame up to 1.35x. Seeded speeds and staggered births vary lanes and sizes each lifetime. Bottom dots share the silhouette color. Shape, physical mapping, lighting, paint, lens and motion parameters live in scene.json. Preview/Capture keep ordinary bubbles. Requires plugin 26.10.13-D or later; earlier published assets are preserved.\n\n1.3.2：完整模式下，二维气泡以封闭的扁椭球截面代替凹底和裙摆，使用 Weber 数和阻尼二阶模态映射形变，倾斜方向跟随轨迹切线。持续上浮气泡最多 12 个，入场小泡泡除外。下半屏保留不透明度 10% 的白色遮罩；上浮越过屏幕中线后，白色遮罩逐渐淡出，上方高光、柔和雾光与内部下侧阴影同步淡入，在上方四分之一处完成。雾光使用单张 128×128 缓存贴图，无需每帧模糊。移动气泡经过人物时，局部显露原图细节并将实时画面放大至 1.35 倍。出现间隔、位置、大小与速度使用伪随机，逐轮重新分布；底部圆点与剪影同色。形状、物理映射、光照、白色遮罩、透镜和运动参数保存在 scene.json，预览与捕获保留普通气泡。需要 26.10.13-D 或新版插件；旧版已发布资产保留。\n\n' : '')
+      + (assets.tabAssets ? 'Complete-mode night entry colorizes the existing foam cels to warm orange/gold using the declarative nightPalette.splash.tone filter. Alpha edges, highlights, frame exposures and centered cropping are preserved. Detached entry bubbles use #F2CA92. One cel-sized cache is reused for repeated exposures and released after entry; day, Preview and Capture retain the blue artwork.\n\n完整模式夜间通过 nightPalette.splash.tone 将原有水花帧后处理为橙金色，保留透明边缘、亮暗层次、帧时序与居中裁切，入场临时小泡泡同步为 #F2CA92。重复曝光复用单帧尺寸缓存，入水结束释放；白天、预览和捕获保留原蓝色素材。\n\n' : '')
       + 'Sidebar fish silhouettes require dsh-wallpaper_share 26.10.9-D or later. '
       + 'Install/upgrade the plugin, restart Harness, then mount this wallpaper. '
-      + 'Selected sidebar items show swimming dark fish; hover alone is blue. '
+      + 'Selected sidebar items show swimming dark fish; hover alone has no fish. Complete-mode nights use bright coral-red selection (#E94650) and a lighter hover (#F15B63), configured in nightPalette.ui; day and other modes stay blue. '
       + 'The DeepSeek brand button is excluded. Reduced-motion preferences stop swimming.\n\n'
       + '侧边栏鱼剪影需要 dsh-wallpaper_share 26.10.9-D 或新版插件；升级插件并重启 Harness 后挂载本壁纸。'
-      + '选中项显示深色游鱼，普通悬停仅显示蓝色；品牌按钮除外。系统减少动态效果时游鱼静止。'
+      + '选中项显示深色游鱼，普通悬停不显示游鱼；完整模式夜间选中为亮珊瑚红（#E94650），悬停更亮（#F15B63），参数位于 nightPalette.ui，白天及其他模式保持蓝色。品牌按钮除外。系统减少动态效果时游鱼静止。'
       + '仅更新 DWP 包不会给旧插件增加侧边栏效果。\n\n'
       + 'Plugin: https://github.com/YRN-playmaker/dsh-wallpaper_share\n'
     ) },
@@ -119,7 +122,7 @@ export function buildDayNightPackage(assets: DayNightAssets): Uint8Array {
       entries.push({ name, data })
     }
     entries.push({ name: 'TAB-SCENE.md', data: new TextEncoder().encode(
-      '# Tab scene extension\n\nThis package contains the portrait, ten foam cels and all entry/exit, scroll, silhouette gradient and breathing blur settings in scene.json → dsh.tabScene.\n\n'
+      '# Tab scene extension\n\nThis package contains the portrait, ten foam cels and all entry/exit, scroll, silhouette gradient, Complete-only nightPalette and breathing blur settings in scene.json → dsh.tabScene.\n\n'
       + `This is declarative data, not executable package code. A host supporting dsh/tab-scene/1 must provide tab visibility, scroll progress, focus and quality state. Standard DWP 1.0 players still render the day/night scene but ignore this extension. Requires dsh-wallpaper_share ${DAYNIGHT_TAB_CLIENT_VERSION} or later. Surface light stays at the top and fades out by surfaceLight.scrollFadeEnd (0.65 of the scroll range).\n`
     ) })
   }

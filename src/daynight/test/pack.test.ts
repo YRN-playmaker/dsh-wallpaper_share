@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildDayNightManifest, buildDayNightPackage, buildDayNightScene, DAYNIGHT_HD_ASSETS, DAYNIGHT_ID, DAYNIGHT_VERSION, DAYNIGHT_TAB_CLIENT_VERSION } from '../pack.ts';
 import { readZipMap } from '../../market/unzip.ts';
-import { DAYNIGHT_TAB_SCENE, parseTabScene } from '../tab-scene.ts';
+import { DAYNIGHT_TAB_SCENE, mixTabScenePalette, parseTabScene } from '../tab-scene.ts';
 
 const TINY_DAY = new Uint8Array([1, 2, 3, 4, 5]);
 const TINY_NIGHT = new Uint8Array([9, 8, 7, 6]);
@@ -25,14 +25,33 @@ test('tab scene is self-contained: behavior and all referenced textures survive 
   assert.deepEqual(profile.figure.surfaceTint, { color: '#F7F4D4', maxAlpha: 0.3, depth: 0.4 })
   assert.deepEqual([profile.focus.minBlur, profile.focus.maxBlur], [1, 4])
   assert.ok(profile.bottomDots && profile.bottomDots.scrollStart > 0.8)
-  assert.ok(profile.bubbleLight && profile.bubbleLight.detailOpacity > profile.bubbleLight.glowOpacity)
-  assert.equal(profile.bubbleLight.mode, 'enhanced')
+  assert.equal(profile.bubbleLight?.mode, 'enhanced')
+  assert.deepEqual(profile.bubbleLight?.heightFade, { start: 0.5, end: 0.25 })
+  assert.equal(profile.bubblePaint?.mode, 'enhanced')
+  assert.equal(profile.bubblePaint?.color, '#ffffff')
+  assert.equal(profile.bubblePaint?.opacity, 0.1)
+  assert.equal(profile.bubbleShape?.style, 'ellipsoid-2d')
   assert.equal(profile.surfaceLight?.mode, 'enhanced')
   assert.ok(profile.surfaceLight)
   assert.equal(profile.surfaceLight.scrollFadeEnd, 0.65)
   assert.equal(parseTabScene({ ...profile, surfaceLight: { ...profile.surfaceLight, scrollFadeEnd: 0 } }), null)
   assert.equal(parseTabScene({ ...profile, surfaceLight: { ...profile.surfaceLight, opacity: 1 } }), null)
-  assert.equal(parseTabScene({ ...profile, bubbleLight: { ...profile.bubbleLight, radius: -1 } }), null)
+  const legacyLight = { mode: 'enhanced' as const, style: 'top-haze' as const, radius: 0.018, detailOpacity: 0.48, glowOpacity: 0.018, color: '#90e4ff' }
+  assert.ok(parseTabScene({ ...profile, bubbleLight: legacyLight }))
+  assert.equal(parseTabScene({ ...profile, bubbleLight: { ...legacyLight, radius: -1 } }), null)
+  assert.equal(parseTabScene({ ...profile, bubbleLight: { ...legacyLight, hazeBlur: -1 } }), null)
+  assert.equal(parseTabScene({ ...profile, bubbleLight: { ...legacyLight, shadowOpacity: 2 } }), null)
+  assert.equal(parseTabScene({ ...profile, bubbleLight: { ...legacyLight, heightFade: { start: 0.5, end: 0.6 } } }), null)
+  assert.equal(parseTabScene({ ...profile, bubbleLight: { ...legacyLight, heightFade: { start: 1.1, end: 0.2 } } }), null)
+  assert.equal(parseTabScene({ ...profile, bubbleLens: { ...profile.bubbleLens, magnification: 0 } }), null)
+  assert.equal(parseTabScene({ ...profile, bubbleLens: { ...profile.bubbleLens, mode: 'eco' } }), null)
+  assert.equal(parseTabScene({ ...profile, bubbleShape: { ...profile.bubbleShape, lowerWobble: -1 } }), null)
+  assert.equal(parseTabScene({ ...profile, bubblePaint: { ...profile.bubblePaint, opacity: 2 } }), null)
+  assert.equal(parseTabScene({ ...profile, bubbleShape: { ...profile.bubbleShape, style: 'unknown' } }), null)
+  assert.equal(parseTabScene({ ...profile, bubbleShape: { ...profile.bubbleShape, physics: undefined } }), null)
+  assert.equal(parseTabScene({ ...profile, bubbleShape: { ...profile.bubbleShape, physics: { ...profile.bubbleShape?.physics, timeScale: 0 } } }), null)
+  assert.equal(parseTabScene({ ...profile, bubbleField: { ...profile.bubbleField, count: 500 } }), null)
+  assert.equal(parseTabScene({ ...profile, bubbleField: { ...profile.bubbleField, seed: NaN } }), null)
   assert.equal(parseTabScene({ ...profile, bottomDots: { ...profile.bottomDots, spacing: 0 } }), null)
   assert.ok(files.has('TAB-SCENE.md'))
   assert.ok(text(files.get('README.md')).includes(DAYNIGHT_TAB_CLIENT_VERSION))
@@ -41,6 +60,57 @@ test('tab scene is self-contained: behavior and all referenced textures survive 
   assert.throws(() => buildDayNightPackage({ dayPng: TINY_DAY, nightPng: TINY_NIGHT, tabAssets: {} }), /Missing DWP tab asset/)
   assert.equal(parseTabScene({ ...profile, portrait: 'assets/../secret.png' }), null)
   assert.equal(parseTabScene({ ...profile, entry: {} }), null)
+})
+
+test('night tab palette is packaged, Complete-only and preserves animation through crossfade', () => {
+  const source = structuredClone(DAYNIGHT_TAB_SCENE)
+  const files = readZipMap(buildDayNightPackage({ dayPng: TINY_DAY, nightPng: TINY_NIGHT, tabAssets: Object.fromEntries([source.portrait, ...source.foam].map(name => [name, TINY_DAY])) }))
+  const profile = parseTabScene(JSON.parse(text(files.get('scene.json'))).dsh.tabScene)!
+  assert.ok(profile.nightPalette)
+  const night = mixTabScenePalette(profile, 1, 'enhanced')
+  assert.deepEqual(night.water.stops, profile.nightPalette.water.stops)
+  assert.equal(night.figure.ink, '#320f20')
+  assert.equal(night.figure.opacity, 0.75)
+  assert.equal(night.figure.colorOpacity, 0, 'night hides the global portrait color layer, keeping bubble detail independent')
+  assert.equal(night.bottomDots?.completeColor, night.figure.ink)
+  assert.deepEqual([night.ui?.hoverColor, night.ui?.selectedColor], ['#f15b63', '#e94650'])
+  assert.deepEqual(night.splash.tone, profile.nightPalette.splash?.tone)
+  assert.equal(night.splash.particleColor, '#f2ca92')
+  assert.equal(night.splash.fps, profile.splash.fps)
+  assert.deepEqual(night.splash.exposures, profile.splash.exposures, 'postprocessing preserves cel timing and frame count')
+  for (const key of ['entry', 'exit', 'scroll', 'depth', 'bubbleShape', 'bubbleLens', 'bubbleField'] as const) assert.deepEqual(night[key], source[key])
+  for (const mode of ['eco', 'perf', undefined]) assert.equal(mixTabScenePalette(profile, 1, mode), profile)
+  assert.equal(mixTabScenePalette(profile, 0, 'enhanced'), profile)
+  assert.equal(mixTabScenePalette(profile, NaN, 'enhanced'), profile)
+  const half = mixTabScenePalette(profile, 0.5, 'enhanced')
+  assert.equal(half.water.stops[0][1], '#6ca69d')
+  assert.equal(half.figure.colorOpacity, 0.45, 'portrait colors crossfade out with the dusk clock')
+  assert.equal(half.ui?.selectedColor, '#87559e', 'interactive accents follow the same dusk crossfade')
+  assert.deepEqual([half.splash.tone?.sepia, half.splash.tone?.saturation, half.splash.tone?.hueRotate], [0.5, 1.35, -10])
+  assert.ok(Math.abs(half.splash.tone!.brightness - 0.89) < 1e-12)
+  assert.equal(half.figure.tint.slice(-2), '2b')
+  assert.deepEqual(profile, source, 'palette blending never mutates the DWP profile')
+  const legacy = { ...profile, nightPalette: undefined }
+  assert.equal(mixTabScenePalette(legacy, 1, 'enhanced'), legacy)
+  assert.equal(parseTabScene({ ...profile, nightPalette: { ...profile.nightPalette, mode: 'eco' } }), null)
+  assert.equal(parseTabScene({ ...profile, nightPalette: { ...profile.nightPalette, figure: { ...profile.nightPalette.figure, ink: 'red' } } }), null)
+  assert.equal(parseTabScene({ ...profile, nightPalette: { ...profile.nightPalette, ui: { hoverColor: 'red', selectedColor: '#e94650' } } }), null)
+  assert.equal(parseTabScene({ ...profile, ui: { ...profile.ui, hoverColor: 'red' } }), null)
+  assert.equal(parseTabScene({ ...profile, splash: { ...profile.splash, tone: { sepia: 2, saturation: 1, hueRotate: 0, brightness: 1 } } }), null)
+  assert.equal(parseTabScene({ ...profile, nightPalette: { ...profile.nightPalette, splash: { ...profile.nightPalette.splash, particleColor: 'orange' } } }), null)
+  for (const saturation of [-1, 5, NaN]) assert.equal(parseTabScene({ ...profile, nightPalette: { ...profile.nightPalette, splash: { ...profile.nightPalette.splash, tone: { ...profile.nightPalette.splash?.tone, saturation } } } }), null)
+  const oldSplash = { ...profile, nightPalette: { ...profile.nightPalette, splash: undefined } }
+  assert.ok(parseTabScene(oldSplash))
+  assert.deepEqual(mixTabScenePalette(oldSplash, 1, 'enhanced').splash, profile.splash, 'older packages keep the original foam')
+  const oldUi = { ...profile, ui: { ...profile.ui!, hoverColor: undefined, selectedColor: undefined } }
+  assert.ok(parseTabScene(oldUi))
+  assert.equal(mixTabScenePalette(oldUi, 0.5, 'enhanced').ui?.selectedColor, half.ui?.selectedColor, 'older UI profiles use the original blue as the clock fallback')
+  for (const colorOpacity of [-0.1, 1.1, NaN]) assert.equal(parseTabScene({ ...profile, nightPalette: { ...profile.nightPalette, figure: { ...profile.nightPalette.figure, colorOpacity } } }), null)
+  const oldNight = { ...profile, nightPalette: { ...profile.nightPalette, figure: { ...profile.nightPalette.figure, colorOpacity: undefined } } }
+  assert.ok(parseTabScene(oldNight))
+  assert.equal(mixTabScenePalette(oldNight, 1, 'enhanced').figure.colorOpacity, 0.9, 'older night profiles keep their previous portrait visibility')
+  assert.equal(parseTabScene({ ...profile, nightPalette: { ...profile.nightPalette, water: { ...profile.nightPalette.water, stops: [[0, '#FB8604']] } } }), null)
+  assert.equal(parseTabScene({ ...profile, nightPalette: { ...profile.nightPalette, water: { ...profile.nightPalette.water, stops: profile.nightPalette.water.stops.map(([offset, color], i) => [i === 1 ? 0.3 : offset, color]) } } }), null)
 })
 
 test('scene：低档打底 + 高档覆盖，夜层按档位各自控透明度', () => {
