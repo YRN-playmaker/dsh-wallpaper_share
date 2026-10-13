@@ -44,7 +44,7 @@
 
 ![DeepSeek 日夜：夜间完整模式](docs/images/deepseek-daynight-night.png)
 
-完整记录见 [CHANGELOG.md](CHANGELOG.md)。仓库源码版本为 **26.10.13-D**；2026-10-12 核对 npm `latest` / `desktop` 为 **26.10.9-D**、`web` 为 **26.10.3**，不含本次入水页面修复。
+完整记录见 [CHANGELOG.md](CHANGELOG.md)。
 
 <a id="zh-install"></a>
 ### 安装与升级
@@ -83,15 +83,9 @@ dsh plugin --profile web add ./dsh-wallpaper_share-26.10.13-D.tgz
 <a id="zh-daynight"></a>
 ### DeepSeek 日夜 1.3.2
 
-1. 从 [1.3.2 Release](https://github.com/YRN-playmaker/dwp-releases/releases/tag/deepseek-day-night-1.3.2) 下载壁纸 `deepseek-day-night.dwp` 和本插件包。
-2. 安装插件，重启 DSH Web profile 并刷新页面：
-
-   ```bash
-   dsh plugin --profile web add ./dsh-wallpaper_share-26.10.13-D.tgz
-   ```
-
-3. 在「壁纸库 → 市场」更新日夜壁纸到 **1.3.2**，或导入下载的 DWP，然后重新挂载。
-4. 打开 `wallpaper_share` 查看入水；滚轮下潜，再切回对话检查退出过渡。选择「完整」查看焦散和泡泡照明；开启专注后查看呼吸模糊。
+1.下载本插件包
+2. 在「壁纸库 → 市场」更新日夜壁纸到 **1.3.2**，或导入下载的 DWP，然后重新挂载。
+3. 打开 `wallpaper_share` 查看入水；滚轮下潜，再切回对话检查退出过渡。选择「完整」查看焦散和泡泡照明；开启专注后查看呼吸模糊。
 
 人物、水花十帧、U 型展开、剪影渐变、滚轮深度、光效与界面浓度参数均随 DWP 分发，插件负责通用渲染。普通 DWP 播放器继续显示日夜背景；两档纹理及自动昼夜切换保留。系统「减少动态效果」会抑制动态效果。
 
